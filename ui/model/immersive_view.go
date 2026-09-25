@@ -775,9 +775,7 @@ func (m Model) renderImmNowPlaying(w, rows int) []string {
 		lines = append(lines, dimStyle.Render("About the artist"), dimStyle.Render("  loading…"))
 	} else if d := m.immersive.artistMeta; d.Info.Name != "" {
 		lines = append(lines, labelStyle.Render("About the artist"), "")
-		for _, a := range immArtBlock(d.Info.Name, w-4, 3, false) {
-			lines = append(lines, a)
-		}
+		lines = append(lines, immArtBlock(d.Info.Name, w-4, 3, false)...)
 		lines = append(lines, playlistItemStyle.Render(d.Info.Name))
 		if d.Followers > 0 {
 			lines = append(lines, dimStyle.Render(fmt.Sprintf("%s monthly listeners", commaNum(d.Followers))))
