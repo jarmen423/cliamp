@@ -284,6 +284,44 @@ func TestSleepTimerEcho(t *testing.T) {
 	}
 }
 
+// TestPutDelayRespectsCooldown: a 429 backoff must win over the regular
+// ~200ms min-PUT spacing, even when a playback update arrives mid-cooldown
+// with a fresh lastPut (which used to reset the timer and wipe the backoff).
+func TestPutDelayRespectsCooldown(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name              string
+		lastPut, cooldown time.Time
+		wantMin, wantMax  time.Duration
+	}{
+		{"idle: PUT now", now.Add(-time.Second), time.Time{}, 0, 0},
+		{"spacing only", now, time.Time{}, 150 * time.Millisecond, connectStateMinPut},
+		{"cooldown beats fresh lastPut", now, now.Add(30 * time.Second), 29 * time.Second, 30 * time.Second},
+		{"cooldown beats stale lastPut", now.Add(-time.Hour), now.Add(5 * time.Second), 4 * time.Second, 5 * time.Second},
+		{"expired cooldown falls back to spacing", now, now.Add(-time.Second), 150 * time.Millisecond, connectStateMinPut},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := putDelay(tt.lastPut, tt.cooldown, now); got < tt.wantMin || got > tt.wantMax {
+				t.Fatalf("putDelay() = %v, want in [%v, %v]", got, tt.wantMin, tt.wantMax)
+			}
+		})
+	}
+}
+
+// TestSchedulePutDefersToCooldown proves end-to-end that a dirty signal
+// during backoff doesn't trigger an early PUT: lastPut is stale (so without
+// the cooldown this would flush immediately), yet no PUT happens.
+func TestSchedulePutDefersToCooldown(t *testing.T) {
+	r := newTestReceiver(func(any) {})
+	r.spotConnID = "conn-id"
+	r.cooldownUntil = time.Now().Add(30 * time.Second)
+	r.schedulePut(nil) // nil session: would panic if it flushed
+	if !r.lastPut.IsZero() {
+		t.Fatalf("schedulePut flushed during cooldown, lastPut = %v", r.lastPut)
+	}
+}
+
 func TestVolumeMessage(t *testing.T) {
 	var sent []any
 	r := newTestReceiver(func(m any) { sent = append(sent, m) })

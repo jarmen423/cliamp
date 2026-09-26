@@ -493,6 +493,9 @@ func TestLoadSpotifyConnect(t *testing.T) {
 		{"enabled with custom name and port", "[spotify]\nconnect_enabled = true\nconnect_name = \"Living Room\"\nconnect_port = 46325\n", true, "Living Room", 46325},
 		{"explicit off", "[spotify]\nconnect_enabled = false\nconnect_name = \"x\"\n", false, "x", 0},
 		{"negative port ignored", "[spotify]\nconnect_enabled = true\nconnect_port = -1\n", true, "cliamp", 0},
+		{"max port accepted", "[spotify]\nconnect_enabled = true\nconnect_port = 65535\n", true, "cliamp", 65535},
+		{"port above max ignored", "[spotify]\nconnect_enabled = true\nconnect_port = 65536\n", true, "cliamp", 0},
+		{"non-numeric port ignored", "[spotify]\nconnect_enabled = true\nconnect_port = \"lotsofports\"\n", true, "cliamp", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -546,7 +546,7 @@ func Load() (Config, error) {
 			case "connect_name":
 				cfg.Spotify.ConnectName = parseString(val)
 			case "connect_port":
-				if v, err := strconv.Atoi(val); err == nil && v >= 0 {
+				if v, err := strconv.Atoi(val); err == nil && v >= 0 && v <= 65535 {
 					cfg.Spotify.ConnectPort = v
 				}
 			}

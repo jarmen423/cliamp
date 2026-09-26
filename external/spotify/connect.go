@@ -54,6 +54,10 @@ const (
 	// connectStateMinPut is the minimum spacing between connect-state PUTs,
 	// matching go-librespot's daemon.
 	connectStateMinPut = 200 * time.Millisecond
+	// connectDealerRetryInterval is how often run() re-serves the dealer
+	// after it dies on its own: the dealer's internal backoff gives up after
+	// ~15min, after which nothing else would revive the connection.
+	connectDealerRetryInterval = 30 * time.Second
 	// connectEnrichBatch is the /v1/tracks page size for metadata enrichment.
 	connectEnrichBatch = 50
 )
@@ -114,6 +118,7 @@ type connectReceiver struct {
 	lastTransferTs  int64
 	lastPut         time.Time
 	putTimer        *time.Timer
+	cooldownUntil   time.Time // 429 backoff expiry; schedulePut never PUTs before it
 }
 
 func newConnectReceiver(s *Session, cfg ConnectConfig) *connectReceiver {
@@ -175,11 +180,15 @@ func (r *connectReceiver) run() {
 		if r.s.innerSession() != bound {
 			continue // session was swapped mid-serve: rebind to the new one
 		}
-		// The dealer under this session died on its own; wait for a swap.
+		// The dealer under this session died on its own; wait for a swap,
+		// but also re-serve periodically so a dealer whose backoff gave up
+		// doesn't park the receiver until restart.
 		changed, _ = r.s.sessionSwap()
 		select {
 		case <-r.ctx.Done():
 		case <-changed:
+		case <-time.After(connectDealerRetryInterval):
+			applog.Warn("spotify: connect: dealer connection lost, retrying")
 		}
 	}
 }
@@ -704,11 +713,23 @@ func (r *connectReceiver) schedulePut(sess *session.Session) {
 		r.send(playback.PauseMsg{})
 	}
 
-	if d := connectStateMinPut - time.Since(r.lastPut); d > 0 {
+	if d := putDelay(r.lastPut, r.cooldownUntil, time.Now()); d > 0 {
 		r.putTimer.Reset(d)
 		return
 	}
 	r.flushState(sess, connectpb.PutStateReason_PLAYER_STATE_CHANGED)
+}
+
+// putDelay returns how long to wait before the next connect-state PUT: at
+// least connectStateMinPut after lastPut, and never before the 429 backoff
+// expires. Zero means PUT now. Pure so the cooldown interaction is testable
+// without network.
+func putDelay(lastPut, cooldownUntil, now time.Time) time.Duration {
+	d := connectStateMinPut - now.Sub(lastPut)
+	if rem := cooldownUntil.Sub(now); rem > d {
+		d = rem
+	}
+	return max(d, 0)
 }
 
 func (r *connectReceiver) flushState(sess *session.Session, reason connectpb.PutStateReason) {
@@ -736,6 +757,9 @@ func (r *connectReceiver) flushState(sess *session.Session, reason connectpb.Put
 		var rl *spclient.RateLimitedError
 		if errors.As(err, &rl) {
 			// Coalesce: resend once after the cooldown, like the daemon.
+			// The timestamp (not just the timer) carries the backoff so a
+			// playback update arriving mid-cooldown can't shorten the wait.
+			r.cooldownUntil = time.Now().Add(rl.RetryAfter)
 			r.putTimer.Reset(rl.RetryAfter)
 			return
 		}

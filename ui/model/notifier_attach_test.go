@@ -59,3 +59,35 @@ func TestAttachNotifierPublishesCurrentPlaybackState(t *testing.T) {
 		t.Fatalf("notifier update = %#v, want %#v", got, want)
 	}
 }
+
+func TestAttachedNotifiersFanOut(t *testing.T) {
+	pl := playlist.New()
+	pl.Add(playlist.Track{
+		Title: "Song",
+		Path:  "/tmp/song.mp3",
+	})
+
+	first, second := &fakeNotifier{}, &fakeNotifier{}
+	m := Model{
+		player:   &fakeEngine{},
+		playlist: pl,
+	}
+
+	next, _ := m.Update(AttachNotifier(first))
+	m = next.(Model)
+	next, _ = m.Update(AttachNotifier(second))
+	m = next.(Model)
+
+	// Attaching the second notifier broadcasts to all attached notifiers.
+	if len(first.updates) != 2 {
+		t.Fatalf("first notifier updates = %d, want 2", len(first.updates))
+	}
+	if len(second.updates) != 1 {
+		t.Fatalf("second notifier updates = %d, want 1", len(second.updates))
+	}
+
+	m.notifyPlayback()
+	if len(first.updates) != 3 || len(second.updates) != 2 {
+		t.Fatalf("updates = (%d,%d), want (3,2)", len(first.updates), len(second.updates))
+	}
+}

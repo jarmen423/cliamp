@@ -1429,7 +1429,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.rearmPreload()
 
 	case playback.EnqueueMsg:
-		return m, m.queueTrackNext(msg.Track)
+		cmd := m.queueTrackNext(msg.Track)
+		m.notifyAll()
+		return m, cmd
 
 	case playback.PlayTracksMsg:
 		cmd := m.playRemoteTracks(msg)
