@@ -195,7 +195,7 @@ func TestStreamPlayedNotifiesOnceWithoutResume(t *testing.T) {
 	m := Model{
 		player:    &playbackFakeEngine{playing: true},
 		playlist:  pl,
-		notifier:  notifier,
+		notifiers: []playback.Notifier{notifier},
 		buffering: true,
 	}
 	m.requests.stream = 1
@@ -250,7 +250,7 @@ func TestStreamPlayedResumeKeepsNextTrackPreload(t *testing.T) {
 	pl.Add(current, next)
 	player := &playbackFakeEngine{playing: true, ytdlSeek: true, seekable: true, duration: time.Hour}
 	notifier := &fakeNotifier{}
-	m := Model{player: player, playlist: pl, notifier: notifier, buffering: true}
+	m := Model{player: player, playlist: pl, notifiers: []playback.Notifier{notifier}, buffering: true}
 	m.SetResume(current.Path, 90)
 	m.requests.stream = 1
 
@@ -922,7 +922,7 @@ func TestYTDLLiveStreamThatEndsTheQueueNotifiesStopped(t *testing.T) {
 	m.playlist.Replace(m.playlist.Tracks()[:1])
 	m.playlist.SetIndex(0)
 	notifier := &fakeNotifier{}
-	m.notifier = notifier
+	m.notifiers = []playback.Notifier{notifier}
 	livePath := m.playlist.Tracks()[0].Path
 
 	updated, _ := m.Update(tickMsg(time.Now()))
