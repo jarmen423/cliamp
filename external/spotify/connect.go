@@ -322,6 +322,7 @@ func (r *connectReceiver) handleMessage(sess *session.Session, msg dealer.Messag
 	switch {
 	case strings.HasPrefix(msg.Uri, "hm://pusher/v1/connections/"):
 		r.spotConnID = msg.Headers["Spotify-Connection-Id"]
+		applog.Debug("spotify: connect: connection id %q", r.spotConnID)
 		r.flushState(sess, connectpb.PutStateReason_NEW_DEVICE)
 
 	case strings.HasPrefix(msg.Uri, "hm://connect-state/v1/connect/volume"):
@@ -349,6 +350,7 @@ func (r *connectReceiver) handleMessage(sess *session.Session, msg dealer.Messag
 			return
 		}
 		// Playback moved to another device.
+		applog.Debug("spotify: connect: cluster moved active to %q, yielding", cluster.ActiveDeviceId)
 		r.active = false
 		r.send(playback.PauseMsg{})
 		if err := sess.Spclient().PutConnectStateInactive(r.ctx, r.spotConnID, false); err != nil {
@@ -704,6 +706,7 @@ func (r *connectReceiver) cmdSleepTimer(req dealer.RequestPayload) {
 // (detected on the track-change snapshot).
 func (r *connectReceiver) schedulePut(sess *session.Session) {
 	if r.spotConnID == "" {
+		applog.Debug("spotify: connect: skip PUT, no connection id yet")
 		return // cannot PUT until the connection-id message arrives
 	}
 	st, _ := r.snapshot()
@@ -734,8 +737,10 @@ func putDelay(lastPut, cooldownUntil, now time.Time) time.Duration {
 
 func (r *connectReceiver) flushState(sess *session.Session, reason connectpb.PutStateReason) {
 	if r.spotConnID == "" {
+		applog.Debug("spotify: connect: skip PUT %s, no connection id yet", reason)
 		return
 	}
+	applog.Debug("spotify: connect: PUT %s active=%t track=%q", reason, r.active, r.playerState().GetTrack().GetUri())
 	r.lastPut = time.Now()
 
 	req := &connectpb.PutStateRequest{
@@ -759,6 +764,7 @@ func (r *connectReceiver) flushState(sess *session.Session, reason connectpb.Put
 			// Coalesce: resend once after the cooldown, like the daemon.
 			// The timestamp (not just the timer) carries the backoff so a
 			// playback update arriving mid-cooldown can't shorten the wait.
+			applog.Debug("spotify: connect: PUT rate-limited, retry in %s", rl.RetryAfter)
 			r.cooldownUntil = time.Now().Add(rl.RetryAfter)
 			r.putTimer.Reset(rl.RetryAfter)
 			return
