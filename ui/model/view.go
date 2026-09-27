@@ -575,8 +575,8 @@ func (m Model) renderSpectrum() string {
 	return m.vis.Render()
 }
 
-// renderFullVisualizer renders a full-screen view showing only the visualizer
-// with minimal track info and a seek bar.
+// fullVisualizerSections builds the fullscreen visualizer screen: the
+// visualizer with minimal track info and a seek bar.
 func (m Model) fullVisualizerSections() []string {
 	return []string{
 		m.fullVisTopLine(),
@@ -587,10 +587,6 @@ func (m Model) fullVisualizerSections() []string {
 		"",
 		helpKey("V", "Exit ") + helpKey("v", "Mode:"+m.vis.ModeName()+" ") + helpKey("Spc", "▶❚❚ ") + helpKey("<>", "Trk ") + helpKey("+-", "Vol ") + helpKey("t", "Title ") + helpKey("?", "Keys"),
 	}
-}
-
-func (m Model) renderFullVisualizer() string {
-	return strings.Join(m.fullVisualizerSections(), "\n")
 }
 
 // fullVisTopLine names what is playing, or just the source when the track has
