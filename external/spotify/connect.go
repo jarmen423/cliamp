@@ -289,10 +289,23 @@ func (r *connectReceiver) send(msg any) {
 // run goroutine to push it.
 func (r *connectReceiver) notifyUpdate(st playback.State) {
 	r.mu.Lock()
+	// The TUI notifies on every tick, so only mark dirty on meaningful
+	// change: position drift is extrapolated from playbackAt and needs no
+	// PUT. Without this the receiver spams state PUTs ~1/sec, which can
+	// get the device throttled or dropped.
+	changed := r.playback.Status != st.Status ||
+		r.playback.Track != st.Track ||
+		r.playback.Shuffle != st.Shuffle ||
+		r.playback.Repeat != st.Repeat ||
+		r.playback.VolumeDB != st.VolumeDB ||
+		r.playback.Seekable != st.Seekable ||
+		r.playback.NextURL != st.NextURL
 	r.playback = st
 	r.playbackAt = time.Now()
 	r.mu.Unlock()
-	r.signalDirty()
+	if changed {
+		r.signalDirty()
+	}
 }
 
 // notifySeek refreshes only the position; called on a completed seek so the

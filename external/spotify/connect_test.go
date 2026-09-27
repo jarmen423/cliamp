@@ -309,6 +309,47 @@ func TestPutDelayRespectsCooldown(t *testing.T) {
 	}
 }
 
+// TestNotifyUpdateOnlyDirtiesOnChange: the TUI notifies every tick, so
+// position drift alone must not mark dirty — otherwise the receiver PUTs
+// ~1/sec and risks being throttled. Only meaningful change dirties.
+func TestNotifyUpdateOnlyDirtiesOnChange(t *testing.T) {
+	r := newTestReceiver(func(any) {})
+	drained := func() bool {
+		select {
+		case <-r.dirty:
+			return true
+		default:
+			return false
+		}
+	}
+
+	st := playback.State{
+		Status:   playback.StatusPlaying,
+		Track:    playback.Track{Title: "Song", URL: "spotify:track:abc"},
+		VolumeDB: -6,
+		Seekable: true,
+	}
+	r.notifyUpdate(st)
+	if !drained() {
+		t.Fatal("first notifyUpdate did not signal dirty")
+	}
+	// Identical state plus position drift: no dirty.
+	st.Position += time.Second
+	r.notifyUpdate(st)
+	if drained() {
+		t.Fatal("unchanged notifyUpdate signaled dirty")
+	}
+	// Status flip dirties again (snapshot stays fresh regardless).
+	st.Status = playback.StatusPaused
+	r.notifyUpdate(st)
+	if !drained() {
+		t.Fatal("changed notifyUpdate did not signal dirty")
+	}
+	if got, _ := r.snapshot(); got.Status != playback.StatusPaused {
+		t.Fatalf("snapshot status = %q, want Paused", got.Status)
+	}
+}
+
 // TestSchedulePutDefersToCooldown proves end-to-end that a dirty signal
 // during backoff doesn't trigger an early PUT: lastPut is stale (so without
 // the cooldown this would flush immediately), yet no PUT happens.
