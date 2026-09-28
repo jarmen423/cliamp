@@ -346,6 +346,7 @@ type Model struct {
 	imgMode                 imageMode       // images config: how covers are drawn
 	imgLayer                *termimg.Layer  // Sixel output layer (nil in tests)
 	art                     *artStore       // decoded/encoded cover cache
+	pixVis                  *pixVisWorker   // Sixel pixel-visualizer renderer (nil in tests)
 	artPolling              bool            // the cover request loop is running
 	termSixel               bool            // the terminal reported Sixel support (DA1 attribute 4)
 	cellW, cellH            int             // terminal cell size in pixels (CSI 16 t), 0 until known

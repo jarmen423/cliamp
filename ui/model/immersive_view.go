@@ -233,6 +233,9 @@ func (m Model) renderImmersive() string {
 // — visualizer band —
 
 func (m Model) renderImmVis(w, rows int) []string {
+	if m.immPixelVisOn() {
+		return padPane(nil, w, rows) // blank cells under the Sixel frames
+	}
 	if m.vis == nil || m.vis.Mode == ui.VisNone || m.visualizerDisabled() {
 		lines := padPane(nil, w, rows)
 		lines[rows/2] = fitCell(dimStyle.Render("  ♪ visualizer off"), w)

@@ -109,6 +109,9 @@ func (m *Model) SetImageLayer(l *termimg.Layer) {
 	if m.art == nil {
 		m.art = newArtStore()
 	}
+	if m.pixVis == nil && l != nil {
+		m.pixVis = newPixVisWorker(l)
+	}
 }
 
 // artKindNow resolves the image mode against what the terminal reported.

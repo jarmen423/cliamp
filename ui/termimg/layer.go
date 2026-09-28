@@ -17,7 +17,11 @@ type Placement struct {
 }
 
 func (p Placement) sameSpot(q Placement) bool {
-	return p.Key == q.Key && p.X == q.X && p.Y == q.Y && p.W == q.W && p.H == q.H
+	return p.Key == q.Key && p.sameRect(q)
+}
+
+func (p Placement) sameRect(q Placement) bool {
+	return p.X == q.X && p.Y == q.Y && p.W == q.W && p.H == q.H
 }
 
 // Layer holds the images that should be on screen and what was last drawn.
@@ -27,15 +31,73 @@ func (p Placement) sameSpot(q Placement) bool {
 // The cells under a placement must render as constant blanks in the text
 // frame. Bubbletea only rewrites cells that change, so constant blanks keep
 // the pixels intact between redraws.
+//
+// One placement can be live (an animation such as a pixel visualizer): new
+// live frames are drawn between Bubbletea frames by the Writer's pump, once
+// a frame has established the live rectangle as blank cells.
 type Layer struct {
 	mu    sync.Mutex
 	want  []Placement
+	live  *Placement
 	drawn []Placement
 	full  bool // redraw everything: the screen was cleared
+	kick  chan struct{}
 }
 
 // NewLayer returns an empty layer.
-func NewLayer() *Layer { return &Layer{} }
+func NewLayer() *Layer { return &Layer{kick: make(chan struct{}, 1)} }
+
+// SetLive replaces the live placement (nil removes it) and asks the Writer
+// to draw it without waiting for Bubbletea's next frame. It is safe to call
+// from any goroutine.
+func (l *Layer) SetLive(p *Placement) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	if p == nil && l.live == nil {
+		l.mu.Unlock()
+		return
+	}
+	l.live = p
+	l.mu.Unlock()
+	select {
+	case l.kick <- struct{}{}:
+	default:
+	}
+}
+
+// wanted is every placement that should be on screen. Caller holds mu.
+func (l *Layer) wanted() []Placement {
+	if l.live == nil {
+		return l.want
+	}
+	return append(l.want[:len(l.want):len(l.want)], *l.live)
+}
+
+// renderLive draws a new live frame over a live rectangle a Bubbletea frame
+// already put on screen. Anything else waits for the next frame.
+func (l *Layer) renderLive() []byte {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.live == nil || len(l.live.Data) == 0 || l.full {
+		return nil
+	}
+	for i, d := range l.drawn {
+		if !d.sameRect(*l.live) {
+			continue
+		}
+		if d.Key == l.live.Key {
+			return nil
+		}
+		var b bytes.Buffer
+		cup(&b, l.live.Y, l.live.X)
+		b.Write(l.live.Data)
+		l.drawn[i] = *l.live
+		return b.Bytes()
+	}
+	return nil
+}
 
 // Set replaces the desired placements. It is cheap and safe to call from
 // View on every frame; nil clears every image.
@@ -68,23 +130,33 @@ func (l *Layer) render(full bool) (pre, post []byte) {
 	defer l.mu.Unlock()
 	full = full || l.full
 	l.full = false
+	want := l.wanted()
 	var e, d bytes.Buffer
 	if !full {
 		for _, old := range l.drawn {
-			if !containsSpot(l.want, old) {
-				erase(&e, old)
+			if !containsRect(want, old) {
+				erase(&e, old) // nothing opaque will cover it
 			}
 		}
 	}
-	for _, p := range l.want {
+	for _, p := range want {
 		if len(p.Data) == 0 || (!full && containsSpot(l.drawn, p)) {
 			continue
 		}
 		cup(&d, p.Y, p.X)
 		d.Write(p.Data)
 	}
-	l.drawn = append(l.drawn[:0], l.want...)
+	l.drawn = append(l.drawn[:0], want...)
 	return e.Bytes(), d.Bytes()
+}
+
+func containsRect(ps []Placement, p Placement) bool {
+	for _, q := range ps {
+		if q.sameRect(p) {
+			return true
+		}
+	}
+	return false
 }
 
 func containsSpot(ps []Placement, p Placement) bool {
@@ -134,9 +206,26 @@ type Writer struct {
 	mu    sync.Mutex
 }
 
-// NewWriter wraps f (normally os.Stdout) for layer.
+// NewWriter wraps f (normally os.Stdout) for layer and starts the pump that
+// draws live frames between Bubbletea frames.
 func NewWriter(f *os.File, layer *Layer) *Writer {
-	return &Writer{File: f, layer: layer}
+	w := &Writer{File: f, layer: layer}
+	go w.pump()
+	return w
+}
+
+func (w *Writer) pump() {
+	for range w.layer.kick {
+		w.mu.Lock()
+		if seq := w.layer.renderLive(); len(seq) > 0 {
+			var b bytes.Buffer
+			b.Write(syncBegin)
+			wrap(&b, seq)
+			b.Write(syncEnd)
+			_, _ = w.File.Write(b.Bytes())
+		}
+		w.mu.Unlock()
+	}
 }
 
 func (w *Writer) Write(p []byte) (int, error) {
