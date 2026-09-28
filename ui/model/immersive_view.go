@@ -66,7 +66,7 @@ type immRect struct {
 // frame is not showing.
 func (m Model) ImmersiveArtRects() []immRect {
 	im := m.immMouse
-	if im == nil || !im.valid {
+	if im == nil || !im.valid || m.activeScreen() != screenImmersive {
 		return nil
 	}
 	out := make([]immRect, len(im.artRects))
@@ -506,6 +506,12 @@ func (m Model) immCanvasTitle() string {
 		if im.sort != immBrowseSortRecents {
 			title += " · " + immBrowseSortLabels[im.sort]
 		}
+		if im.filtering || im.filter != "" {
+			title += " · filter: " + im.filter
+			if im.filtering {
+				title += "▏"
+			}
+		}
 	case immViewSettings:
 		return "Settings"
 	case immViewSearch:
@@ -780,16 +786,7 @@ func (m Model) immCanvasItemsGeom(iw, ih int) []immItemGeom {
 		}
 		return out
 	case immCanvasGrid:
-		cols := m.immGridCols(iw)
-		// Even widths keep the art (tileW x tileW/2 cells) square in pixels.
-		tileW := ((iw - (cols - 1)) / cols) &^ 1
-		if tileW < 4 {
-			tileW = 4
-		}
-		tileH := tileW/2 + 2 // square-ish art + title + sub
-		if tileH < 3 {
-			tileH = 3
-		}
+		cols, tileW, tileH := m.immGridTile(iw)
 		tileRows := (len(items) + cols - 1) / cols
 		visible := ih / (tileH + 1)
 		if visible < 1 {
@@ -828,6 +825,15 @@ func (m Model) immCanvasItemsGeom(iw, ih int) []immItemGeom {
 	}
 }
 
+// immGridTile sizes grid tiles for a canvas inner width. Even widths keep
+// the art (tileW x tileW/2 cells) square in pixels; tileH adds the title
+// and subtitle rows.
+func (m Model) immGridTile(iw int) (cols, tileW, tileH int) {
+	cols = m.immGridCols(iw)
+	tileW = max(4, ((iw-(cols-1))/cols)&^1)
+	return cols, tileW, tileW/2 + 2
+}
+
 // immGridCols returns the tile column count for a canvas inner width.
 func (m Model) immGridCols(iw int) int {
 	cols := (iw + 1) / (immGridTileW + 1)
@@ -850,6 +856,12 @@ const (
 )
 
 var immEQBandLabels = [eqBandCount]string{"70Hz", "180Hz", "320Hz", "600Hz", "1kHz", "3kHz", "6kHz", "12kHz", "14kHz", "16kHz"}
+
+// immSettingsStart is the first settings row drawn in a canvas rows tall:
+// the list scrolls just enough to keep the cursor row visible.
+func immSettingsStart(cursor, rows int) int {
+	return clampInt(cursor-rows+1, 0, max(0, immSetCount-rows))
+}
 
 func (m Model) renderImmSettings(w, rows int) []string {
 	lines := make([]string, 0, rows)
@@ -894,7 +906,7 @@ func (m Model) renderImmSettings(w, rows int) []string {
 	names[immSetVis] = "Visualizer"
 	vals[immSetVis] = visName
 
-	for i := 0; i < immSetCount && len(lines) < rows; i++ {
+	for i := immSettingsStart(m.immersive.settingsCursor, rows); i < immSetCount && len(lines) < rows; i++ {
 		style := playlistItemStyle
 		if i == m.immersive.settingsCursor && m.immersive.focus == immPaneCanvas {
 			style = playlistSelectedStyle
@@ -960,7 +972,9 @@ func (m Model) immControlsGeom(w int) ([]immCtrlGeom, immRect) {
 		x += widths[i] + 1
 	}
 	// The volume bar sits on the middle controls row just right of the group.
-	vol := immRect{X: x + 2 + lipgloss.Width(m.immGlyphs().vol), Y: y + 1, W: immVolBarCells, H: 1}
+	// x already includes the gap after the last button; the bar follows the
+	// glyph and one space (see renderImmControls).
+	vol := immRect{X: x + 1 + lipgloss.Width(m.immGlyphs().vol), Y: y + 1, W: immVolBarCells, H: 1}
 	return btns, vol
 }
 

@@ -368,6 +368,12 @@ func (m *Model) enterImmersive() tea.Cmd {
 		m.status.Showf(statusTTLDefault, "Immersive needs a %dx%d terminal", immMinWidth, immMinHeight)
 		return nil
 	}
+	return m.startImmersive()
+}
+
+// startImmersive activates the mode without the size check; the frame
+// stays hidden behind the classic layout while the terminal is too small.
+func (m *Model) startImmersive() tea.Cmd {
 	m.immersive = immersiveState{
 		active:         true,
 		prov:           m.provider,
@@ -378,6 +384,7 @@ func (m *Model) enterImmersive() tea.Cmd {
 		sort:           immBrowseSortRecents,
 		settingsReturn: immViewBrowse,
 	}
+	m.recomputeLayout() // the visualizer takes the band's height
 	if m.provider == nil {
 		return nil
 	}
@@ -406,6 +413,10 @@ func (m *Model) exitImmersive() {
 	nextRequest(&m.requests.immersiveArtist)
 	nextRequest(&m.requests.immersiveSearch)
 	m.immersive = immersiveState{}
+	if m.immMouse != nil {
+		m.immMouse.valid = false
+	}
+	m.recomputeLayout() // hand the visualizer back its classic height
 }
 
 // fetchImmersiveSidebar dispatches the outstanding section fetches, one
@@ -590,29 +601,32 @@ func immRootView(s immSection) immersiveView {
 // immersiveSetSection switches the canvas to a nav-pill section, resetting
 // drill-down state.
 func (m *Model) immersiveSetSection(s immSection) {
-	im := &m.immersive
-	im.section = s
-	im.back = nil
-	im.cursor, im.scroll = 0, 0
-	im.view = immRootView(s)
-	if im.view == immViewBrowse {
-		im.ctxID, im.ctxName, im.ctxSub = "", "", ""
-		im.tracks = nil
-		im.tracksLoading = false
-	}
+	m.immersive.section = s
+	m.immersive.filter = ""
+	m.immersiveHome()
 }
 
-// immersiveHome returns the canvas to the section's root view.
+// immersiveHome returns the canvas to the section's root view, dropping the
+// opened context so no earlier list shows under the new view.
 func (m *Model) immersiveHome() {
+	m.dropImmersiveFetches()
 	im := &m.immersive
 	im.back = nil
 	im.cursor, im.scroll = 0, 0
 	im.view = immRootView(im.section)
-	if im.view == immViewBrowse {
-		im.ctxID, im.ctxName, im.ctxSub = "", "", ""
-		im.tracks = nil
-		im.tracksLoading = false
-	}
+	im.ctxID, im.ctxName, im.ctxSub = "", "", ""
+	im.tracks = nil
+}
+
+// dropImmersiveFetches invalidates in-flight track fetches (collection,
+// artist, search) so a late result cannot land in the view that replaced
+// the one that asked for it.
+func (m *Model) dropImmersiveFetches() {
+	nextRequest(&m.requests.immersiveContent)
+	nextRequest(&m.requests.immersiveArtist)
+	nextRequest(&m.requests.immersiveSearch)
+	m.immersive.tracksLoading = false
+	m.immersive.searchLoading = false
 }
 
 // — navigation —
@@ -625,6 +639,7 @@ func (m *Model) openImmersiveItem(item immItem) tea.Cmd {
 		return nil
 	}
 	m.pushImmersiveBack()
+	m.dropImmersiveFetches()
 	providerName := prov.Name()
 	gen := nextRequest(&m.requests.immersiveContent)
 	m.immersive.tracks = nil
@@ -681,6 +696,7 @@ func (m *Model) pushImmersiveBack() {
 // immersiveGoBack restores the last canvas context, or lands on the
 // section root.
 func (m *Model) immersiveGoBack() {
+	m.dropImmersiveFetches()
 	n := len(m.immersive.back)
 	if n == 0 {
 		m.immersiveHome()

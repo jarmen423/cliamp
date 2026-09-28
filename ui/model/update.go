@@ -448,7 +448,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.openImmersiveOnce = false
-		return m, m.enterImmersive()
+		// Start regardless of the current size: the first WindowSizeMsg may
+		// not have arrived yet, and a too-small terminal only hides the frame
+		// until it grows (immersiveShown).
+		return m, m.startImmersive()
 
 	case radioListsRefreshMsg:
 		if msg.gen != m.requests.provider || !m.isActiveProvider("Radio") {

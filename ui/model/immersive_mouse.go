@@ -72,13 +72,13 @@ func (m *Model) recordImmersiveMouseGeometry(content string) {
 	im.items = m.immCanvasItemsGeom(g.canvasIW, g.canvasIH)
 	im.ctrls, im.volBar = m.immControlsGeom(g.w)
 
-	// Queue rows sit inside the queue panel below its border and the
-	// "Next from" header.
+	// Queue rows sit inside the queue panel between its header row and
+	// bottom border, so a panel under four rows shows none.
 	total := len(m.immQueueRows())
-	budget := max(1, g.queueH-3)
-	im.queueScroll = clampedScroll(m.immersive.queueScroll, m.immersive.queueCursor, total, budget)
+	budget := g.queueH - 3
+	im.queueScroll = clampedScroll(m.immersive.queueScroll, m.immersive.queueCursor, total, max(1, budget))
 	im.queueY0 = g.bodyY + g.queueY + 2
-	im.queueN = clampInt(total-im.queueScroll, 0, budget)
+	im.queueN = clampInt(total-im.queueScroll, 0, max(0, budget))
 
 	im.artRects = im.artRects[:0]
 	if g.npArt.W > 0 && g.npArt.H > 0 {
@@ -232,7 +232,11 @@ func (m *Model) immClickCanvas(cx, cy int, right bool) tea.Cmd {
 	}
 	m.immersive.focus = immPaneCanvas
 	if m.immersive.view == immViewSettings {
-		m.immersive.settingsCursor = clampInt(cy-(g.bodyY+1), 0, immSetCount-1)
+		row := immSettingsStart(m.immersive.settingsCursor, g.canvasIH) + cy - (g.bodyY + 1)
+		if row >= immSetCount {
+			return nil // blank space below the last setting
+		}
+		m.immersive.settingsCursor = row
 		if right {
 			return nil
 		}

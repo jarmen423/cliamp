@@ -9,6 +9,7 @@ package model
 import (
 	"context"
 	"strconv"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -232,8 +233,8 @@ func (m Model) immersivePageStep() int {
 	case immCanvasRows:
 		return max(1, g.canvasIH/immRowsItemH-1)
 	case immCanvasGrid:
-		tileH := max(3, (g.canvasIW/m.immGridCols(g.canvasIW))/2+2)
-		return max(1, g.canvasIH/(tileH+1)-1) * m.immGridCols(g.canvasIW)
+		cols, _, tileH := m.immGridTile(g.canvasIW)
+		return max(1, g.canvasIH/(tileH+1)-1) * cols
 	default:
 		return max(3, g.canvasIH-1)
 	}
@@ -298,8 +299,7 @@ func (m *Model) clampCanvasScroll() {
 		per := max(1, g.canvasIH/immRowsItemH)
 		im.scroll = clampedScroll(im.scroll, im.cursor, n, per)
 	case immCanvasGrid:
-		cols := m.immGridCols(g.canvasIW)
-		tileH := max(3, (g.canvasIW/cols)/2+2)
+		cols, _, tileH := m.immGridTile(g.canvasIW)
 		visible := max(1, g.canvasIH/(tileH+1))
 		tileRows := (n + cols - 1) / cols
 		im.scroll = clampedScroll(im.scroll, im.cursor/cols, tileRows, visible)
@@ -448,6 +448,9 @@ func (m *Model) handleImmersiveInputKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	switch msg.String() {
 	case "esc":
+		if m.immersive.filtering {
+			m.immersive.filter = "" // Esc cancels the filter; Enter keeps it
+		}
 		m.immersive.searching = false
 		m.immersive.filtering = false
 		return nil
@@ -460,16 +463,16 @@ func (m *Model) handleImmersiveInputKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.immersive.cursor, m.immersive.scroll = 0, 0
 		return nil
 	case "backspace":
-		if *field != "" {
-			*field = (*field)[:len(*field)-1]
-		}
-		return nil
+		_, size := utf8.DecodeLastRuneInString(*field)
+		*field = (*field)[:len(*field)-size]
 	case "ctrl+u":
 		*field = ""
-		return nil
-	}
-	if msg.Text != "" {
+	default:
 		*field += msg.Text
+	}
+	if m.immersive.filtering {
+		// The visible list changes with every edit; restart at its top.
+		m.immersive.cursor, m.immersive.scroll = 0, 0
 	}
 	return nil
 }
@@ -481,6 +484,7 @@ func (m *Model) runImmersiveSearch() tea.Cmd {
 		return nil
 	}
 	m.pushImmersiveBack()
+	m.dropImmersiveFetches()
 	m.immersive.view = immViewSearch
 	m.immersive.ctxID, m.immersive.ctxName = "", "Search: "+m.immersive.searchQuery
 	m.immersive.ctxSub = "Results"
