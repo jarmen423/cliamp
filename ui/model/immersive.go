@@ -695,6 +695,17 @@ func (m *Model) openImmersiveItem(item immItem) tea.Cmd {
 		return nil
 	}
 	m.pushImmersiveBack()
+	return m.loadImmersiveItem(item)
+}
+
+// loadImmersiveItem shows item's track view and fetches its tracks, without
+// touching history (openImmersiveItem records it; a history step whose list
+// never finished loading reloads through here).
+func (m *Model) loadImmersiveItem(item immItem) tea.Cmd {
+	prov := m.immersive.prov
+	if prov == nil {
+		return nil
+	}
 	m.dropImmersiveFetches()
 	providerName := prov.Name()
 	gen := nextRequest(&m.requests.immersiveContent)
@@ -751,50 +762,54 @@ func (m Model) immersiveSnap() immNavSnap {
 // which also discards the forward history. Settings is transient and never
 // recorded.
 func (m *Model) pushImmersiveBack() {
+	m.immersive.fwd = nil
 	if m.immersive.view == immViewSettings {
 		return
 	}
 	m.immersive.back = append(m.immersive.back, m.immersiveSnap())
-	m.immersive.fwd = nil
 }
 
 // immersiveGoBack steps back through the canvas history. With no history it
 // leaves a drill-down for the section root.
-func (m *Model) immersiveGoBack() {
+func (m *Model) immersiveGoBack() tea.Cmd {
 	im := &m.immersive
+	if im.view == immViewSettings {
+		im.view = im.settingsReturn // Settings is a tab, not a history step
+		return nil
+	}
 	n := len(im.back)
 	if n == 0 {
 		if im.view != immRootView(im.section) || im.ctxName != "" {
 			im.fwd = append(im.fwd, m.immersiveSnap())
 			m.immersiveResetRoot()
 		}
-		return
+		return nil
 	}
 	snap := im.back[n-1]
 	im.back = im.back[:n-1]
-	if im.view != immViewSettings {
-		im.fwd = append(im.fwd, m.immersiveSnap())
-	}
-	m.immersiveRestore(snap)
+	im.fwd = append(im.fwd, m.immersiveSnap())
+	return m.immersiveRestore(snap)
 }
 
 // immersiveGoForward re-applies the history Back undid.
-func (m *Model) immersiveGoForward() {
+func (m *Model) immersiveGoForward() tea.Cmd {
 	im := &m.immersive
 	n := len(im.fwd)
 	if n == 0 {
-		return
+		return nil
 	}
 	snap := im.fwd[n-1]
 	im.fwd = im.fwd[:n-1]
 	if im.view != immViewSettings {
 		im.back = append(im.back, m.immersiveSnap())
 	}
-	m.immersiveRestore(snap)
+	return m.immersiveRestore(snap)
 }
 
-// immersiveRestore puts a recorded canvas context back on screen.
-func (m *Model) immersiveRestore(snap immNavSnap) {
+// immersiveRestore puts a recorded canvas context back on screen; a
+// collection whose tracks never arrived (it was left while loading) loads
+// again.
+func (m *Model) immersiveRestore(snap immNavSnap) tea.Cmd {
 	m.dropImmersiveFetches()
 	im := &m.immersive
 	if snap.section != im.section {
@@ -808,6 +823,12 @@ func (m *Model) immersiveRestore(snap immNavSnap) {
 	im.trackSort = snap.trackSort
 	im.cursor = snap.cursor
 	im.scroll = snap.scroll
+	if snap.tracks == nil && snap.view.isTrackView() && snap.view != immViewSearch && snap.ctxID != "" {
+		cmd := m.loadImmersiveItem(immItem{kind: snap.ctxKind, id: snap.ctxID, title: snap.ctxName, sub: snap.ctxSub})
+		im.cursor, im.scroll, im.trackSort = snap.cursor, snap.scroll, snap.trackSort
+		return cmd
+	}
+	return nil
 }
 
 // sortedTracks returns the open context's tracks in the active list order.

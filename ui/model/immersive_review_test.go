@@ -1,6 +1,7 @@
 package model
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 
 	"github.com/bjarneo/cliamp/playlist"
 	"github.com/bjarneo/cliamp/provider"
+	"github.com/bjarneo/cliamp/ui/termimg"
 )
 
 // A late artist result must not land in the playlist view opened after it.
@@ -100,5 +102,87 @@ func TestImmersiveQueueHitRowsMatchPanel(t *testing.T) {
 	g := m.immGeom()
 	if want := max(0, g.queueH-3); m.immMouse.queueN > want {
 		t.Fatalf("queue hit rows = %d, panel shows at most %d", m.immMouse.queueN, want)
+	}
+}
+
+func TestShareLinkNeverCopiesCredentials(t *testing.T) {
+	tests := []struct {
+		path, want string
+	}{
+		{"spotify:track:abc", "https://open.spotify.com/track/abc"},
+		{"https://radio.example.com/live.mp3", "cliamp://play?url=https%3A%2F%2Fradio.example.com%2Flive.mp3"},
+		{"https://navi.example.com/rest/stream?id=1&u=me&t=tok&s=salt", ""},
+		{"https://plex.example.com/library/parts/1/file.mp3?X-Plex-Token=secret", ""},
+		{"https://user:pass@host.example.com/a.mp3", ""},
+		{"/music/local.flac", ""},
+	}
+	for _, tt := range tests {
+		if got := shareLink(playlist.Track{Path: tt.path}); got != tt.want {
+			t.Errorf("shareLink(%q) = %q, want %q", tt.path, got, tt.want)
+		}
+	}
+}
+
+// Leaving a collection while it loads, then coming forward again, reloads
+// it instead of showing an empty list.
+func TestImmersiveForwardReloadsUnloadedList(t *testing.T) {
+	m := immersiveModel(t)
+	m.openImmersiveItem(immItem{kind: immKindPlaylist, id: "pl1", title: "Stuff"})
+	m.immersiveGoBack()
+	cmd := m.immersiveGoForward()
+	if m.immersive.view != immViewPlaylist || !m.immersive.tracksLoading || cmd == nil {
+		t.Fatalf("forward: view=%d loading=%v cmd=%v, want a reload of the playlist", m.immersive.view, m.immersive.tracksLoading, cmd != nil)
+	}
+}
+
+func TestImmersiveSettingsNavigationClearsForward(t *testing.T) {
+	m := immersiveModel(t)
+	m.immersiveSetSection(immSecAlbums)
+	m.immersiveGoBack()
+	m.handleImmersiveKey(keyMsg("e")) // settings tab
+	m.immersiveSetSection(immSecArtists)
+	if len(m.immersive.fwd) != 0 {
+		t.Fatal("a new navigation from Settings must clear forward history")
+	}
+	m.handleImmersiveKey(keyMsg("e"))
+	m.immersiveGoBack() // leaves Settings only
+	if m.immersive.view == immViewSettings || len(m.immersive.fwd) != 0 {
+		t.Fatalf("back from Settings: view=%d fwd=%d", m.immersive.view, len(m.immersive.fwd))
+	}
+}
+
+// Go to album from the track menu opens in the immersive canvas, not in a
+// classic screen hidden underneath it.
+func TestImmersiveGoToAlbumOpensInCanvas(t *testing.T) {
+	m := immersiveModel(t)
+	updated, _ := m.Update(menuAlbumMsg{album: provider.AlbumInfo{ID: "al7", Name: "Kamikaze"}, providerName: "stub", gen: m.requests.trackMenu})
+	got := updated.(Model)
+	if got.immersive.view != immViewAlbum || got.immersive.ctxID != "al7" || got.navBrowser.visible {
+		t.Fatalf("view=%d ctx=%q navBrowser=%v, want the album in the canvas", got.immersive.view, got.immersive.ctxID, got.navBrowser.visible)
+	}
+}
+
+// Quitting (and the too-small notice) must erase images, not leave them
+// drawn over the shell after the alt screen is gone.
+func TestImmersiveQuitErasesImages(t *testing.T) {
+	m := immersiveModel(t)
+	layer := termimg.NewLayer()
+	m.SetImageLayer(layer)
+	f, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	w := termimg.NewWriter(f, layer)
+	layer.Set([]termimg.Placement{{Key: "cover", X: 3, Y: 4, W: 6, H: 2, Data: []byte("<COVER>")}})
+	_, _ = w.Write([]byte("frame1"))
+	m.quitting = true
+	m.View()
+	before, _ := os.ReadFile(f.Name())
+	_, _ = w.Write([]byte("\x1b[H\x1b[J"))
+	after, _ := os.ReadFile(f.Name())
+	last := string(after[len(before):])
+	if !strings.Contains(last, "\x1b[6X") || strings.Contains(last, "<COVER>") {
+		t.Fatalf("quit frame should erase the cover, got %q", last)
 	}
 }

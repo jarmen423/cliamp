@@ -71,9 +71,11 @@ func (p *PixelVis) Draw(dst *image.RGBA, bands, wave []float64) {
 		p.acc = make([]float32, w*h*3)
 	}
 	p.frame++
-	cs := CurrentPixelColors()
+	var cs PixelColors
 	if p.colors != nil {
 		cs = *p.colors
+	} else {
+		cs = CurrentPixelColors() // UI goroutine only; workers pin colors
 	}
 	low, mid, high := rgbf(cs.Low), rgbf(cs.Mid), rgbf(cs.High)
 	switch p.mode {

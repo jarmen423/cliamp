@@ -30,75 +30,26 @@ func (p Placement) sameRect(q Placement) bool {
 //
 // The cells under a placement must render as constant blanks in the text
 // frame. Bubbletea only rewrites cells that change, so constant blanks keep
-// the pixels intact between redraws.
+// the pixels intact between redraws; rows whose text did change are
+// reported with Touch so their images are redrawn.
 //
-// One placement can be live (an animation such as a pixel visualizer): new
-// live frames are drawn between Bubbletea frames by the Writer's pump, once
-// a frame has established the live rectangle as blank cells.
+// One placement can be live (an animation such as a pixel visualizer). The
+// UI arms its rectangle every frame with ArmLive; frames produced off the UI
+// goroutine (SetLive) are accepted only for the armed rectangle and drawn
+// between Bubbletea frames by the Writer's pump.
 type Layer struct {
 	mu    sync.Mutex
 	want  []Placement
 	live  *Placement
-	drawn []Placement
-	full  bool         // redraw everything: the screen was cleared
+	armed *Placement   // rectangle a live frame may occupy; nil disarms
+	drawn []Placement  // what is on screen
+	full  bool         // redraw everything on the next frame
 	dirty map[int]bool // screen rows whose text changed since the last frame
 	kick  chan struct{}
 }
 
 // NewLayer returns an empty layer.
 func NewLayer() *Layer { return &Layer{kick: make(chan struct{}, 1)} }
-
-// SetLive replaces the live placement (nil removes it) and asks the Writer
-// to draw it without waiting for Bubbletea's next frame. It is safe to call
-// from any goroutine.
-func (l *Layer) SetLive(p *Placement) {
-	if l == nil {
-		return
-	}
-	l.mu.Lock()
-	if p == nil && l.live == nil {
-		l.mu.Unlock()
-		return
-	}
-	l.live = p
-	l.mu.Unlock()
-	select {
-	case l.kick <- struct{}{}:
-	default:
-	}
-}
-
-// wanted is every placement that should be on screen. Caller holds mu.
-func (l *Layer) wanted() []Placement {
-	if l.live == nil {
-		return l.want
-	}
-	return append(l.want[:len(l.want):len(l.want)], *l.live)
-}
-
-// renderLive draws a new live frame over a live rectangle a Bubbletea frame
-// already put on screen. Anything else waits for the next frame.
-func (l *Layer) renderLive() []byte {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.live == nil || len(l.live.Data) == 0 || l.full {
-		return nil
-	}
-	for i, d := range l.drawn {
-		if !d.sameRect(*l.live) {
-			continue
-		}
-		if d.Key == l.live.Key {
-			return nil
-		}
-		var b bytes.Buffer
-		cup(&b, l.live.Y, l.live.X)
-		b.Write(l.live.Data)
-		l.drawn[i] = *l.live
-		return b.Bytes()
-	}
-	return nil
-}
 
 // Set replaces the desired placements. It is cheap and safe to call from
 // View on every frame; nil clears every image.
@@ -131,15 +82,6 @@ func (l *Layer) Touch(rows ...int) {
 	l.mu.Unlock()
 }
 
-func (l *Layer) touched(p Placement) bool {
-	for r := p.Y; r < p.Y+p.H; r++ {
-		if l.dirty[r] {
-			return true
-		}
-	}
-	return false
-}
-
 // Invalidate forces a full redraw on the next frame (after a resize or
 // anything else that repaints the screen).
 func (l *Layer) Invalidate() {
@@ -151,26 +93,106 @@ func (l *Layer) Invalidate() {
 	l.mu.Unlock()
 }
 
-// render returns the bytes that bring the screen from drawn to want. pre
-// erases placements that went away or moved; it runs before the frame's
-// text so it cannot wipe text that now occupies those cells. post draws new
-// or changed images after the text, so the text cannot overwrite them.
-func (l *Layer) render(full bool) (pre, post []byte) {
+// ArmLive sets the rectangle live frames may occupy this frame; w or h of 0
+// disarms it and drops the live frame. Call it from View every frame so a
+// frame rendered after the UI moved on is never drawn.
+func (l *Layer) ArmLive(x, y, w, h int) {
+	if l == nil {
+		return
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	full = full || l.full
+	if w <= 0 || h <= 0 {
+		l.armed, l.live = nil, nil
+		return
+	}
+	r := Placement{X: x, Y: y, W: w, H: h}
+	if l.armed == nil || !l.armed.sameRect(r) {
+		l.armed, l.live = &r, nil
+	}
+}
+
+// SetLive offers a new live frame. It is dropped unless its rectangle is
+// the armed one; otherwise the Writer draws it without waiting for
+// Bubbletea's next frame. Safe to call from any goroutine.
+func (l *Layer) SetLive(p Placement) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	ok := l.armed != nil && l.armed.sameRect(p)
+	if ok {
+		l.live = &p
+	}
+	l.mu.Unlock()
+	if ok {
+		select {
+		case l.kick <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// wanted is every placement that should be on screen. Caller holds mu.
+func (l *Layer) wanted() []Placement {
+	if l.live == nil {
+		return l.want
+	}
+	return append(l.want[:len(l.want):len(l.want)], *l.live)
+}
+
+func (l *Layer) touched(p Placement) bool {
+	for r := p.Y; r < p.Y+p.H; r++ {
+		if l.dirty[r] {
+			return true
+		}
+	}
+	return false
+}
+
+// renderLive draws a new live frame over a live rectangle a Bubbletea frame
+// already put on screen. Anything else waits for the next frame.
+func (l *Layer) renderLive() []byte {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.live == nil || len(l.live.Data) == 0 || l.full {
+		return nil
+	}
+	for i, d := range l.drawn {
+		if !d.sameRect(*l.live) {
+			continue
+		}
+		if d.Key == l.live.Key {
+			return nil
+		}
+		var b bytes.Buffer
+		cup(&b, l.live.Y, l.live.X)
+		b.Write(l.live.Data)
+		l.drawn[i] = *l.live
+		return b.Bytes()
+	}
+	return nil
+}
+
+// render returns the bytes that bring the screen from drawn to want around
+// one Bubbletea frame. pre erases placements that went away or moved; it
+// runs before the frame's text so it cannot wipe text that now occupies
+// those cells. post draws new, changed, or touched images after the text,
+// or all of them when the frame cleared the screen (cleared).
+func (l *Layer) render(cleared bool) (pre, post []byte) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	all := cleared || l.full
 	l.full = false
 	want := l.wanted()
 	var e, d bytes.Buffer
-	if !full {
-		for _, old := range l.drawn {
-			if !containsRect(want, old) {
-				erase(&e, old) // nothing opaque will cover it
-			}
+	for _, old := range l.drawn {
+		if !containsRect(want, old) {
+			erase(&e, old) // nothing opaque will cover it
 		}
 	}
 	for _, p := range want {
-		if len(p.Data) == 0 || (!full && containsSpot(l.drawn, p) && !l.touched(p)) {
+		if len(p.Data) == 0 || (!all && containsSpot(l.drawn, p) && !l.touched(p)) {
 			continue
 		}
 		cup(&d, p.Y, p.X)
@@ -222,15 +244,16 @@ var (
 	syncEnd   = []byte("\x1b[?2026l")
 	saveCur   = []byte("\x1b7")
 	restCur   = []byte("\x1b8")
-	// Sequences Bubbletea emits when it repaints from scratch; any of them
-	// wipes images, so the layer redraws everything after that frame.
+	// Erase-display sequences: a frame containing one may have wiped images
+	// anywhere below the cursor, so every image is redrawn after it.
 	clearSeqs = [][]byte{[]byte("\x1b[2J"), []byte("\x1b[J"), []byte("\x1b[0J")}
 )
 
-// Writer is the program output. It passes Bubbletea's bytes through and,
-// on each frame, wraps the frame's text with the layer's image updates
-// inside the same synchronized update, saving and restoring the cursor
-// around them. It embeds *os.File so Bubbletea still sees a terminal.
+// Writer is the program output. It passes Bubbletea's bytes through and
+// wraps each write with the layer's image updates (Bubbletea writes a whole
+// frame per call), inside the frame's synchronized update when it has one,
+// saving and restoring the cursor around them. It embeds *os.File so
+// Bubbletea still sees a terminal.
 type Writer struct {
 	*os.File
 	layer *Layer
@@ -262,19 +285,14 @@ func (w *Writer) pump() {
 func (w *Writer) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	// A frame ends its synchronized update; without mode 2026 any sizable
-	// write is the best available frame boundary.
-	if !bytes.HasSuffix(p, syncEnd) && len(p) <= 512 {
-		return w.File.Write(p)
-	}
-	full := false
+	cleared := false
 	for _, s := range clearSeqs {
 		if bytes.Contains(p, s) {
-			full = true
+			cleared = true
 			break
 		}
 	}
-	pre, post := w.layer.render(full)
+	pre, post := w.layer.render(cleared)
 	if len(pre) == 0 && len(post) == 0 {
 		return w.File.Write(p)
 	}
