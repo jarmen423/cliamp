@@ -575,14 +575,16 @@ func (m Model) activeScreen() topLevelScreen {
 		return screenCredits
 	case m.trackMenu.visible:
 		return screenTrackMenu
-	case m.immersiveShown():
-		return screenImmersive
 	case m.keymap.visible:
 		return screenKeymap
 	case m.devicePicker.visible:
 		return screenDevicePicker
 	case m.plPicker.visible:
 		return screenPlaylistPicker
+	// Immersive sits under the transient pickers it opens (keymap, track
+	// menu, credits, playlist picker) and over the classic browse overlays.
+	case m.immersiveShown():
+		return screenImmersive
 	case m.fileBrowser.visible:
 		return screenFileBrowser
 	case m.artist.visible:

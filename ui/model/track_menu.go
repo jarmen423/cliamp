@@ -8,6 +8,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -70,11 +71,38 @@ func (m Model) trackMenuItems() []trackMenuItem {
 			return m.menuRemoveTrack()
 		}})
 	}
+	if m.likerForTrack(t) != nil {
+		items = append(items, trackMenuItem{"s", "Like / unlike (" + m.providerForTrack(t.Path).Name() + ")", func(m *Model) tea.Cmd {
+			return m.likeTrack(t)
+		}})
+	}
 	items = append(items, trackMenuItem{"i", "View credits", func(m *Model) tea.Cmd {
 		m.openCredits(t)
 		return nil
 	}})
+	if link := shareLink(t); link != "" {
+		items = append(items, trackMenuItem{"y", "Copy share link", func(m *Model) tea.Cmd {
+			m.status.Show("Copied "+link, statusTTLDefault)
+			return tea.SetClipboard(link)
+		}})
+	}
 	return items
+}
+
+// shareLink is the link the menu's Share item copies: the Spotify web URL
+// for Spotify tracks, or a cliamp:// link that plays an http(s) stream in
+// anyone's cliamp. Other tracks (local files, provider-internal paths) have
+// nothing shareable.
+func shareLink(t playlist.Track) string {
+	switch {
+	case strings.HasPrefix(t.Path, "spotify:track:"):
+		return "https://open.spotify.com/track/" + strings.TrimPrefix(t.Path, "spotify:track:")
+	case strings.HasPrefix(t.Path, "spotify:episode:"):
+		return "https://open.spotify.com/episode/" + strings.TrimPrefix(t.Path, "spotify:episode:")
+	case strings.HasPrefix(t.Path, "http://"), strings.HasPrefix(t.Path, "https://"):
+		return "cliamp://play?url=" + url.QueryEscape(t.Path)
+	}
+	return ""
 }
 
 // openTrackMenuAt opens the menu for the track under body row/col, moving
