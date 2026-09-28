@@ -186,3 +186,15 @@ func TestImmersiveQuitErasesImages(t *testing.T) {
 		t.Fatalf("quit frame should erase the cover, got %q", last)
 	}
 }
+
+// Right-clicking a collection selects it; the track menu is for tracks.
+func TestImmersiveRightClickCollectionSelectsOnly(t *testing.T) {
+	m := immersiveMouseModel(t)
+	m.playlist.Replace([]playlist.Track{{Title: "Playing", Path: "/p"}})
+	m.View()
+	it := m.immMouse.items[1]
+	immClickAt(m, it.box.X+1, it.box.Y, tea.MouseRight)
+	if m.trackMenu.visible || m.immersive.cursor != 1 {
+		t.Fatalf("menu visible=%v cursor=%d, want selection only", m.trackMenu.visible, m.immersive.cursor)
+	}
+}

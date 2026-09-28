@@ -263,10 +263,14 @@ func (m *Model) immClickCanvas(cx, cy int, right bool) tea.Cmd {
 		if inside(it.box, cx, cy) {
 			m.immersive.cursor = it.idx
 			m.clampCanvasScroll()
+			item := m.canvasItems()[it.idx]
 			if right {
+				if item.kind != immKindTrack {
+					return nil // collections have no track menu; the click selects
+				}
 				return m.immersiveOpenTrackMenu()
 			}
-			return m.activateItem(m.canvasItems()[it.idx])
+			return m.activateItem(item)
 		}
 	}
 	return nil

@@ -27,6 +27,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/bjarneo/cliamp/applog"
 	"github.com/bjarneo/cliamp/internal/httpclient"
 	"github.com/bjarneo/cliamp/ui/termimg"
 )
@@ -165,11 +166,13 @@ func (m *Model) handleTermImageEvent(msg tea.Msg) bool {
 				m.termSixel = true
 			}
 		}
+		applog.Debug("images: terminal attributes %v, sixel=%v, mode=%d", []int(ev), m.termSixel, m.imgMode)
 		return true
 	case uv.CellSizeEvent:
 		if ev.Width > 0 && ev.Height > 0 && (ev.Width != m.cellW || ev.Height != m.cellH) {
 			m.cellW, m.cellH = ev.Width, ev.Height
 			m.imgLayer.Invalidate()
+			applog.Debug("images: cell size %dx%d px", ev.Width, ev.Height)
 		}
 		return true
 	}
@@ -283,6 +286,9 @@ func (m *Model) handleArtMsg(msg tea.Msg) (tea.Cmd, bool) {
 			im.loading = false
 			im.img = msg.img
 			im.failed = msg.err != nil
+		}
+		if msg.err != nil {
+			applog.Debug("images: cover %s: %v", msg.url, msg.err)
 		}
 		m.art.mu.Unlock()
 		return m.immArtRequests(), true
