@@ -157,3 +157,21 @@ func TestLayerLiveFramesNeedAFrameFirst(t *testing.T) {
 		t.Fatalf("stopping the animation must erase its rect: %q", pre)
 	}
 }
+
+// A text rewrite on a row an image crosses wipes the image, so the layer
+// redraws it even though the placement itself did not change.
+func TestLayerRedrawsImagesOnTouchedRows(t *testing.T) {
+	l := NewLayer()
+	a := Placement{Key: "a", X: 10, Y: 5, W: 4, H: 3, Data: []byte("<A>")}
+	b := Placement{Key: "b", X: 20, Y: 20, W: 4, H: 3, Data: []byte("<B>")}
+	l.Set([]Placement{a, b})
+	l.render(false)
+	l.Touch(6, 40)
+	_, post := l.render(false)
+	if !bytes.Contains(post, []byte("<A>")) || bytes.Contains(post, []byte("<B>")) {
+		t.Fatalf("touched row 6 should redraw only A: %q", post)
+	}
+	if _, post := l.render(false); len(post) != 0 {
+		t.Fatalf("touch marks must clear after a frame: %q", post)
+	}
+}

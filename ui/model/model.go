@@ -343,10 +343,12 @@ type Model struct {
 	openDefaultProviderOnce bool            // open the provider's preferred hierarchy after Init
 	openImmersiveOnce       bool            // enter immersive mode after Init (immersive config)
 	nerdFontGlyphs          bool            // nerd_font_glyphs config: Nerd Font transport glyphs
+	immCanvasPref           immCanvasMode   // immersive_view config: canvas view immersive opens in
 	imgMode                 imageMode       // images config: how covers are drawn
 	imgLayer                *termimg.Layer  // Sixel output layer (nil in tests)
 	art                     *artStore       // decoded/encoded cover cache
 	pixVis                  *pixVisWorker   // Sixel pixel-visualizer renderer (nil in tests)
+	frameMemo               *frameMemo      // previous view's lines, for image redraw after text rewrites
 	artPolling              bool            // the cover request loop is running
 	termSixel               bool            // the terminal reported Sixel support (DA1 attribute 4)
 	cellW, cellH            int             // terminal cell size in pixels (CSI 16 t), 0 until known

@@ -112,6 +112,9 @@ func (m *Model) SetImageLayer(l *termimg.Layer) {
 	if m.pixVis == nil && l != nil {
 		m.pixVis = newPixVisWorker(l)
 	}
+	if m.frameMemo == nil {
+		m.frameMemo = &frameMemo{}
+	}
 }
 
 // artKindNow resolves the image mode against what the terminal reported.
@@ -392,6 +395,32 @@ func (m Model) immArtCells(u string, w, h int) ([]string, bool) {
 		return e.blocks, true
 	}
 	return nil, false
+}
+
+// frameMemo keeps the last view's lines so View can tell the image layer
+// which screen rows changed (see termimg.Layer.Touch).
+type frameMemo struct{ lines []string }
+
+// touchChangedRows marks rows whose text differs from the previous view;
+// "" (a non-immersive view) resets the memo so the next immersive view
+// touches every row.
+func (m Model) touchChangedRows(rendered string) {
+	if m.frameMemo == nil || m.imgLayer == nil {
+		return
+	}
+	if rendered == "" {
+		m.frameMemo.lines = nil
+		return
+	}
+	lines := strings.Split(rendered, "\n")
+	var rows []int
+	for i, l := range lines {
+		if i >= len(m.frameMemo.lines) || m.frameMemo.lines[i] != l {
+			rows = append(rows, i)
+		}
+	}
+	m.frameMemo.lines = lines
+	m.imgLayer.Touch(rows...)
 }
 
 // immArtPlacements lists the Sixel covers to draw over this frame's blank

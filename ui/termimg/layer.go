@@ -40,7 +40,8 @@ type Layer struct {
 	want  []Placement
 	live  *Placement
 	drawn []Placement
-	full  bool // redraw everything: the screen was cleared
+	full  bool         // redraw everything: the screen was cleared
+	dirty map[int]bool // screen rows whose text changed since the last frame
 	kick  chan struct{}
 }
 
@@ -110,6 +111,35 @@ func (l *Layer) Set(ps []Placement) {
 	l.mu.Unlock()
 }
 
+// Touch marks screen rows whose text changed. Bubbletea rewrites a changed
+// line from its first to its last changed cell (or clears to the end of the
+// line), which wipes any image in between even where its blank cells did
+// not change, so images crossing a touched row are redrawn with the next
+// frame. Marks accumulate until a frame is written: Bubbletea may render
+// fewer frames than it builds views.
+func (l *Layer) Touch(rows ...int) {
+	if l == nil || len(rows) == 0 {
+		return
+	}
+	l.mu.Lock()
+	if l.dirty == nil {
+		l.dirty = map[int]bool{}
+	}
+	for _, r := range rows {
+		l.dirty[r] = true
+	}
+	l.mu.Unlock()
+}
+
+func (l *Layer) touched(p Placement) bool {
+	for r := p.Y; r < p.Y+p.H; r++ {
+		if l.dirty[r] {
+			return true
+		}
+	}
+	return false
+}
+
 // Invalidate forces a full redraw on the next frame (after a resize or
 // anything else that repaints the screen).
 func (l *Layer) Invalidate() {
@@ -140,13 +170,14 @@ func (l *Layer) render(full bool) (pre, post []byte) {
 		}
 	}
 	for _, p := range want {
-		if len(p.Data) == 0 || (!full && containsSpot(l.drawn, p)) {
+		if len(p.Data) == 0 || (!full && containsSpot(l.drawn, p) && !l.touched(p)) {
 			continue
 		}
 		cup(&d, p.Y, p.X)
 		d.Write(p.Data)
 	}
 	l.drawn = append(l.drawn[:0], want...)
+	clear(l.dirty)
 	return e.Bytes(), d.Bytes()
 }
 

@@ -111,6 +111,8 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "c":
 		m.immersive.mode = immCanvasMode((int(m.immersive.mode) + 1) % int(immCanvasModeCount))
 		m.immersive.scroll = 0
+		m.immCanvasPref = m.immersive.mode
+		m.saveConfigKey("immersive_view", fmt.Sprintf("%q", immCanvasModeNames[m.immersive.mode]))
 		return nil
 	case "e":
 		if m.immersive.view == immViewSettings {
