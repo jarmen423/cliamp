@@ -23,21 +23,21 @@ import (
 
 // Frame band heights in content rows.
 const (
-	immVisRows    = 3 // visualizer band
-	immNavRows    = 3 // nav pill row (pills are 3 cells tall)
-	immCtrlRows   = 3 // transport buttons are 3 cells tall
+	immVisMinRows = 3  // visualizer band floor
+	immVisMaxRows = 12 // visualizer band ceiling
+	immBodyMinH   = 12 // body rows kept before the visualizer band grows
+	immNavRows    = 3  // nav pill row (pills are 3 cells tall)
+	immCtrlRows   = 3  // transport buttons are 3 cells tall
 	immSeekRows   = 1
 	immStatusRows = 1
 	// Vertical order: vis, gap, nav, gap, body, gap, controls, seek, status.
-	immChromeRows = immVisRows + 1 + immNavRows + 1 + 1 + immCtrlRows + immSeekRows + immStatusRows // = 14
-
-	immNavY  = immVisRows + 1 // first nav row in content rows
-	immBodyY = immNavY + immNavRows + 1
+	// immFixedRows is everything except the visualizer band and the body.
+	immFixedRows = 1 + immNavRows + 1 + 1 + immCtrlRows + immSeekRows + immStatusRows // = 11
 
 	immGridTileW   = 14 // minimum tile width; actual width divides the canvas
 	immRowsArtW    = 6  // art box width in rows view (3 rows tall ≈ square)
 	immRowsItemH   = 3  // rows-view item height in cells
-	immCtrlBtnW    = 5  // small transport button width
+	immCtrlBtnW    = 6  // small transport button width (two-cell glyphs center)
 	immCtrlPlayW   = 9  // wide play/pause button width
 	immVolBarCells = 6
 )
@@ -49,6 +49,9 @@ var immArtChars = []rune{'█', '▓', '▒', '░'}
 // Eighth-block fill runes for the progress bar: index is the number of
 // eighths filled inside the cell.
 var immEighths = []rune{' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'}
+
+// immTrackColor is the progress bar's unplayed track.
+var immTrackColor = lipgloss.ANSIColor(8)
 
 // immRect is a cell-aligned rectangle in frame content coordinates (0,0 is
 // the top-left content cell). Step 2's image layer draws into these.
@@ -75,6 +78,8 @@ func (m Model) ImmersiveArtRects() []immRect {
 // immGeom is the immersive frame's layout in content coordinates.
 type immGeom struct {
 	w, h               int
+	visH               int // visualizer band height
+	navY               int // first nav pill row
 	bodyY              int
 	bodyH              int
 	ctrlY              int
@@ -90,6 +95,24 @@ type immGeom struct {
 	queueH             int
 }
 
+// immFrameRows is the content height the immersive frame fills.
+func (m Model) immFrameRows() int {
+	if h := m.height - 2*m.layout.paddingV; h > 0 {
+		return h
+	}
+	return 22
+}
+
+// immVisRowsFor sizes the visualizer band to about a fifth of the frame, the
+// wireframe's proportion, while leaving the body at least immBodyMinH rows.
+func immVisRowsFor(h int) int {
+	rows := clampInt(h/5, immVisMinRows, immVisMaxRows)
+	if room := h - immFixedRows - immBodyMinH; rows > room {
+		rows = max(immVisMinRows, room)
+	}
+	return rows
+}
+
 // immGeom computes the frame layout for the current terminal size; it is
 // the single source both the renderer and the mouse hit test read.
 func (m Model) immGeom() immGeom {
@@ -97,22 +120,21 @@ func (m Model) immGeom() immGeom {
 	if w <= 0 {
 		w = 74
 	}
-	h := m.height - 2*m.layout.paddingV
-	if h <= 0 {
-		h = 22
-	}
-	bodyH := h - immChromeRows
-	if bodyH < 3 {
-		bodyH = 3
-	}
+	h := m.immFrameRows()
+	visH := immVisRowsFor(h)
+	bodyH := max(3, h-immFixedRows-visH)
+	navY := visH + 1
+	bodyY := navY + immNavRows + 1
 	g := immGeom{
 		w:     w,
 		h:     h,
-		bodyY: immBodyY,
+		visH:  visH,
+		navY:  navY,
+		bodyY: bodyY,
 		bodyH: bodyH,
-		ctrlY: immBodyY + bodyH + 1,
-		seekY: immBodyY + bodyH + 1 + immCtrlRows,
-		statY: immBodyY + bodyH + 1 + immCtrlRows + immSeekRows,
+		ctrlY: bodyY + bodyH + 1,
+		seekY: bodyY + bodyH + 1 + immCtrlRows,
+		statY: bodyY + bodyH + 1 + immCtrlRows + immSeekRows,
 	}
 	g.leftW = clampInt(w/5, 18, 26)
 	g.canvasX = g.leftW + 1
@@ -132,7 +154,10 @@ func (m Model) immGeom() immGeom {
 	g.npH = npH
 	g.queueY = npH
 	g.queueH = bodyH - npH
-	g.npArt = immRect{X: 1, Y: g.bodyY + 1, W: inner, H: artH}
+	// Cells are about twice as tall as wide, so a square cover is 2h cells
+	// wide; center it when the height cap made it narrower than the panel.
+	artW := min(inner, 2*artH)
+	g.npArt = immRect{X: 1 + (inner-artW)/2, Y: g.bodyY + 1, W: artW, H: artH}
 	return g
 }
 
@@ -169,7 +194,7 @@ func padPane(lines []string, w, rows int) []string {
 func (m Model) renderImmersive() string {
 	g := m.immGeom()
 	lines := make([]string, 0, g.h)
-	lines = append(lines, m.renderImmVis(g.w)...)
+	lines = append(lines, m.renderImmVis(g.w, g.visH)...)
 	lines = append(lines, "")
 	lines = append(lines, m.renderImmNav(g.w)...)
 	lines = append(lines, "")
@@ -183,14 +208,14 @@ func (m Model) renderImmersive() string {
 
 // — visualizer band —
 
-func (m Model) renderImmVis(w int) []string {
+func (m Model) renderImmVis(w, rows int) []string {
 	if m.vis == nil || m.vis.Mode == ui.VisNone || m.visualizerDisabled() {
-		lines := padPane(nil, w, immVisRows)
-		lines[1] = fitCell(dimStyle.Render("  ♪ visualizer off"), w)
+		lines := padPane(nil, w, rows)
+		lines[rows/2] = fitCell(dimStyle.Render("  ♪ visualizer off"), w)
 		return lines
 	}
 	out := strings.Split(strings.TrimRight(m.vis.Render(), "\n"), "\n")
-	lines := padPane(out, w, immVisRows)
+	lines := padPane(out, w, rows)
 	return lines
 }
 
@@ -205,6 +230,7 @@ type immPillGeom struct {
 // immNavGeom places the pill row: Playlists and Artists on the left, a wide
 // highlighted Search pill centered, Albums and Podcasts on the right.
 func (m Model) immNavGeom(w int) []immPillGeom {
+	navY := immVisRowsFor(m.immFrameRows()) + 1
 	labelW := func(s immSection) int { return len(immSectionLabels[s]) + 4 }
 	left := []immSection{immSecPlaylists, immSecArtists}
 	right := []immSection{immSecAlbums, immSecPodcasts}
@@ -225,14 +251,14 @@ func (m Model) immNavGeom(w int) []immPillGeom {
 	x := 0
 	for _, s := range left {
 		pw := labelW(s)
-		geoms = append(geoms, immPillGeom{section: s, box: immRect{X: x, Y: immNavY, W: pw, H: immNavRows}})
+		geoms = append(geoms, immPillGeom{section: s, box: immRect{X: x, Y: navY, W: pw, H: immNavRows}})
 		x += pw + 1
 	}
-	geoms = append(geoms, immPillGeom{section: immSecSearch, box: immRect{X: searchX, Y: immNavY, W: searchW, H: immNavRows}})
+	geoms = append(geoms, immPillGeom{section: immSecSearch, box: immRect{X: searchX, Y: navY, W: searchW, H: immNavRows}})
 	x = rightX
 	for _, s := range right {
 		pw := labelW(s)
-		geoms = append(geoms, immPillGeom{section: s, box: immRect{X: x, Y: immNavY, W: pw, H: immNavRows}})
+		geoms = append(geoms, immPillGeom{section: s, box: immRect{X: x, Y: navY, W: pw, H: immNavRows}})
 		x += pw + 1
 	}
 	return geoms
@@ -361,14 +387,15 @@ func (m Model) renderImmNowPlaying(g immGeom) []string {
 	if name == "" {
 		name = trackViewName(track)
 	}
-	art := immArtBlock(firstNonEmpty(name, "cliamp"), inner, g.npArt.H, name != "")
+	art := immArtBlock(firstNonEmpty(name, "cliamp"), g.npArt.W, g.npArt.H, name != "")
 	side := boxSide(false)
+	indent := strings.Repeat(" ", g.npArt.X-1)
 	for i := 0; i < g.npArt.H; i++ {
 		row := ""
 		if i < len(art) {
 			row = art[i]
 		}
-		lines = append(lines, side+fitCell(row, inner)+side)
+		lines = append(lines, side+fitCell(indent+row, inner)+side)
 	}
 
 	liked := ""
@@ -395,6 +422,19 @@ func (m Model) renderImmNowPlaying(g immGeom) []string {
 	return lines
 }
 
+// immQueueMax bounds the Queue panel's lookahead into the playing list.
+const immQueueMax = 100
+
+// immQueueRows is what the Queue panel lists: play-next entries first, then
+// the playing list's upcoming tracks in play order.
+func (m Model) immQueueRows() []playlist.QueueEntry {
+	rows := m.playlist.QueueEntries()
+	if n := immQueueMax - len(rows); n > 0 {
+		rows = append(rows, m.playlist.Upcoming(n)...)
+	}
+	return rows
+}
+
 // renderImmQueue draws the Queue panel: "Next from" header then numbered
 // upcoming tracks.
 func (m Model) renderImmQueue(g immGeom) []string {
@@ -405,15 +445,16 @@ func (m Model) renderImmQueue(g immGeom) []string {
 	side := boxSide(focused)
 	rows := g.queueH
 
-	ctx := m.playingContextName()
-	if ctx == "" {
-		ctx = "queue"
+	header := "Up next"
+	if ctx := m.playingContextName(); ctx != "" {
+		header = "Next from " + ctx
 	}
 	innerRows := rows - 2
 	if innerRows > 0 {
-		lines = append(lines, side+" "+fitCell(dimStyle.Render("Next: "+ctx), inner-1)+side)
+		lines = append(lines, side+" "+fitCell(dimStyle.Render(header), inner-1)+side)
 	}
-	total := m.playlist.QueueLen()
+	entries := m.immQueueRows()
+	total := len(entries)
 	if total == 0 {
 		if innerRows > 1 {
 			lines = append(lines, side+" "+fitCell(dimStyle.Render("(empty)"), inner-1)+side)
@@ -422,11 +463,7 @@ func (m Model) renderImmQueue(g immGeom) []string {
 		budget := max(1, innerRows-1)
 		scroll := clampedScroll(m.immersive.queueScroll, m.immersive.queueCursor, total, budget)
 		for i := scroll; i < total && i < scroll+budget && len(lines) < rows-1; i++ {
-			tracks := m.playlist.QueueWindow(i, 1)
-			if len(tracks) == 0 {
-				break
-			}
-			t := tracks[0]
+			t := entries[i].Track
 			name := t.Title
 			if name == "" {
 				name = trackViewName(t)
@@ -437,6 +474,9 @@ func (m Model) renderImmQueue(g immGeom) []string {
 			num := fmt.Sprintf("%2d ", i+1)
 			style := playlistItemStyle
 			numStyle := dimStyle
+			if i < m.playlist.QueueLen() {
+				numStyle = playlistActiveStyle // queued: plays before the list order
+			}
 			if i == m.immersive.queueCursor && focused {
 				style = playlistSelectedStyle
 				numStyle = playlistSelectedStyle
@@ -740,7 +780,8 @@ func (m Model) immCanvasItemsGeom(iw, ih int) []immItemGeom {
 		return out
 	case immCanvasGrid:
 		cols := m.immGridCols(iw)
-		tileW := (iw - (cols - 1)) / cols
+		// Even widths keep the art (tileW x tileW/2 cells) square in pixels.
+		tileW := ((iw - (cols - 1)) / cols) &^ 1
 		if tileW < 4 {
 			tileW = 4
 		}
@@ -879,13 +920,13 @@ type immGlyphSet struct {
 }
 
 var immGlyphsUnicode = immGlyphSet{
-	shuffle: "≀", prev: "⏮", play: "▶", pause: "⏸", next: "⏭",
+	shuffle: "⇄", prev: "▕◀", play: "▶", pause: "❚❚", next: "▶▏",
 	repeat: "↻", repeatOne: "↺", vol: "♪", search: "⌕",
 }
 
 var immGlyphsNerd = immGlyphSet{
 	shuffle: "\uf074", prev: "\uf048", play: "\uf04b", pause: "\uf04c", next: "\uf051",
-	repeat: "\uf01e", repeatOne: "\uf036", vol: "\uf028", search: "\uf002",
+	repeat: "\U000f0456", repeatOne: "\U000f0458", vol: "\uf028", search: "\uf002",
 }
 
 func (m Model) immGlyphs() immGlyphSet {
@@ -1030,12 +1071,15 @@ func (m Model) renderImmProgress(w int) string {
 	}
 	full := eighths / 8
 	rem := eighths % 8
+	// The unplayed track is solid dark blocks so the bar reads as one shape;
+	// the head cell paints its eighth over the track color. ANSI 8 is dark
+	// gray in practically every palette, so it contrasts with any fill color.
 	var bar strings.Builder
-	bar.WriteString(statusStyle.Render(strings.Repeat("█", full)))
+	bar.WriteString(seekFillStyle.Render(strings.Repeat("█", full)))
 	if rem > 0 {
-		bar.WriteString(statusStyle.Render(string(immEighths[rem])))
+		bar.WriteString(seekFillStyle.Background(immTrackColor).Render(string(immEighths[rem])))
 	}
-	bar.WriteString(dimStyle.Render(strings.Repeat(" ", barW-full-min(1, rem))))
+	bar.WriteString(lipgloss.NewStyle().Foreground(immTrackColor).Render(strings.Repeat("█", barW-full-min(1, rem))))
 	return dimStyle.Render(posText) + " " + bar.String() + " " + dimStyle.Render(durText)
 }
 

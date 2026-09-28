@@ -290,7 +290,7 @@ func TestImmersiveFrameShape(t *testing.T) {
 			t.Fatalf("frame missing %q", want)
 		}
 	}
-	if !strings.Contains(lines[immNavY], "╭") {
+	if !strings.Contains(lines[g.navY], "╭") {
 		t.Fatal("nav row lacks pill borders")
 	}
 	if !strings.Contains(lines[g.seekY], "█") && !strings.Contains(lines[g.seekY], "0:00") {
@@ -341,7 +341,7 @@ func TestImmersiveGlyphSets(t *testing.T) {
 	plain := stripAnsi(strings.Join(m.renderImmControls(g), "\n"))
 	m.nerdFontGlyphs = true
 	nerd := stripAnsi(strings.Join(m.renderImmControls(g), "\n"))
-	if !strings.Contains(plain, "⏸") {
+	if !strings.Contains(plain, immGlyphsUnicode.pause) {
 		t.Fatal("unicode pause glyph missing")
 	}
 	if !strings.Contains(nerd, "\uf04c") {
@@ -386,5 +386,71 @@ func TestImmersiveQueuePanel(t *testing.T) {
 	out := stripAnsi(strings.Join(lines, "\n"))
 	if !strings.Contains(out, " 1 two") || !strings.Contains(out, " 2 three") {
 		t.Fatalf("queue rows missing: %q", out)
+	}
+}
+
+func TestImmVisRowsFor(t *testing.T) {
+	tests := []struct {
+		name string
+		h    int
+		want int
+	}{
+		{"floor on short frames", 26, immVisMinRows},
+		{"about a fifth", 40, 8},
+		{"ceiling on tall frames", 90, immVisMaxRows},
+		{"body keeps its minimum", 27, 27 - immFixedRows - immBodyMinH},
+		{"never below the floor", 20, immVisMinRows},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := immVisRowsFor(tt.h); got != tt.want {
+				t.Fatalf("immVisRowsFor(%d) = %d, want %d", tt.h, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestImmersiveArtIsSquare(t *testing.T) {
+	for _, sz := range [][2]int{{120, 34}, {160, 40}, {200, 50}} {
+		m := immersiveModel(t)
+		m.width, m.height = sz[0], sz[1]
+		m.recomputeLayout()
+		m.immersive.mode = immCanvasGrid
+		g := m.immGeom()
+		if a := g.npArt; a.H > 0 && a.W != 2*a.H {
+			t.Fatalf("%dx%d: now playing art %dx%d cells, want width 2*height", sz[0], sz[1], a.W, a.H)
+		}
+		for _, it := range m.immCanvasItemsGeom(g.canvasIW, g.canvasIH) {
+			if a := it.art; a.H > 0 && a.W != 2*a.H && a.H == it.box.H-2 {
+				t.Fatalf("%dx%d: grid art %dx%d cells, want width 2*height", sz[0], sz[1], a.W, a.H)
+			}
+		}
+	}
+}
+
+func TestImmersiveQueuePanelShowsUpcoming(t *testing.T) {
+	m := immersiveModel(t)
+	m.playlist.Replace([]playlist.Track{
+		{Title: "One", Path: "/1"}, {Title: "Two", Path: "/2"},
+		{Title: "Three", Path: "/3"}, {Title: "Four", Path: "/4"},
+	})
+	m.playlist.SetIndex(0)
+	m.playlist.Queue(3)
+	rows := m.immQueueRows()
+	var got []string
+	for _, r := range rows {
+		got = append(got, r.Track.Title)
+	}
+	want := []string{"Four", "Two", "Three", "Four"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("queue rows = %v, want %v (queued first, then play order)", got, want)
+	}
+	m.player = &playbackFakeEngine{}
+	m.vis = ui.NewVisualizer(44100)
+	m.SetVisualizer("none")
+	m.immersive.queueCursor = 1
+	m.immersiveQueueJump()
+	if cur, _ := m.playlist.Current(); cur.Title != "Two" {
+		t.Fatalf("jump to an upcoming row played %q, want Two", cur.Title)
 	}
 }

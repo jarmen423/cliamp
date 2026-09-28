@@ -74,7 +74,7 @@ func (m *Model) recordImmersiveMouseGeometry(content string) {
 
 	// Queue rows sit inside the queue panel below its border and the
 	// "Next from" header.
-	total := m.playlist.QueueLen()
+	total := len(m.immQueueRows())
 	budget := max(1, g.queueH-3)
 	im.queueScroll = clampedScroll(m.immersive.queueScroll, m.immersive.queueCursor, total, budget)
 	im.queueY0 = g.bodyY + g.queueY + 2
@@ -125,7 +125,7 @@ func (m *Model) handleImmersiveClick(msg tea.MouseClickMsg) tea.Cmd {
 	}
 	right := msg.Button == tea.MouseRight
 	switch {
-	case cy < immVisRows: // visualizer band → full-screen visualizer
+	case cy < g.visH: // visualizer band → full-screen visualizer
 		if right {
 			return nil
 		}
@@ -139,7 +139,7 @@ func (m *Model) handleImmersiveClick(msg tea.MouseClickMsg) tea.Cmd {
 		return m.seekToBarCell(msg.X - m.mouse.seekX)
 	case cy >= g.ctrlY && cy < g.ctrlY+immCtrlRows:
 		return m.immClickControls(cx, cy)
-	case cy >= immNavY && cy < immNavY+immNavRows:
+	case cy >= g.navY && cy < g.navY+immNavRows:
 		return m.immClickNav(cx, right)
 	case cy >= g.bodyY && cy < g.bodyY+g.bodyH:
 		switch {
@@ -271,7 +271,7 @@ func (m *Model) immersiveWheel(msg tea.MouseWheelMsg) tea.Cmd {
 	}
 	switch {
 	case cx < g.leftW:
-		total := m.playlist.QueueLen()
+		total := len(m.immQueueRows())
 		m.immersive.focus = immPaneQueue
 		m.immersive.queueCursor = clampInt(m.immersive.queueCursor+dy, 0, max(0, total-1))
 		m.immersive.queueScroll = clampedScroll(m.immersive.queueScroll, m.immersive.queueCursor, total, max(1, g.queueH-3))

@@ -251,7 +251,7 @@ func (m *Model) immersiveMove(dy, dx int) {
 			m.immersive.focus = immPaneCanvas
 		}
 	case immPaneQueue:
-		total := m.playlist.QueueLen()
+		total := len(m.immQueueRows())
 		m.immersive.queueCursor = clampInt(m.immersive.queueCursor+dy+dx, 0, max(0, total-1))
 	default:
 		m.immersiveMoveCanvas(dy, dx)
@@ -368,9 +368,9 @@ func (m *Model) immersiveAdjustSetting(row, dir int) {
 	}
 }
 
-// immersiveQueueJump plays the queue row under the queue cursor.
+// immersiveQueueJump plays the Queue panel row under the queue cursor.
 func (m *Model) immersiveQueueJump() tea.Cmd {
-	entries := m.playlist.QueueEntries()
+	entries := m.immQueueRows()
 	if m.immersive.queueCursor < 0 || m.immersive.queueCursor >= len(entries) {
 		return nil
 	}
@@ -380,7 +380,7 @@ func (m *Model) immersiveQueueJump() tea.Cmd {
 	}
 	m.plCursor = idx
 	m.playlist.SetIndex(idx)
-	m.playlist.Dequeue(idx)
+	m.playlist.Dequeue(idx) // no-op for upcoming (unqueued) rows
 	cmd := m.playCurrentTrack()
 	m.notifyPlayback()
 	return cmd
