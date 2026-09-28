@@ -135,3 +135,25 @@ func TestEncodeSixelFraming(t *testing.T) {
 		t.Fatalf("bands = %d, want 2: %q", strings.Count(s, "-"), s)
 	}
 }
+
+func TestLayerLiveFramesNeedAFrameFirst(t *testing.T) {
+	l := NewLayer()
+	l.SetLive(&Placement{Key: "v1", X: 0, Y: 0, W: 10, H: 2, Data: []byte("<V1>")})
+	if got := l.renderLive(); got != nil {
+		t.Fatalf("live frame drawn before a text frame blanked its cells: %q", got)
+	}
+	if _, post := l.render(false); !bytes.Contains(post, []byte("<V1>")) {
+		t.Fatalf("frame did not draw the live placement: %q", post)
+	}
+	l.SetLive(&Placement{Key: "v2", X: 0, Y: 0, W: 10, H: 2, Data: []byte("<V2>")})
+	if got := l.renderLive(); !bytes.Contains(got, []byte("<V2>")) {
+		t.Fatalf("next live frame not drawn between frames: %q", got)
+	}
+	if pre, _ := l.render(false); len(pre) != 0 {
+		t.Fatalf("an animated rect must not be erased between its frames: %q", pre)
+	}
+	l.SetLive(nil)
+	if pre, _ := l.render(false); !bytes.Contains(pre, []byte("\x1b[10X")) {
+		t.Fatalf("stopping the animation must erase its rect: %q", pre)
+	}
+}
