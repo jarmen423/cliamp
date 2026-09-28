@@ -61,10 +61,12 @@ type spotifyPlaylistItem struct {
 	Items *struct {
 		Total int `json:"total"`
 	} `json:"items"`
+	Images []spotifyImage `json:"images"`
 }
 type spotifyArtist struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID     string         `json:"id"`
+	Name   string         `json:"name"`
+	Images []spotifyImage `json:"images"` // full artist objects only
 }
 
 // artistNames joins the artist display names with ", ".

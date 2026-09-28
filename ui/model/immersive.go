@@ -145,6 +145,7 @@ type immItem struct {
 	sub2  string // album (tracks only)
 	dur   int    // seconds; tracks only
 	path  string // tracks only: used to mark the playing row
+	art   string // cover image URL, "" when none
 }
 
 // Minimum terminal size for the immersive frame; below it the classic
@@ -395,8 +396,9 @@ func (m *Model) startImmersive() tea.Cmd {
 		settingsReturn: immViewBrowse,
 	}
 	m.recomputeLayout() // the visualizer takes the band's height
+	artCmd := m.startArtPolling()
 	if m.provider == nil {
-		return nil
+		return artCmd
 	}
 	if _, ok := m.provider.(provider.AlbumBrowser); ok {
 		m.immersive.loadingAlbums = true
@@ -411,7 +413,7 @@ func (m *Model) startImmersive() tea.Cmd {
 	} else {
 		m.immersive.loadingLists = true
 	}
-	return m.fetchImmersiveSidebar()
+	return tea.Batch(artCmd, m.fetchImmersiveSidebar())
 }
 
 // exitImmersive leaves the mode and supersedes every in-flight fetch.
@@ -492,21 +494,21 @@ func (m Model) browseItems() []immItem {
 		for _, l := range im.lists {
 			items = append(items, immItem{
 				kind: immKindPlaylist, id: l.ID, title: l.Name,
-				sub: playlistRowSub(l),
+				sub: playlistRowSub(l), art: l.ImageURL,
 			})
 		}
 	case immSecArtists:
 		for _, a := range im.artists {
 			items = append(items, immItem{
 				kind: immKindArtist, id: a.ID, title: a.Name,
-				sub: "Artist",
+				sub: "Artist", art: a.ImageURL,
 			})
 		}
 	case immSecAlbums:
 		for _, a := range im.albums {
 			items = append(items, immItem{
 				kind: immKindAlbum, id: a.ID, title: a.Name,
-				sub: firstNonEmpty(a.Artist, "Album"),
+				sub: firstNonEmpty(a.Artist, "Album"), art: a.ImageURL,
 			})
 		}
 	case immSecPodcasts:
@@ -548,7 +550,7 @@ func trackItems(tracks []playlist.Track) []immItem {
 			// rather than play (they are placeholders, not tracks).
 			items = append(items, immItem{
 				kind: immKindAlbum, id: t.AlbumID(), title: t.Title,
-				sub: "Album · " + firstNonEmpty(t.Artist, "Various"),
+				sub: "Album · " + firstNonEmpty(t.Artist, "Various"), art: t.AlbumArtURL,
 			})
 			continue
 		}
@@ -564,6 +566,7 @@ func trackItems(tracks []playlist.Track) []immItem {
 			sub2:  t.Album,
 			dur:   t.DurationSecs,
 			path:  t.Path,
+			art:   t.AlbumArtURL,
 		})
 	}
 	return items
