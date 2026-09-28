@@ -1190,6 +1190,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.immersive.loadingLists = false
+		m.noteImmersiveLoadErr("Playlists", msg.err)
 		if msg.err == nil {
 			m.immersive.lists = m.filterImmersivePlaylists(msg.lists)
 		}
@@ -1200,6 +1201,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.immersive.loadingAlbums = false
+		m.noteImmersiveLoadErr("Albums", msg.err)
 		if msg.err == nil {
 			m.immersive.albums = msg.albums
 		}
@@ -1210,6 +1212,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.immersive.loadingArtists = false
+		m.noteImmersiveLoadErr("Artists", msg.err)
 		if msg.err == nil {
 			m.immersive.artists = msg.artists
 		}
@@ -1446,6 +1449,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.provSignIn = false
 		m.provLoading = true
 		cmd := m.fetchProviderPlaylists()
+		if m.immersive.active && m.immersive.needsAuth {
+			// Signed in from the immersive prompt: reload its sections too.
+			cmd = tea.Batch(cmd, m.startImmersive())
+		}
 		return m, cmd
 
 	case ProvAuthURLMsg:

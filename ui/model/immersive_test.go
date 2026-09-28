@@ -60,7 +60,7 @@ func (immSubStub) Subscriptions() []provider.SubscriptionInfo {
 
 // immersiveModel builds a Model with immersive state populated directly —
 // tests exercise pure logic and rendering without a live provider.
-func immersiveModel(t *testing.T) *Model {
+func immersiveModel(t testing.TB) *Model {
 	t.Helper()
 	old := ui.PanelWidth
 	ui.PanelWidth = 80
@@ -167,7 +167,7 @@ func TestImmersiveModeCycles(t *testing.T) {
 		if m.immersive.mode != want {
 			t.Fatalf("step %d: mode = %d, want %d", i, m.immersive.mode, want)
 		}
-		m.handleImmersiveKey(keyMsg("v"))
+		m.handleImmersiveKey(keyMsg("c"))
 	}
 }
 

@@ -207,9 +207,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	if msg.String() == "ctrl+z" {
 		return m.undoPlaylistMutation()
 	}
-	// Immersive mode owns the whole frame: it claims keys before the keymap
-	// and every overlay so normal-mode dispatch is untouched when it is off.
-	if m.immersiveShown() {
+	// Immersive mode owns the whole frame while it is the visible screen; the
+	// pickers it opens (keymap, track menu, credits, playlist picker) stack
+	// above it and take their keys through the normal dispatch below.
+	if m.activeScreen() == screenImmersive {
 		return m.handleImmersiveKey(msg)
 	}
 	if msg.String() == "ctrl+k" && !m.keymap.visible {

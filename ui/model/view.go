@@ -209,9 +209,15 @@ func (m Model) View() tea.View {
 	}
 
 	// Every screen now renders within the main frame, so frame and center
-	// uniformly.
-	rendered := m.centerFrame(ui.FrameStyle.Render(content))
-	rendered = ui.FitRect(rendered, m.layout.frameWidth, max(1, m.height))
+	// uniformly. The immersive frame is already cut to the panel size, so it
+	// only needs its padding added, not a full re-measure.
+	var rendered string
+	if screen == screenImmersive {
+		rendered = m.immPadFrame(content)
+	} else {
+		rendered = m.centerFrame(ui.FrameStyle.Render(content))
+		rendered = ui.FitRect(rendered, m.layout.frameWidth, max(1, m.height))
+	}
 
 	view := tea.NewView(rendered)
 	// Mouse cell-motion reporting delivers clicks, releases, the wheel, and

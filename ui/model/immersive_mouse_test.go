@@ -65,8 +65,8 @@ func TestImmersiveSeekClickAndDrag(t *testing.T) {
 func TestImmersivePillClicks(t *testing.T) {
 	m := immersiveMouseModel(t)
 	for _, p := range m.immMouse.pills {
-		if p.section == immSecSearch {
-			continue // the search pill opens the input; checked below
+		if p.section == immSecSearch || p.section < 0 {
+			continue // search opens the input and history buttons navigate; checked below
 		}
 		x, y := immAt(m, p.box.X+1, p.box.Y+1)
 		m.handleMouseClick(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
@@ -117,7 +117,7 @@ func TestImmersiveCanvasClickPlaysTrack(t *testing.T) {
 	}
 }
 
-func TestImmersiveRightClickQueuesTrack(t *testing.T) {
+func TestImmersiveRightClickOpensTrackMenu(t *testing.T) {
 	m := immersiveMouseModel(t)
 	m.immersive.view = immViewPlaylist
 	m.immersive.ctxKind = immKindTrack
@@ -125,14 +125,13 @@ func TestImmersiveRightClickQueuesTrack(t *testing.T) {
 		{Title: "one", Path: "/1"}, {Title: "two", Path: "/2"},
 	}
 	m.View()
-	it := m.immMouse.items[0]
+	it := m.immMouse.items[1]
 	immClickAt(m, it.box.X+1, it.box.Y, tea.MouseRight)
-	if m.playlist.QueueLen() != 1 {
-		t.Fatalf("queue len = %d, want 1", m.playlist.QueueLen())
+	if !m.trackMenu.visible || m.trackMenu.track.Path != "/2" {
+		t.Fatalf("menu visible=%v track=%q, want the clicked track /2", m.trackMenu.visible, m.trackMenu.track.Path)
 	}
-	idx := m.playlist.QueueEntries()[0].TrackIndex
-	if tr, ok := m.playlist.Track(idx); !ok || tr.Path != "/1" {
-		t.Fatalf("queued track index %d (ok=%v)", idx, ok)
+	if m.activeScreen() != screenTrackMenu {
+		t.Fatalf("active screen = %d, want the track menu over immersive", m.activeScreen())
 	}
 }
 
@@ -230,5 +229,40 @@ func TestImmersiveClickOutsideFrame(t *testing.T) {
 	m.handleMouseClick(tea.MouseClickMsg{X: m.width - 1, Y: m.height - 1, Button: tea.MouseMiddle})
 	if m.immersive.view != immViewBrowse {
 		t.Fatal("stray click mutated state")
+	}
+}
+
+func TestImmersiveHistoryButtons(t *testing.T) {
+	m := immersiveMouseModel(t)
+	click := func(section immSection) {
+		t.Helper()
+		for _, p := range m.immMouse.pills {
+			if p.section == section {
+				x, y := immAt(m, p.box.X+1, p.box.Y+1)
+				m.handleMouseClick(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+				m.View()
+				return
+			}
+		}
+		t.Fatalf("no pill %d", section)
+	}
+	click(immSecAlbums)
+	click(immSecArtists)
+	click(immNavBack)
+	if m.immersive.section != immSecAlbums {
+		t.Fatalf("back landed on section %d, want Albums", m.immersive.section)
+	}
+	click(immNavBack)
+	if m.immersive.section != immSecPlaylists {
+		t.Fatalf("second back landed on section %d, want Playlists", m.immersive.section)
+	}
+	click(immNavForward)
+	click(immNavForward)
+	if m.immersive.section != immSecArtists {
+		t.Fatalf("forward landed on section %d, want Artists", m.immersive.section)
+	}
+	click(immSecPodcasts)
+	if len(m.immersive.fwd) != 0 {
+		t.Fatal("a new navigation must clear the forward history")
 	}
 }
