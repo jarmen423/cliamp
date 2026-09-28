@@ -827,7 +827,7 @@ func (m *Model) handleHomeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.handleHomeFilterKey(msg)
 	}
 	if msg.String() == "I" {
-		return m.enterImmersive()
+		return m.toggleImmersive()
 	}
 	if m.home.focus == homePaneContent && m.home.content.kind != homeContentNone {
 		return m.handleHomeContentKey(msg)

@@ -86,7 +86,7 @@ func (m *Model) handleMouseClick(msg tea.MouseClickMsg) tea.Cmd {
 	if m.mouse == nil {
 		return nil
 	}
-	if m.immersive.active && !m.fullVis {
+	if m.activeScreen() == screenImmersive {
 		return m.handleImmersiveClick(msg)
 	}
 	ms := m.mouse
@@ -137,6 +137,9 @@ func (m *Model) handleMouseMotion(msg tea.MouseMotionMsg) tea.Cmd {
 // handleMouseWheel scrolls through the active surface's own key handler so
 // every list (playlist, queue, overlays) scrolls the way j/k would.
 func (m *Model) handleMouseWheel(msg tea.MouseWheelMsg) tea.Cmd {
+	if m.activeScreen() == screenImmersive {
+		return m.immersiveWheel(msg)
+	}
 	code := tea.KeyDown
 	if msg.Button == tea.MouseWheelUp {
 		code = tea.KeyUp

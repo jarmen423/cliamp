@@ -113,7 +113,7 @@ and `Esc` clears it.
 | `w` | Write the highlighted track/selection to a playlist — local playlists always, plus the owning provider's playlists (a "Spotify Playlists" section, with new-playlist creation) when the tracks come from it; selections are added in batches |
 | `N` | Open the active provider browser. On a selected Mixcloud show, open that creator's Uploads/Favorites. In the radio pane, open the country browser. |
 | `H` | Open the Home view — the active provider's library in a two-pane browser |
-| `I` (`Shift+I`) | Toggle the immersive Spotify-style mode (prototype): three-pane layout with a library rail, rolodex selector, queue/now-playing panel, and player bar; `I` or `Esc` exits back |
+| `I` (`Shift+I`) | Toggle the immersive layout (prototype): visualizer band, nav pills, Now Playing + Queue column, canvas with list/rows/grid views, transport row and seek bar; `I` or `Esc` exits back. See [Immersive mode](#immersive-mode-prototype) |
 | `L` | Browse local playlists (with cliamp radio) |
 | `R` | Open radio provider |
 | `O` (`Shift+O`) | Open Podcasts provider |
@@ -396,3 +396,37 @@ query to their search API. Their services control matching rules.
 |---|---|
 | `?` / `Ctrl+K` | Show keymap |
 | `q` | Quit |
+
+## Immersive mode (prototype)
+
+`I` opens the immersive layout (or start in it with `immersive = true` in the
+config). It falls back to the classic layout when the terminal is under
+80x24. Transport keys keep their normal bindings (`Space`, `>`/`<`, `z`, `r`,
+`+`/`-`, `Shift+Left`/`Shift+Right`); the immersive-only keys:
+
+| Key | Action |
+|---|---|
+| `1`..`5` | Switch nav pill: Playlists, Artists, Search, Albums, Podcasts |
+| `Tab` / `Shift+Tab` | Cycle focus between nav row, canvas, and queue |
+| `h`/`l` or `Left`/`Right` | Move cursor horizontally (nav pills, grid tiles, settings values) |
+| `j`/`k` or `Up`/`Down` | Move cursor vertically (one row or tile row per step) |
+| `PgUp` / `PgDn` | Page the canvas |
+| `Enter` | Open the focused collection, play the focused track, or adjust a setting |
+| `Backspace` | Back one level in the canvas; `Esc` unwinds then exits |
+| `g` or `Home` | Jump back to the canvas root |
+| `v` | Cycle the canvas view: list, rows, grid |
+| `e` | Toggle the settings tab in the canvas (EQ preset/bands, volume, speed, visualizer) |
+| `t` | Cycle track sort: order, title, album, duration |
+| `s` | Toggle browse sort: recents vs alphabetical |
+| `f` | Filter the current browse list |
+| `/` or `Ctrl+F` | Search tracks into the canvas |
+| `p` | Play the open collection from the cursor |
+| `a` | Queue the focused track |
+| `n` | Toggle favorite on the focused track |
+| `q` | Focus the Queue panel (queue clicks jump the live queue there) |
+| `V` | Full-screen visualizer |
+| `I` or `Esc` | Exit immersive mode |
+
+Mouse: click pills to switch, click canvas items to open/play (right-click
+queues a track), click the transport buttons, drag the seek bar, and wheel
+over the canvas or queue to snap-scroll.

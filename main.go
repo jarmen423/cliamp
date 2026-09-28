@@ -584,6 +584,12 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 	if cfg.Simplified {
 		m.SetSimplified(true)
 	}
+	if cfg.Immersive {
+		m.SetImmersive(true)
+	}
+	if cfg.NerdFontGlyphs {
+		m.SetNerdFontGlyphs(true)
+	}
 	if cfg.HideHelpBar {
 		m.SetHideHelpBar(true)
 	}

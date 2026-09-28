@@ -1,8 +1,14 @@
 package model
 
-// immersive_view.go renders the immersive frame: top bar, three panes, and a
-// bottom player bar. It draws into the panel rectangle the normal layout
-// already computes, so frame padding and FitRect clipping come for free.
+// immersive_view.go renders the immersive frame: a visualizer band, the
+// nav-pill row, the two-column body (Now Playing + Queue | canvas), a
+// controls row, and the eighth-block progress bar. It draws into the panel
+// rectangle the normal layout already computes, so frame padding and
+// FitRect clipping come for free.
+//
+// Every art box drawn here is a fixed cell-aligned rect; the same math
+// lives in the layout helpers (immGeom, immCanvasItemsGeom) so the mouse
+// hit test and step-2 image placement see the same rectangles.
 
 import (
 	"fmt"
@@ -15,27 +21,146 @@ import (
 	"github.com/bjarneo/cliamp/ui"
 )
 
-// Frame geometry. The player bar is two content rows (transport + seek) plus
-// one hint/status row; the top bar is one row with a spacer under it.
+// Frame band heights in content rows.
 const (
-	immTopBarRows    = 2 // bar + spacer
-	immPlayerBarRows = 4 // spacer + transport + seek + status/hint
-	immRailMinW      = 18
-	immRailMaxW      = 28
-	immRailIconW     = 5 // collapsed rail width
-	immRightMinW     = 24
-	immRightMaxW     = 32
-	immPaneSep       = 1 // separator column between panes
-	immCardGap       = 1 // blank column between grid cards
-	immCardArtRows   = 4 // art block height in grid cards
-	immHeroArtRows   = 6 // hero art block height
-	immRoloArtRows   = 5 // rolodex card art height
-	immRoloStripRows = 8 // art + title + sub + position row
+	immVisMinRows = 3  // visualizer band floor
+	immVisMaxRows = 12 // visualizer band ceiling
+	immBodyMinH   = 12 // body rows kept before the visualizer band grows
+	immNavRows    = 3  // nav pill row (pills are 3 cells tall)
+	immCtrlRows   = 3  // transport buttons are 3 cells tall
+	immSeekRows   = 1
+	immStatusRows = 1
+	// Vertical order: vis, gap, nav, gap, body, gap, controls, seek, status.
+	// immFixedRows is everything except the visualizer band and the body.
+	immFixedRows = 1 + immNavRows + 1 + 1 + immCtrlRows + immSeekRows + immStatusRows // = 11
+
+	immGridTileW   = 14 // minimum tile width; actual width divides the canvas
+	immRowsArtW    = 6  // art box width in rows view (3 rows tall ≈ square)
+	immRowsItemH   = 3  // rows-view item height in cells
+	immCtrlBtnW    = 6  // small transport button width (two-cell glyphs center)
+	immCtrlPlayW   = 9  // wide play/pause button width
+	immVolBarCells = 6
 )
 
 // immArtChars are the shade glyphs a text-art cover picks from. The pick is a
 // hash of the item name, so covers stay stable for a session.
 var immArtChars = []rune{'█', '▓', '▒', '░'}
+
+// Progress bar line glyphs: a heavy line for the played part, a light line
+// for the rest, and a heavy-left/light-right head for half-cell steps.
+const (
+	immBarPlayed = "━"
+	immBarHalf   = "╾"
+	immBarTrack  = "─"
+)
+
+// immRect is a cell-aligned rectangle in frame content coordinates (0,0 is
+// the top-left content cell). Step 2's image layer draws into these.
+type immRect struct {
+	X, Y, W, H int
+}
+
+// ImmersiveArtRects returns every art placeholder rect of the last rendered
+// immersive frame, translated to absolute screen cells: the Now Playing
+// cover box plus each canvas tile/row art box. Empty when the immersive
+// frame is not showing.
+func (m Model) ImmersiveArtRects() []immRect {
+	im := m.immMouse
+	if im == nil || !im.valid || m.activeScreen() != screenImmersive {
+		return nil
+	}
+	out := make([]immRect, len(im.artRects))
+	for i, r := range im.artRects {
+		out[i] = immRect{X: r.X + im.frameX, Y: r.Y + im.topRow, W: r.W, H: r.H}
+	}
+	return out
+}
+
+// immGeom is the immersive frame's layout in content coordinates.
+type immGeom struct {
+	w, h               int
+	visH               int // visualizer band height
+	navY               int // first nav pill row
+	bodyY              int
+	bodyH              int
+	ctrlY              int
+	seekY              int
+	statY              int
+	leftW              int
+	canvasX            int // canvas outer box
+	canvasW            int
+	canvasIW, canvasIH int
+	npH                int // Now Playing panel height
+	npArt              immRect
+	queueY             int // Queue panel top
+	queueH             int
+}
+
+// immFrameRows is the content height the immersive frame fills.
+func (m Model) immFrameRows() int {
+	if h := m.height - 2*m.layout.paddingV; h > 0 {
+		return h
+	}
+	return 22
+}
+
+// immVisRowsFor sizes the visualizer band to about a fifth of the frame, the
+// wireframe's proportion, while leaving the body at least immBodyMinH rows.
+func immVisRowsFor(h int) int {
+	rows := clampInt(h/5, immVisMinRows, immVisMaxRows)
+	if room := h - immFixedRows - immBodyMinH; rows > room {
+		rows = max(immVisMinRows, room)
+	}
+	return rows
+}
+
+// immGeom computes the frame layout for the current terminal size; it is
+// the single source both the renderer and the mouse hit test read.
+func (m Model) immGeom() immGeom {
+	w := m.layout.panelWidth
+	if w <= 0 {
+		w = 74
+	}
+	h := m.immFrameRows()
+	visH := immVisRowsFor(h)
+	bodyH := max(3, h-immFixedRows-visH)
+	navY := visH + 1
+	bodyY := navY + immNavRows + 1
+	g := immGeom{
+		w:     w,
+		h:     h,
+		visH:  visH,
+		navY:  navY,
+		bodyY: bodyY,
+		bodyH: bodyH,
+		ctrlY: bodyY + bodyH + 1,
+		seekY: bodyY + bodyH + 1 + immCtrlRows,
+		statY: bodyY + bodyH + 1 + immCtrlRows + immSeekRows,
+	}
+	g.leftW = clampInt(w/5, 18, 26)
+	g.canvasX = g.leftW + 1
+	g.canvasW = w - g.canvasX
+	g.canvasIW = g.canvasW - 2
+	g.canvasIH = bodyH - 2
+
+	// Now Playing panel: border + square-ish art + title/artist/album +
+	// border. The art box shrinks before the Queue panel does: the queue
+	// keeps at least 5 rows (borders, header, two entries).
+	inner := g.leftW - 2
+	artH := inner / 2
+	if maxArt := bodyH - 10; artH > maxArt {
+		artH = max(0, maxArt)
+	}
+	npH := artH + 5
+	g.npH = npH
+	g.queueY = npH
+	g.queueH = bodyH - npH
+	// Cells are about twice as tall as wide, so a square cover is 2h cells
+	// wide; center it when the height cap made it narrower than the panel.
+	artW := min(inner, 2*artH)
+	g.npArt = immRect{X: 1 + (inner-artW)/2, Y: g.bodyY + 1, W: artW, H: artH}
+	return g
+}
 
 // fitCell pads or truncates s to exactly w display cells.
 func fitCell(s string, w int) string {
@@ -68,350 +193,925 @@ func padPane(lines []string, w, rows int) []string {
 
 // renderImmersive lays out the full frame.
 func (m Model) renderImmersive() string {
-	w := m.layout.panelWidth
-	if w <= 0 {
-		w = 74
-	}
-	h := m.height - 2*m.layout.paddingV
-	if h <= 0 {
-		h = 22
-	}
-	bodyRows := h - immTopBarRows - immPlayerBarRows
-	if bodyRows < 3 {
-		bodyRows = 3
-	}
+	g := m.immGeom()
+	lines := make([]string, 0, g.h)
+	lines = append(lines, m.renderImmVis(g.w, g.visH)...)
+	lines = append(lines, "")
+	lines = append(lines, m.renderImmNav(g.w)...)
+	lines = append(lines, "")
+	lines = append(lines, m.renderImmBody(g)...)
+	lines = append(lines, "")
+	lines = append(lines, m.renderImmControls(g)...)
+	lines = append(lines, m.renderImmProgress(g.w))
+	lines = append(lines, m.renderImmStatusLine(g.w))
+	return strings.Join(lines, "\n")
+}
 
-	// Pane widths: rail collapses to an icon strip on `c`; the right rail
-	// drops first on narrow terminals, then the rail hides entirely.
-	railW, centerW, rightW := m.immersivePaneWidths(w)
+// — visualizer band —
 
-	sep := padPane([]string{""}, immPaneSep, bodyRows)
+func (m Model) renderImmVis(w, rows int) []string {
+	if m.vis == nil || m.vis.Mode == ui.VisNone || m.visualizerDisabled() {
+		lines := padPane(nil, w, rows)
+		lines[rows/2] = fitCell(dimStyle.Render("  ♪ visualizer off"), w)
+		return lines
+	}
+	out := strings.Split(strings.TrimRight(m.vis.Render(), "\n"), "\n")
+	lines := padPane(out, w, rows)
+	return lines
+}
+
+// — nav pills —
+
+// immPillGeom is one nav pill's box in content coordinates.
+type immPillGeom struct {
+	section immSection
+	box     immRect
+}
+
+// immNavGeom places the pill row: Playlists and Artists on the left, a wide
+// highlighted Search pill centered, Albums and Podcasts on the right.
+func (m Model) immNavGeom(w int) []immPillGeom {
+	navY := immVisRowsFor(m.immFrameRows()) + 1
+	labelW := func(s immSection) int { return len(immSectionLabels[s]) + 4 }
+	left := []immSection{immSecPlaylists, immSecArtists}
+	right := []immSection{immSecAlbums, immSecPodcasts}
+	searchW := max(20, w/3)
+
+	leftEnd := 0
+	for _, s := range left {
+		leftEnd += labelW(s) + 1
+	}
+	rightW := 0
+	for _, s := range right {
+		rightW += labelW(s) + 1
+	}
+	searchX := clampInt((w-searchW)/2, leftEnd, max(leftEnd, w-rightW-searchW))
+	rightX := max(searchX+searchW+1, w-rightW+1)
+
+	geoms := make([]immPillGeom, 0, immSecCount)
+	x := 0
+	for _, s := range left {
+		pw := labelW(s)
+		geoms = append(geoms, immPillGeom{section: s, box: immRect{X: x, Y: navY, W: pw, H: immNavRows}})
+		x += pw + 1
+	}
+	geoms = append(geoms, immPillGeom{section: immSecSearch, box: immRect{X: searchX, Y: navY, W: searchW, H: immNavRows}})
+	x = rightX
+	for _, s := range right {
+		pw := labelW(s)
+		geoms = append(geoms, immPillGeom{section: s, box: immRect{X: x, Y: navY, W: pw, H: immNavRows}})
+		x += pw + 1
+	}
+	return geoms
+}
+
+// immPillLabel is the pill's inner text — the section name, or the live
+// query while the search input is open.
+func (m Model) immPillLabel(s immSection) string {
+	if s == immSecSearch {
+		if m.immersive.searching {
+			return "⌕ " + m.immersive.searchQuery + "▌"
+		}
+		if m.immersive.view == immViewSearch && m.immersive.ctxName != "" {
+			return "⌕ " + m.immersive.ctxName
+		}
+		return "⌕ Search"
+	}
+	return immSectionLabels[s]
+}
+
+// renderImmNav draws the pill row: three rows of rounded box-drawing pills.
+func (m Model) renderImmNav(w int) []string {
+	rows := make([]string, immNavRows)
+	for i := range rows {
+		rows[i] = strings.Repeat(" ", w)
+	}
+	geoms := m.immNavGeom(w)
+	for r := 0; r < immNavRows; r++ {
+		var line strings.Builder
+		x := 0
+		for _, p := range geoms {
+			if p.box.X > x {
+				line.WriteString(strings.Repeat(" ", p.box.X-x))
+			}
+			active := p.section == m.immersive.section
+			border := dimStyle
+			text := playlistItemStyle
+			if active {
+				border = playlistSelectedStyle
+				text = playlistSelectedStyle
+			}
+			// The search pill stays highlighted even when it is not the
+			// active section, and shows the input caret while typing.
+			if p.section == immSecSearch && !active {
+				border = playlistActiveStyle
+				text = labelStyle
+			}
+			if m.immersive.focus == immPaneNav && p.section == m.immersive.section {
+				border = helpKeyStyle
+			}
+			label := m.immPillLabel(p.section)
+			pw := p.box.W
+			switch r {
+			case 0:
+				line.WriteString(border.Render("╭" + strings.Repeat("─", pw-2) + "╮"))
+			case 1:
+				line.WriteString(border.Render("│") + text.Render(fitCell(" "+label, pw-2)) + border.Render("│"))
+			case 2:
+				line.WriteString(border.Render("╰" + strings.Repeat("─", pw-2) + "╯"))
+			}
+			x = p.box.X + pw
+		}
+		rows[r] = fitCell(line.String(), w)
+	}
+	return rows
+}
+
+// — body —
+
+func (m Model) renderImmBody(g immGeom) []string {
+	left := padPane(m.renderImmLeft(g), g.leftW, g.bodyH)
+	canvas := padPane(m.renderImmCanvas(g), g.canvasW, g.bodyH)
+	sep := strings.Repeat(" ", 1)
 	var columns []string
-	if railW > 0 {
-		columns = append(columns, strings.Join(padPane(m.renderImmRail(railW, bodyRows), railW, bodyRows), "\n"))
-		columns = append(columns, strings.Join(sep, "\n"))
-	}
-	columns = append(columns, strings.Join(padPane(m.renderImmCenter(centerW, bodyRows), centerW, bodyRows), "\n"))
-	if rightW > 0 {
-		columns = append(columns, strings.Join(sep, "\n"))
-		columns = append(columns, strings.Join(padPane(m.renderImmRight(rightW, bodyRows), rightW, bodyRows), "\n"))
-	}
-
-	return strings.Join([]string{
-		m.renderImmTopBar(w),
-		"",
-		lipgloss.JoinHorizontal(lipgloss.Top, columns...),
-		"",
-		m.renderImmPlayerBar(w),
-		m.renderImmSeekRow(w),
-		m.renderImmStatusLine(w),
-	}, "\n")
+	columns = append(columns, strings.Join(left, "\n"), sep, strings.Join(canvas, "\n"))
+	return strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, columns...), "\n")
 }
 
-func (m Model) immersiveRailWidth(w int) int {
-	if m.immersive.railCollapsed {
-		return immRailIconW
-	}
-	if w < 64 {
-		return 0
-	}
-	return clampInt(w/4, immRailMinW, immRailMaxW)
+// — left column: Now Playing + Queue —
+
+func (m Model) renderImmLeft(g immGeom) []string {
+	np := m.renderImmNowPlaying(g)
+	q := m.renderImmQueue(g)
+	return append(np, q...)
 }
 
-func (m Model) immersiveRightWidth(w int) int {
-	switch {
-	case w >= 110:
-		return immRightMaxW
-	case w >= 84:
-		return immRightMinW
+// boxTop/boxBottom/boxSide draw a rounded panel border line with a centered-ish
+// label inset after the corner.
+func boxTop(label string, w int, focused bool) string {
+	border := dimStyle
+	text := labelStyle
+	if focused {
+		border = playlistSelectedStyle
+	}
+	if label != "" {
+		return border.Render("╭─ ") + text.Render(label) + border.Render(" "+strings.Repeat("─", max(0, w-lipgloss.Width(label)-5))+"╮")
+	}
+	return border.Render("╭" + strings.Repeat("─", w-2) + "╮")
+}
+
+func boxBottom(w int, focused bool) string {
+	border := dimStyle
+	if focused {
+		border = playlistSelectedStyle
+	}
+	return border.Render("╰" + strings.Repeat("─", w-2) + "╯")
+}
+
+func boxSide(focused bool) string {
+	border := dimStyle
+	if focused {
+		border = playlistSelectedStyle
+	}
+	return border.Render("│")
+}
+
+// renderImmNowPlaying draws the Now Playing panel: a square art box then
+// title / artist / album lines.
+func (m Model) renderImmNowPlaying(g immGeom) []string {
+	w := g.leftW
+	lines := []string{boxTop("Now Playing", w, false)}
+	inner := w - 2
+
+	track, _ := m.currentPlaybackTrack()
+	name := track.Title
+	if name == "" {
+		name = trackViewName(track)
+	}
+	art := immArtBlock(firstNonEmpty(name, "cliamp"), g.npArt.W, g.npArt.H, name != "")
+	side := boxSide(false)
+	indent := strings.Repeat(" ", g.npArt.X-1)
+	for i := 0; i < g.npArt.H; i++ {
+		row := ""
+		if i < len(art) {
+			row = art[i]
+		}
+		lines = append(lines, side+fitCell(indent+row, inner)+side)
+	}
+
+	liked := ""
+	if m.favSet != nil {
+		if _, ok := m.favSet[track.Path]; ok {
+			liked = " " + favMarkerStyle.Render(favHeart)
+		}
+	}
+	if name == "" {
+		name = "Nothing playing"
+	}
+	text := []string{
+		playlistActiveStyle.Render("♪ "+ansi.Truncate(name, max(1, inner-4), "…")) + liked,
+		dimStyle.Render(ansi.Truncate(track.Artist, max(1, inner-2), "…")),
+		dimStyle.Render(ansi.Truncate(track.Album, max(1, inner-2), "…")),
+	}
+	for _, t := range text {
+		lines = append(lines, side+" "+fitCell(t, inner-1)+side)
+	}
+	for len(lines) < g.npH-1 {
+		lines = append(lines, side+strings.Repeat(" ", inner)+side)
+	}
+	lines = append(lines, boxBottom(w, false))
+	return lines
+}
+
+// immQueueMax bounds the Queue panel's lookahead into the playing list.
+const immQueueMax = 100
+
+// immQueueRows is what the Queue panel lists: play-next entries first, then
+// the playing list's upcoming tracks in play order.
+func (m Model) immQueueRows() []playlist.QueueEntry {
+	rows := m.playlist.QueueEntries()
+	if n := immQueueMax - len(rows); n > 0 {
+		rows = append(rows, m.playlist.Upcoming(n)...)
+	}
+	return rows
+}
+
+// renderImmQueue draws the Queue panel: "Next from" header then numbered
+// upcoming tracks.
+func (m Model) renderImmQueue(g immGeom) []string {
+	w := g.leftW
+	focused := m.immersive.focus == immPaneQueue
+	lines := []string{boxTop("Queue", w, focused)}
+	inner := w - 2
+	side := boxSide(focused)
+	rows := g.queueH
+
+	header := "Up next"
+	if ctx := m.playingContextName(); ctx != "" {
+		header = "Next from " + ctx
+	}
+	innerRows := rows - 2
+	if innerRows > 0 {
+		lines = append(lines, side+" "+fitCell(dimStyle.Render(header), inner-1)+side)
+	}
+	entries := m.immQueueRows()
+	total := len(entries)
+	if total == 0 {
+		if innerRows > 1 {
+			lines = append(lines, side+" "+fitCell(dimStyle.Render("(empty)"), inner-1)+side)
+		}
+	} else {
+		budget := max(1, innerRows-1)
+		scroll := clampedScroll(m.immersive.queueScroll, m.immersive.queueCursor, total, budget)
+		for i := scroll; i < total && i < scroll+budget && len(lines) < rows-1; i++ {
+			t := entries[i].Track
+			name := t.Title
+			if name == "" {
+				name = trackViewName(t)
+			}
+			if t.Artist != "" && t.Title != "" {
+				name += " · " + t.Artist
+			}
+			num := fmt.Sprintf("%2d ", i+1)
+			style := playlistItemStyle
+			numStyle := dimStyle
+			if i < m.playlist.QueueLen() {
+				numStyle = playlistActiveStyle // queued: plays before the list order
+			}
+			if i == m.immersive.queueCursor && focused {
+				style = playlistSelectedStyle
+				numStyle = playlistSelectedStyle
+			}
+			row := numStyle.Render(num) + style.Render(ansi.Truncate(name, max(1, inner-4), "…"))
+			lines = append(lines, side+" "+fitCell(row, inner-1)+side)
+		}
+	}
+	for len(lines) < rows-1 {
+		lines = append(lines, side+strings.Repeat(" ", inner)+side)
+	}
+	lines = append(lines, boxBottom(w, focused))
+	return lines
+}
+
+// — canvas —
+
+// immCanvasTitle labels the canvas border: the section name while browsing,
+// the opened collection's name inside a detail view.
+func (m Model) immCanvasTitle() string {
+	im := m.immersive
+	var title string
+	switch im.view {
+	case immViewBrowse:
+		title = immSectionLabels[im.section]
+		if im.sort != immBrowseSortRecents {
+			title += " · " + immBrowseSortLabels[im.sort]
+		}
+		if im.filtering || im.filter != "" {
+			title += " · filter: " + im.filter
+			if im.filtering {
+				title += "▏"
+			}
+		}
+	case immViewSettings:
+		return "Settings"
+	case immViewSearch:
+		title = "Search"
+		if im.ctxName != "" {
+			title = im.ctxName
+		}
 	default:
-		return 0
+		kind := "Playlist"
+		switch im.view {
+		case immViewAlbum:
+			kind = "Album"
+		case immViewArtist:
+			kind = "Artist"
+		case immViewShow:
+			kind = "Podcast"
+		}
+		title = kind + ": " + firstNonEmpty(im.ctxName, "…")
+		if im.trackSort != immSortTrackOrder {
+			title += " · " + immSortTrackLabels[im.trackSort]
+		}
+	}
+	return title + " · " + immCanvasModeNames[im.mode]
+}
+
+func (m Model) renderImmCanvas(g immGeom) []string {
+	w := g.canvasW
+	focused := m.immersive.focus == immPaneCanvas
+	lines := []string{boxTop(m.immCanvasTitle(), w, focused)}
+
+	inner := m.renderImmCanvasInner(g.canvasIW, g.canvasIH)
+	side := boxSide(focused)
+	for i := 0; i < g.canvasIH; i++ {
+		row := ""
+		if i < len(inner) {
+			row = inner[i]
+		}
+		lines = append(lines, side+fitCell(row, g.canvasIW)+side)
+	}
+	lines = append(lines, boxBottom(w, focused))
+	return lines
+}
+
+// renderImmCanvasInner draws the canvas contents: settings tab, loading or
+// empty states, or the item list in the active canvas mode.
+func (m Model) renderImmCanvasInner(w, rows int) []string {
+	im := m.immersive
+	if im.view == immViewSettings {
+		return m.renderImmSettings(w, rows)
+	}
+	lines := make([]string, rows)
+	if im.tracksLoading && im.view.isTrackView() {
+		lines[0] = "  " + m.immSpin() + " loading " + firstNonEmpty(im.ctxName, "tracks") + "…"
+		return lines
+	}
+	if im.section == immSecPlaylists && im.loadingLists && im.view == immViewBrowse {
+		lines[0] = "  " + m.immSpin() + " loading playlists…"
+		return lines
+	}
+	if im.section == immSecAlbums && im.loadingAlbums && im.view == immViewBrowse {
+		lines[0] = "  " + m.immSpin() + " loading albums…"
+		return lines
+	}
+	if im.section == immSecArtists && im.loadingArtists && im.view == immViewBrowse {
+		lines[0] = "  " + m.immSpin() + " loading artists…"
+		return lines
+	}
+	if im.searchLoading && im.view == immViewSearch {
+		lines[0] = "  " + m.immSpin() + " searching…"
+		return lines
+	}
+	items := m.canvasItems()
+	if len(items) == 0 {
+		switch {
+		case im.view == immViewSearch:
+			lines[0] = dimStyle.Render("  " + m.immGlyphs().search + " what do you want to play?")
+			if rows > 1 {
+				lines[1] = dimStyle.Render("  / or enter on the Search pill to search")
+			}
+		case im.view == immViewBrowse:
+			lines[0] = dimStyle.Render("  (empty)")
+		default:
+			lines[0] = dimStyle.Render("  (empty)")
+		}
+		return lines
+	}
+
+	// Item geometry is in content coordinates; translate to canvas-inner rows.
+	frame := m.immGeom()
+	ox, oy := frame.canvasX+1, frame.bodyY+1
+	playingPath := ""
+	if playing, _ := m.currentPlaybackTrack(); playing.Path != "" {
+		playingPath = playing.Path
+	}
+	if im.mode == immCanvasGrid {
+		// Tiles in one band are disjoint columns: concat their lines in x
+		// order per band row rather than overwriting.
+		bands := map[int][]immItemGeom{}
+		var bandYs []int
+		for _, g := range m.immCanvasItemsGeom(w, rows) {
+			if len(bands[g.box.Y]) == 0 {
+				bandYs = append(bandYs, g.box.Y)
+			}
+			bands[g.box.Y] = append(bands[g.box.Y], g)
+		}
+		for _, bandY := range bandYs {
+			y := bandY - oy
+			for li := 0; li < bands[bandY][0].box.H && y+li < rows; li++ {
+				var b strings.Builder
+				cx := 0
+				for _, g := range bands[bandY] {
+					item := items[g.idx]
+					sel := g.idx == im.cursor && im.focus == immPaneCanvas
+					tl := m.immItemTileLines(item, g.box.W, g.box.H, sel)
+					if li >= len(tl) {
+						continue
+					}
+					x := g.box.X - ox
+					if x > cx {
+						b.WriteString(strings.Repeat(" ", x-cx))
+					}
+					b.WriteString(fitCell(tl[li], g.box.W))
+					cx = x + g.box.W
+				}
+				if y+li >= 0 {
+					lines[y+li] = b.String()
+				}
+			}
+		}
+		return lines
+	}
+	for _, g := range m.immCanvasItemsGeom(w, rows) {
+		item := items[g.idx]
+		sel := g.idx == im.cursor && im.focus == immPaneCanvas
+		y := g.box.Y - oy
+		switch im.mode {
+		case immCanvasList:
+			if y >= 0 && y < rows {
+				lines[y] = m.immItemListLine(item, g.idx, w, sel, playingPath)
+			}
+		case immCanvasRows:
+			for i, rl := range m.immItemRowLines(item, w, sel, playingPath) {
+				if y+i >= 0 && y+i < rows {
+					lines[y+i] = rl
+				}
+			}
+		}
+	}
+	return lines
+}
+
+// immItemListLine draws a list-mode row: number, title, and right-aligned
+// details.
+func (m Model) immItemListLine(item immItem, idx, w int, sel bool, playingPath string) string {
+	num := fmt.Sprintf("%3d ", idx+1)
+	right := item.sub
+	if item.sub2 != "" {
+		if right != "" {
+			right += " · "
+		}
+		right += item.sub2
+	}
+	if item.dur > 0 {
+		right = firstNonEmpty(right, "") + " " + formatTrackTime(item.dur)
+	}
+	style := playlistItemStyle
+	numStyle := dimStyle
+	if sel {
+		style, numStyle = playlistSelectedStyle, playlistSelectedStyle
+	}
+	if item.path != "" && item.path == playingPath {
+		num = "  ♪ "
+		if !sel {
+			style = playlistActiveStyle
+		}
+	}
+	titleW := max(1, w-lipgloss.Width(num)-lipgloss.Width(right)-2)
+	return numStyle.Render(num) + style.Render(ansi.Truncate(item.title, titleW, "…")) +
+		strings.Repeat(" ", max(0, w-lipgloss.Width(num)-titleW-lipgloss.Width(right))) +
+		dimStyle.Render(right)
+}
+
+// immItemRowLines draws a rows-mode item: a 3-row art box on the left, then
+// title / artist / album (+duration) text filling the rest of the row.
+func (m Model) immItemRowLines(item immItem, w int, sel bool, playingPath string) []string {
+	art := immArtBlock(item.title, immRowsArtW, immRowsItemH, sel)
+	textW := max(1, w-immRowsArtW-2)
+	titleStyle := playlistItemStyle
+	subStyle := dimStyle
+	if sel {
+		titleStyle = playlistSelectedStyle
+		subStyle = playlistSelectedStyle
+	}
+	dur := ""
+	if item.dur > 0 {
+		dur = formatTrackTime(item.dur)
+	}
+	title := item.title
+	if item.path != "" && item.path == playingPath {
+		title = "♪ " + title
+	}
+	titleCell := titleStyle.Render(ansi.Truncate(title, max(1, textW-lipgloss.Width(dur)-1), "…"))
+	titleCell += strings.Repeat(" ", max(0, textW-lipgloss.Width(titleCell)-lipgloss.Width(dur))) + dimStyle.Render(dur)
+	lines := []string{
+		art[0] + "  " + fitCell(titleCell, textW),
+		art[1] + "  " + fitCell(subStyle.Render(ansi.Truncate(item.sub, textW, "…")), textW),
+		art[2] + "  " + fitCell(subStyle.Render(ansi.Truncate(item.sub2, textW, "…")), textW),
+	}
+	return lines
+}
+
+// immItemTileLines draws a grid tile: a square art block then title and sub
+// lines, clipped to the tile box.
+func (m Model) immItemTileLines(item immItem, w, h int, sel bool) []string {
+	artH := h - 2
+	if artH < 1 {
+		artH = h
+	}
+	art := immArtBlock(item.title, w, artH, sel)
+	lines := make([]string, 0, h)
+	for _, r := range art {
+		lines = append(lines, fitCell(r, w))
+	}
+	titleStyle := playlistItemStyle
+	if sel {
+		titleStyle = playlistSelectedStyle
+	}
+	if len(lines) < h {
+		lines = append(lines, titleStyle.Render(ansi.Truncate(item.title, max(1, w), "…")))
+	}
+	if len(lines) < h {
+		lines = append(lines, dimStyle.Render(ansi.Truncate(item.sub, max(1, w), "…")))
+	}
+	return lines[:h]
+}
+
+// — canvas item geometry (shared with the mouse hit test) —
+
+// immItemGeom is one drawn canvas item's box in content coordinates, plus
+// the art rect inside it for step-2 image placement.
+type immItemGeom struct {
+	idx int
+	box immRect
+	art immRect // zero rect when the mode draws no art box
+}
+
+// immCanvasItemsGeom places the currently visible items inside the canvas
+// content area, in content coordinates.
+func (m Model) immCanvasItemsGeom(iw, ih int) []immItemGeom {
+	im := m.immersive
+	items := m.canvasItems()
+	if len(items) == 0 || im.view == immViewSettings {
+		return nil
+	}
+	g := m.immGeom()
+	ox, oy := g.canvasX+1, g.bodyY+1
+	switch im.mode {
+	case immCanvasRows:
+		per := ih / immRowsItemH
+		if per < 1 {
+			per = 1
+		}
+		scroll := clampedScroll(im.scroll, im.cursor, len(items), per)
+		out := make([]immItemGeom, 0, per)
+		for i := 0; i < per && scroll+i < len(items); i++ {
+			y := oy + i*immRowsItemH
+			out = append(out, immItemGeom{
+				idx: scroll + i,
+				box: immRect{X: ox, Y: y, W: iw, H: min(immRowsItemH, ih-i*immRowsItemH)},
+				art: immRect{X: ox, Y: y, W: immRowsArtW, H: min(immRowsItemH, ih-i*immRowsItemH)},
+			})
+		}
+		return out
+	case immCanvasGrid:
+		cols, tileW, tileH := m.immGridTile(iw)
+		tileRows := (len(items) + cols - 1) / cols
+		visible := ih / (tileH + 1)
+		if visible < 1 {
+			visible = 1
+		}
+		curRow := im.cursor / cols
+		scrollRow := clampedScroll(im.scroll, curRow, tileRows, visible)
+		var out []immItemGeom
+		for r := scrollRow; r < tileRows && (r-scrollRow) < visible; r++ {
+			for c := 0; c < cols; c++ {
+				idx := r*cols + c
+				if idx >= len(items) {
+					break
+				}
+				x := ox + c*(tileW+1)
+				y := oy + (r-scrollRow)*(tileH+1)
+				box := immRect{X: x, Y: y, W: min(tileW, ox+iw-x), H: min(tileH, oy+ih-y)}
+				out = append(out, immItemGeom{
+					idx: idx,
+					box: box,
+					art: immRect{X: x, Y: y, W: box.W, H: max(0, box.H-2)},
+				})
+			}
+		}
+		return out
+	default: // immCanvasList
+		scroll := clampedScroll(im.scroll, im.cursor, len(items), ih)
+		out := make([]immItemGeom, 0, ih)
+		for i := 0; i < ih && scroll+i < len(items); i++ {
+			out = append(out, immItemGeom{
+				idx: scroll + i,
+				box: immRect{X: ox, Y: oy + i, W: iw, H: 1},
+			})
+		}
+		return out
 	}
 }
 
-// Budget helpers shared with the key handler so cursor math and drawing agree.
-
-func (m Model) immersiveRailBudget() int {
-	h := m.height - 2*m.layout.paddingV
-	// Header (title + pills + filter row + blank) occupies the first rows.
-	return max(1, h-immTopBarRows-immPlayerBarRows-5)
+// immGridTile sizes grid tiles for a canvas inner width. Even widths keep
+// the art (tileW x tileW/2 cells) square in pixels; tileH adds the title
+// and subtitle rows.
+func (m Model) immGridTile(iw int) (cols, tileW, tileH int) {
+	cols = m.immGridCols(iw)
+	tileW = max(4, ((iw-(cols-1))/cols)&^1)
+	return cols, tileW, tileW/2 + 2
 }
 
-func (m Model) immersiveRightBudget() int {
-	h := m.height - 2*m.layout.paddingV
-	// Tabs + "Now playing" row + section header.
-	return max(1, h-immTopBarRows-immPlayerBarRows-6)
-}
-
-func (m Model) immersiveTableBudget() int {
-	h := m.height - 2*m.layout.paddingV
-	// Hero block (immHeroArtRows + sub rows) + action row + column header.
-	return max(1, h-immTopBarRows-immPlayerBarRows-immHeroArtRows-5)
-}
-
-func (m Model) immersivePageStep() int {
-	return max(3, m.immersiveTableBudget()-1)
-}
-
-func (m Model) immersiveGridCols() int {
-	w := m.layout.panelWidth
-	center := w - m.immersiveRailWidth(w) - m.immersiveRightWidth(w) - 2*immPaneSep
-	cardW := 16
-	cols := center / (cardW + immCardGap)
+// immGridCols returns the tile column count for a canvas inner width.
+func (m Model) immGridCols(iw int) int {
+	cols := (iw + 1) / (immGridTileW + 1)
 	return clampInt(cols, 1, 8)
 }
 
-// — top bar —
+// — settings canvas tab —
 
-func (m Model) renderImmTopBar(w int) string {
-	left := dimStyle.Render("‹ ›") + "  " + titleStyle.Render("⌂") + "  "
-	var mid string
-	switch {
-	case m.immersive.searching:
-		mid = helpKeyStyle.Render(" / ") + " " + m.immersive.searchQuery + "▌"
-	case m.immersive.railFiltering:
-		mid = helpKeyStyle.Render(" f ") + " filter library: " + m.immersive.railFilter + "▌"
-	default:
-		mid = dimStyle.Render(" / search · what do you want to play?")
-	}
-	prov := ""
-	if m.immersive.prov != nil {
-		prov = m.immersive.prov.Name()
-	}
-	right := dimStyle.Render(prov+"  ") + helpKeyStyle.Render(" I ") + dimStyle.Render(" exit")
-	line := left + mid
-	if pad := w - lipgloss.Width(line) - lipgloss.Width(right); pad > 0 {
-		line += strings.Repeat(" ", pad)
-	}
-	return fitCell(line+right, w)
+// immSettingsRows enumerates the settings tab rows: EQ preset, the ten
+// bands, volume, speed, visualizer mode.
+const (
+	immSetPreset = iota
+	immSetBand0  // bands occupy immSetBand0..immSetBand0+eqBandCount-1
+)
+const immSetVol = immSetBand0 + eqBandCount
+const (
+	immSetSpeed = immSetVol + 1
+	immSetVis   = immSetSpeed + 1
+	immSetCount = immSetVis + 1
+)
+
+var immEQBandLabels = [eqBandCount]string{"70Hz", "180Hz", "320Hz", "600Hz", "1kHz", "3kHz", "6kHz", "12kHz", "14kHz", "16kHz"}
+
+// immSettingsStart is the first settings row drawn in a canvas rows tall:
+// the list scrolls just enough to keep the cursor row visible.
+func immSettingsStart(cursor, rows int) int {
+	return clampInt(cursor-rows+1, 0, max(0, immSetCount-rows))
 }
 
-// — left library rail —
+func (m Model) renderImmSettings(w, rows int) []string {
+	lines := make([]string, 0, rows)
+	var bands [eqBandCount]float64
+	if m.player != nil {
+		bands = m.player.EQBands()
+	}
+	vol := 0.0
+	volMin := -60.0
+	if m.player != nil {
+		vol = m.player.Volume()
+		volMin = m.player.VolumeMin()
+	}
+	volFrac := clampInt(int(immVolBarCells*(vol-volMin)/(6-volMin)), 0, immVolBarCells)
 
-func (m Model) renderImmRail(w, rows int) []string {
-	if m.immersive.railCollapsed {
-		return m.renderImmRailCollapsed(w, rows)
+	visName := "off"
+	if m.vis != nil {
+		visName = m.vis.ModeName()
 	}
-	lines := []string{
-		labelStyle.Render("≡ Your Library"),
-		"",
-	}
-	// Pills: full names when the rail can hold them, initials when it cannot.
-	var pills []string
-	pillLabels := immSectionLabels
-	if w < 28 {
-		pillLabels = [immSectionCount]string{"P", "A", "R"}
-	}
-	for s := immersiveRailSection(0); s < immSectionCount; s++ {
-		label := pillLabels[s]
-		if s == m.immersive.railSection {
-			pills = append(pills, helpKeyStyle.Render("["+label+"]"))
-		} else {
-			pills = append(pills, dimStyle.Render(" "+label+" "))
+	vals := make([]string, immSetCount)
+	names := make([]string, immSetCount)
+	names[immSetPreset] = "EQ preset"
+	vals[immSetPreset] = m.EQPresetName()
+	for i := 0; i < eqBandCount; i++ {
+		names[immSetBand0+i] = immEQBandLabels[i]
+		gain := bands[i]
+		fill := int(gain)
+		if fill < 0 {
+			fill = -fill
 		}
+		fill = fill * 8 / 12
+		vals[immSetBand0+i] = strings.Repeat("▓", fill) + strings.Repeat("░", 8-fill) + fmt.Sprintf(" %+0.0f dB", gain)
 	}
-	lines = append(lines, strings.Join(pills, ""), "")
-	// Filter/sort row.
-	filterRow := dimStyle.Render("f ⌕") + "  " + dimStyle.Render(immRailSortLabels[m.immersive.railSort]+" ≣")
-	if m.immersive.railFilter != "" {
-		filterRow = dimStyle.Render("⌕ ") + trackStyle.Render(m.immersive.railFilter)
+	names[immSetVol] = "Volume"
+	vals[immSetVol] = strings.Repeat("▮", volFrac) + strings.Repeat("▯", immVolBarCells-volFrac) + fmt.Sprintf(" %+0.0f dB", vol)
+	names[immSetSpeed] = "Speed"
+	speed := 1.0
+	if m.player != nil {
+		speed = m.player.Speed()
 	}
-	lines = append(lines, filterRow, "")
+	vals[immSetSpeed] = fmt.Sprintf("%0.2fx", speed)
+	names[immSetVis] = "Visualizer"
+	vals[immSetVis] = visName
 
-	railRows := m.railRows()
-	switch m.immersive.railSection {
-	case immSectionPlaylists:
-		if m.immersive.loadingLists {
-			return append(lines, m.immLoadingLine("playlists"))
-		}
-	case immSectionAlbums:
-		if m.immersive.loadingAlbums {
-			return append(lines, m.immLoadingLine("albums"))
-		}
-	case immSectionArtists:
-		if m.immersive.loadingArtists {
-			return append(lines, m.immLoadingLine("artists"))
-		}
-	}
-	if len(railRows) == 0 {
-		return append(lines, dimStyle.Render("  (empty)"))
-	}
-
-	budget := rows - len(lines)
-	scroll := clampedScroll(m.immersive.railScroll, m.immersive.railCursor, len(railRows), max(1, budget/2))
-	for i := scroll; i < len(railRows) && len(lines) < rows; i++ {
-		r := railRows[i]
-		icon, name, sub := railRowGlyph(r.kind), r.name, r.sub
-		selected := i == m.immersive.railCursor
-		nameStyle := playlistItemStyle
-		iconStyle := dimStyle
-		if selected && m.immersive.focus == immPaneRail {
-			nameStyle = playlistSelectedStyle
-			iconStyle = playlistSelectedStyle
-		}
-		if selected && m.immersive.focus != immPaneRail {
-			iconStyle = playlistActiveStyle
-		}
-		lines = append(lines,
-			iconStyle.Render(icon)+" "+nameStyle.Render(ansi.Truncate(name, max(1, w-4), "…")),
-			"   "+dimStyle.Render(ansi.Truncate(sub, max(1, w-4), "…")))
-	}
-	return lines
-}
-
-func (m Model) renderImmRailCollapsed(w, rows int) []string {
-	lines := []string{labelStyle.Render("≡"), ""}
-	railRows := m.railRows()
-	for i, r := range railRows {
-		if len(lines) >= rows {
-			break
-		}
-		icon := railRowGlyph(r.kind)
-		style := dimStyle
-		if i == m.immersive.railCursor {
-			style = playlistActiveStyle
-			if m.immersive.focus == immPaneRail {
-				style = playlistSelectedStyle
-			}
-		}
-		lines = append(lines, style.Render(" "+icon))
-	}
-	return lines
-}
-
-func railRowGlyph(kind roloItemKind) string {
-	switch kind {
-	case roloKindArtist:
-		return "◯"
-	case roloKindAlbum:
-		return "▧"
-	default:
-		return "▤"
-	}
-}
-
-// — center pane —
-
-func (m Model) renderImmCenter(w, rows int) []string {
-	if m.immersive.roloMode {
-		return m.renderImmRolodexBig(w, rows)
-	}
-	switch m.immersive.view {
-	case immViewPlaylist, immViewAlbum:
-		return m.renderImmTrackView(w, rows, false)
-	case immViewArtist:
-		return m.renderImmTrackView(w, rows, true)
-	case immViewSearch:
-		return m.renderImmTrackView(w, rows, false)
-	default:
-		return m.renderImmHome(w, rows)
-	}
-}
-
-// renderImmHome draws the rolodex strip over a "Jump back in" card grid.
-func (m Model) renderImmHome(w, rows int) []string {
-	lines := m.renderImmRolodexStrip(w)
-	lines = append(lines, "", labelStyle.Render("Jump back in"), "")
-	grid := m.renderImmCardGrid(w, rows-len(lines))
-	return append(lines, grid...)
-}
-
-// — rolodex —
-
-// renderImmRolodexStrip draws the spinning deck: the focused card large and
-// bright, neighbors stepping down in width and brightness to the sides.
-func (m Model) renderImmRolodexStrip(w int) []string {
-	items := m.roloItems()
-	if len(items) == 0 {
-		if m.immersive.loadingLists || m.immersive.loadingAlbums || m.immersive.loadingArtists {
-			return []string{m.immLoadingLine("library")}
-		}
-		return []string{dimStyle.Render("  nothing to browse yet — pick a provider with the library")}
-	}
-	cur := wrapIndex(m.immersive.roloCursor, len(items))
-
-	focusW := clampInt(w/4, 14, 22)
-	neighW := clampInt(w/9, 8, 14)
-
-	// Build columns for offsets -2..+2, fading out.
-	type col struct {
-		lines []string
-		w     int
-	}
-	cols := make([]col, 0, 5)
-	for off := -2; off <= 2; off++ {
-		idx := wrapIndex(cur+off, len(items))
-		cw := neighW
-		depth := off
-		if depth < 0 {
-			depth = -depth
-		}
-		style := dimStyle
-		if off == 0 {
-			cw = focusW
+	for i := immSettingsStart(m.immersive.settingsCursor, rows); i < immSetCount && len(lines) < rows; i++ {
+		style := playlistItemStyle
+		if i == m.immersive.settingsCursor && m.immersive.focus == immPaneCanvas {
 			style = playlistSelectedStyle
 		}
-		card := roloCard(items[idx], cw, immRoloArtRows, style, off == 0, depth)
-		cols = append(cols, col{lines: card, w: cw})
-	}
-	totalW := 0
-	for _, c := range cols {
-		totalW += c.w + 1
-	}
-	pad := max(0, (w-totalW)/2)
-
-	merged := make([]string, 0, immRoloStripRows-1)
-	maxRows := 0
-	for _, c := range cols {
-		if len(c.lines) > maxRows {
-			maxRows = len(c.lines)
-		}
-	}
-	for r := 0; r < maxRows; r++ {
-		line := strings.Repeat(" ", pad)
-		for _, c := range cols {
-			if r < len(c.lines) {
-				line += fitCell(c.lines[r], c.w)
-			} else {
-				line += strings.Repeat(" ", c.w)
-			}
-			line += " "
-		}
-		merged = append(merged, line)
-	}
-	// Position indicator centered under the focused card.
-	pos := fmt.Sprintf("◂ %d/%d ▸", cur+1, len(items))
-	if m.immersive.roloSpin > 0 {
-		pos += " " + dimStyle.Render("≫")
-	}
-	posPad := pad + 2*(neighW+1) + max(0, (focusW-lipgloss.Width(pos))/2)
-	merged = append(merged, strings.Repeat(" ", posPad)+dimStyle.Render(pos))
-	return merged
-}
-
-// roloCard renders one deck card: rounded corners for artists, square for
-// everything else, with the art fill hashed from the item name.
-func roloCard(item roloItem, w, artRows int, style lipgloss.Style, focused bool, depth int) []string {
-	art := immArtBlock(item.title, w-2, artRows-2, focused)
-	top, bottom := "┌", "└"
-	tr, br := "┐", "┘"
-	if item.kind == roloKindArtist {
-		top, bottom, tr, br = "╭", "╰", "╮", "╯"
-	}
-	inner := strings.Repeat("─", w-2)
-	lines := []string{style.Render(top + inner + tr)}
-	for _, row := range art {
-		lines = append(lines, style.Render("│")+row+style.Render("│"))
-	}
-	lines = append(lines, style.Render(bottom+inner+br))
-	if focused {
-		lines = append(lines,
-			playlistSelectedStyle.Render(fitCell(ansi.Truncate(item.title, w, "…"), w)),
-			dimStyle.Render(fitCell(ansi.Truncate(item.sub, w, "…"), w)))
-	} else if depth == 1 {
-		lines = append(lines, dimStyle.Render(fitCell(ansi.Truncate(item.title, w, "…"), w)))
+		name := fmt.Sprintf("%-12s", names[i])
+		lines = append(lines, style.Render("  "+name+ansi.Truncate(vals[i], max(1, w-16), "")))
 	}
 	return lines
+}
+
+// — controls row —
+
+// immGlyphSet selects between plain Unicode and Nerd Font transport glyphs.
+type immGlyphSet struct {
+	shuffle   string
+	prev      string
+	play      string
+	pause     string
+	next      string
+	repeat    string
+	repeatOne string
+	vol       string
+	search    string
+}
+
+var immGlyphsUnicode = immGlyphSet{
+	shuffle: "⇄", prev: "▕◀", play: "▶", pause: "❚❚", next: "▶▏",
+	repeat: "↻", repeatOne: "↺", vol: "♪", search: "⌕",
+}
+
+var immGlyphsNerd = immGlyphSet{
+	shuffle: "\uf074", prev: "\uf048", play: "\uf04b", pause: "\uf04c", next: "\uf051",
+	repeat: "\U000f0456", repeatOne: "\U000f0458", vol: "\uf028", search: "\uf002",
+}
+
+func (m Model) immGlyphs() immGlyphSet {
+	if m.nerdFontGlyphs {
+		return immGlyphsNerd
+	}
+	return immGlyphsUnicode
+}
+
+// immCtrlGeom is one controls-row button's box in content coordinates.
+type immCtrlGeom struct {
+	key string
+	box immRect
+}
+
+// immControlsGeom lays out the centered transport buttons and returns the
+// volume bar rect beside them.
+func (m Model) immControlsGeom(w int) ([]immCtrlGeom, immRect) {
+	keys := []string{"z", "<", " ", ">", "r"}
+	widths := []int{immCtrlBtnW, immCtrlBtnW, immCtrlPlayW, immCtrlBtnW, immCtrlBtnW}
+	total := 0
+	for _, bw := range widths {
+		total += bw + 1
+	}
+	x := max(0, (w-total)/2)
+	y := m.immGeom().ctrlY
+	btns := make([]immCtrlGeom, 0, len(keys))
+	for i, k := range keys {
+		btns = append(btns, immCtrlGeom{key: k, box: immRect{X: x, Y: y, W: widths[i], H: immCtrlRows}})
+		x += widths[i] + 1
+	}
+	// The volume bar sits on the middle controls row just right of the group.
+	// x already includes the gap after the last button; the bar follows the
+	// glyph and one space (see renderImmControls).
+	vol := immRect{X: x + 1 + lipgloss.Width(m.immGlyphs().vol), Y: y + 1, W: immVolBarCells, H: 1}
+	return btns, vol
+}
+
+// renderImmControls draws the 3-row transport buttons centered under the
+// canvas with the volume bar beside them.
+func (m Model) renderImmControls(g immGeom) []string {
+	rows := []string{strings.Repeat(" ", g.w), strings.Repeat(" ", g.w), strings.Repeat(" ", g.w)}
+	btns, _ := m.immControlsGeom(g.w)
+	gl := m.immGlyphs()
+	glyphs := []string{gl.shuffle, gl.prev, gl.play, gl.next, gl.repeat}
+	if m.isPlaying() {
+		glyphs[2] = gl.pause
+	}
+	if m.playlist != nil && m.playlist.Repeat() == playlist.RepeatOne {
+		glyphs[4] = gl.repeatOne
+	}
+	active := func(i int) bool {
+		if m.playlist == nil {
+			return false
+		}
+		switch i {
+		case 0:
+			return m.playlist.Shuffled()
+		case 4:
+			return m.playlist.Repeat() != 0
+		}
+		return false
+	}
+	for r := 0; r < immCtrlRows; r++ {
+		var line strings.Builder
+		x := 0
+		for i, b := range btns {
+			if b.box.X > x {
+				line.WriteString(strings.Repeat(" ", b.box.X-x))
+			}
+			border := dimStyle
+			glyphStyle := playlistItemStyle
+			if active(i) {
+				border = playlistActiveStyle
+			}
+			if i == 2 {
+				glyphStyle = statusStyle
+			}
+			bw := b.box.W
+			switch r {
+			case 0:
+				line.WriteString(border.Render("╭" + strings.Repeat("─", bw-2) + "╮"))
+			case 1:
+				mid := (bw - 2 - lipgloss.Width(glyphs[i])) / 2
+				line.WriteString(border.Render("│") +
+					glyphStyle.Render(strings.Repeat(" ", mid)+glyphs[i]+strings.Repeat(" ", max(0, bw-2-mid-lipgloss.Width(glyphs[i])))) +
+					border.Render("│"))
+			case 2:
+				line.WriteString(border.Render("╰" + strings.Repeat("─", bw-2) + "╯"))
+			}
+			x = b.box.X + bw
+		}
+		if r == 1 {
+			volText := " " + gl.vol + " " + m.immVolBar() + fmt.Sprintf(" %+0.0fdB", m.playerVolume())
+			line.WriteString(fitCell(volText, max(0, g.w-x)))
+		}
+		rows[r] = fitCell(line.String(), g.w)
+	}
+	return rows
+}
+
+// playerVolume guards the render path against a nil player in tests.
+func (m Model) playerVolume() float64 {
+	if m.player == nil {
+		return 0
+	}
+	return m.player.Volume()
+}
+
+// immVolBar draws the six-cell volume meter used in the controls row.
+func (m Model) immVolBar() string {
+	volMin := -60.0
+	vol := m.playerVolume()
+	if m.player != nil {
+		volMin = m.player.VolumeMin()
+	}
+	frac := 0
+	if vol > volMin {
+		frac = clampInt(int(immVolBarCells*(vol-volMin)/(6-volMin)), 0, immVolBarCells)
+	}
+	return volBarStyle.Render(strings.Repeat("▮", frac) + strings.Repeat("▯", immVolBarCells-frac))
+}
+
+// — progress bar —
+
+// renderImmProgress draws `elapsed ━━━━╾──── total` as a thin line that
+// moves in half-cell steps.
+func (m Model) renderImmProgress(w int) string {
+	pos := m.cachedPos
+	dur := m.cachedDur
+	posText := formatTrackTime(int(pos.Seconds()))
+	durText := formatTrackTime(int(dur.Seconds()))
+	if durText == "" {
+		durText = "--:--"
+	}
+	if posText == "" {
+		posText = "0:00"
+	}
+	barW := max(4, w-lipgloss.Width(posText)-lipgloss.Width(durText)-2)
+	halves := 0
+	if dur > 0 {
+		halves = clampInt(int(float64(pos)/float64(dur)*float64(barW)*2), 0, barW*2)
+	}
+	full, half := halves/2, halves%2
+	var bar strings.Builder
+	bar.WriteString(seekFillStyle.Render(strings.Repeat(immBarPlayed, full) + strings.Repeat(immBarHalf, half)))
+	bar.WriteString(seekDimStyle.Render(strings.Repeat(immBarTrack, barW-full-half)))
+	return dimStyle.Render(posText) + " " + bar.String() + " " + dimStyle.Render(durText)
+}
+
+// renderImmStatusLine is the transient message + key-hint row.
+func (m Model) renderImmStatusLine(w int) string {
+	if line := m.renderTransient(); line != "" {
+		return fitCell(line, w)
+	}
+	hints := "I exit · tab focus · hjkl move · 1-5 pills · / search · v view · t sort · f filter · e EQ · q queue · V vis · click open/play · drag seek"
+	return fitCell(dimStyle.Render(hints), w)
+}
+
+// playingContextName names the list the live queue is playing from.
+func (m Model) playingContextName() string {
+	if m.loadedPlaylist != "" {
+		return m.loadedPlaylist
+	}
+	if m.activeProviderPlaylistID != "" {
+		for _, l := range m.immersive.lists {
+			if l.ID == m.activeProviderPlaylistID {
+				return l.Name
+			}
+		}
+	}
+	return ""
 }
 
 // immArtBlock draws a deterministic shade-glyph mosaic stand-in for cover art.
@@ -437,7 +1137,7 @@ func immArtBlock(name string, w, h int, bright bool) []string {
 		}
 		lines = append(lines, style.Render(row.String()))
 	}
-	// Center a note glyph on the focused card so it reads as a cover, not noise.
+	// Center a note glyph on the bright card so it reads as a cover, not noise.
 	if bright && h >= 3 && w >= 4 {
 		mid := h / 2
 		padL := (w - 3) / 2
@@ -445,505 +1145,4 @@ func immArtBlock(name string, w, h int, bright bool) []string {
 		lines[mid] = style.Render(strings.Repeat(fill, padL) + " ♪ " + strings.Repeat(fill, max(0, w-padL-3)))
 	}
 	return lines
-}
-
-// renderImmRolodexBig fills the center pane with the wheel (`o` mode).
-func (m Model) renderImmRolodexBig(w, rows int) []string {
-	items := m.roloItems()
-	if len(items) == 0 {
-		return []string{dimStyle.Render("  empty deck")}
-	}
-	artRows := clampInt(rows/3, immRoloArtRows, 9)
-	cur := wrapIndex(m.immersive.roloCursor, len(items))
-	layout, pad, topPad := m.immRoloBigLayout(w, rows)
-
-	type col struct {
-		lines []string
-		w     int
-	}
-	cols := make([]col, 0, len(layout))
-	for _, lc := range layout {
-		idx := wrapIndex(cur+lc.off, len(items))
-		depth := lc.off
-		if depth < 0 {
-			depth = -depth
-		}
-		style := dimStyle
-		if lc.off == 0 {
-			style = playlistSelectedStyle
-		}
-		cols = append(cols, col{lines: roloCard(items[idx], lc.w, artRows, style, lc.off == 0, depth), w: lc.w})
-	}
-	var merged []string
-	for i := 0; i < topPad; i++ {
-		merged = append(merged, "")
-	}
-	maxRows := 0
-	for _, c := range cols {
-		if len(c.lines) > maxRows {
-			maxRows = len(c.lines)
-		}
-	}
-	for r := 0; r < maxRows; r++ {
-		line := strings.Repeat(" ", pad)
-		for _, c := range cols {
-			if r < len(c.lines) {
-				line += fitCell(c.lines[r], c.w)
-			} else {
-				line += strings.Repeat(" ", c.w)
-			}
-			line += " "
-		}
-		merged = append(merged, line)
-	}
-	pos := fmt.Sprintf("◂ %d/%d ▸   h/l spin · enter %s · o close", cur+1, len(items), roloEnterVerb(items[cur].kind))
-	merged = append(merged, "", strings.Repeat(" ", max(0, (w-lipgloss.Width(pos))/2))+dimStyle.Render(pos))
-	return merged
-}
-
-func roloEnterVerb(kind roloItemKind) string {
-	if kind == roloKindTrack {
-		return "plays"
-	}
-	return "opens"
-}
-
-// — card grid —
-
-func (m Model) renderImmCardGrid(w, rows int) []string {
-	items := m.roloItems()
-	if len(items) == 0 {
-		return nil
-	}
-	cols := m.immersiveGridCols()
-	cardW := max(10, (w-(cols-1)*immCardGap)/cols)
-	gridCursor := clampInt(m.immersive.gridCursor, 0, len(items)-1)
-
-	// A card row is art+labels+blank lines tall; scroll rows so the focused
-	// card stays on screen.
-	rowH := immCardArtRows + 3
-	visibleRows := max(1, rows/rowH)
-	curRow := gridCursor / cols
-	firstRow := 0
-	if curRow >= visibleRows {
-		firstRow = curRow - visibleRows + 1
-	}
-
-	var lines []string
-	for start := firstRow * cols; start < len(items) && len(lines) < rows; start += cols {
-		var rowLines []string
-		for r := 0; r < immCardArtRows+2; r++ {
-			rowLines = append(rowLines, "")
-		}
-		for c := 0; c < cols && start+c < len(items); c++ {
-			idx := start + c
-			item := items[idx]
-			focused := idx == gridCursor && m.immersive.focus == immPaneCenter && m.immersive.zone == zoneGrid
-			style := dimStyle
-			if focused {
-				style = playlistSelectedStyle
-			}
-			card := gridCard(item, cardW, style, focused)
-			for r := 0; r < len(card) && r < len(rowLines); r++ {
-				rowLines[r] += fitCell(card[r], cardW)
-				if c < cols-1 {
-					rowLines[r] += strings.Repeat(" ", immCardGap)
-				}
-			}
-		}
-		lines = append(lines, rowLines...)
-		lines = append(lines, "")
-	}
-	return lines
-}
-
-// gridCard is a small collection card: square for playlists/albums, round for
-// artists, art mosaic inside, name and subtitle below.
-func gridCard(item roloItem, w int, style lipgloss.Style, focused bool) []string {
-	art := immArtBlock(item.title, w-2, immCardArtRows-2, focused)
-	top, bottom, tr, br := "┌", "└", "┐", "┘"
-	if item.kind == roloKindArtist {
-		top, bottom, tr, br = "╭", "╰", "╮", "╯"
-	}
-	inner := strings.Repeat("─", max(0, w-2))
-	lines := []string{style.Render(top + inner + tr)}
-	for _, row := range art {
-		lines = append(lines, style.Render("│")+row+style.Render("│"))
-	}
-	lines = append(lines, style.Render(bottom+inner+br))
-	lines = append(lines,
-		style.Render(fitCell(ansi.Truncate(item.title, w, "…"), w)),
-		dimStyle.Render(fitCell(ansi.Truncate(item.sub, w, "…"), w)))
-	return lines
-}
-
-// — track-table views (playlist / album / artist / search) —
-
-func (m Model) renderImmTrackView(w, rows int, circleArt bool) []string {
-	var lines []string
-	// Hero: art block + kicker/title/sub.
-	artW := min(immHeroArtRows*3, max(12, w/4))
-	art := immArtBlock(m.immersive.ctxName, artW, immHeroArtRows-1, true)
-	kicker := "Playlist"
-	switch m.immersive.view {
-	case immViewAlbum:
-		kicker = "Album"
-	case immViewArtist:
-		kicker = "Artist"
-	case immViewSearch:
-		kicker = "Search results"
-	}
-	heroText := []string{
-		dimStyle.Render(kicker),
-		"",
-		titleStyle.Render(ansi.Truncate(m.immersive.ctxName, max(1, w-artW-4), "…")),
-		"",
-		dimStyle.Render(ansi.Truncate(m.immersive.ctxSub, max(1, w-artW-4), "…")),
-		"",
-	}
-	for i := 0; i < immHeroArtRows; i++ {
-		var artRow string
-		if i < len(art) {
-			artRow = fitCell(art[i], artW)
-		} else {
-			artRow = strings.Repeat(" ", artW)
-		}
-		text := ""
-		if i < len(heroText) {
-			text = heroText[i]
-		}
-		lines = append(lines, artRow+"  "+text)
-	}
-	// Action row.
-	lines = append(lines,
-		helpKeyStyle.Render(" ▶ ")+dimStyle.Render(" play  ")+
-			helpKeyStyle.Render(" z ")+dimStyle.Render(" shuffle  ")+
-			helpKeyStyle.Render(" t ")+dimStyle.Render(" sort: "+immSortTrackLabels[m.immersive.trackSort]+"  ")+
-			helpKeyStyle.Render(" o ")+dimStyle.Render(" rolodex"),
-		"")
-
-	if m.immersive.tracksLoading || m.immersive.artistLoading {
-		what := m.immersive.ctxName
-		if what == "" {
-			what = "tracks"
-		}
-		return append(lines, m.immLoadingLine(what))
-	}
-	tracks := m.sortedTracks()
-	if len(tracks) == 0 {
-		return append(lines, dimStyle.Render("  (empty)"))
-	}
-
-	// Column header with the sort marker on the active column.
-	header := m.immTableHeader(w)
-	lines = append(lines, header, dimStyle.Render(strings.Repeat("─", w)))
-	return append(lines, m.immTableRows(w, rows-len(lines), tracks)...)
-}
-
-func (m Model) immTableHeader(w int) string {
-	durW := 6
-	numW := 4
-	albumW := max(10, w/4)
-	titleW := max(10, w-numW-albumW-durW-3)
-	mark := func(col immersiveTrackSort) string {
-		if m.immersive.trackSort == col && m.immersive.trackSort != immSortTrackOrder {
-			return " ↓"
-		}
-		return ""
-	}
-	return dimStyle.Render(
-		fitCell("  #", numW) +
-			fitCell("Title"+mark(immSortTrackTitle), titleW) +
-			fitCell("Album"+mark(immSortTrackAlbum), albumW) +
-			fitCell("⏱"+mark(immSortTrackDuration), durW))
-}
-
-func (m Model) immTableRows(w, rows int, tracks []playlist.Track) []string {
-	durW := 6
-	numW := 4
-	albumW := max(10, w/4)
-	titleW := max(10, w-numW-albumW-durW-3)
-	budget := max(1, rows)
-	scroll := clampedScroll(m.immersive.trackScroll, m.immersive.trackCursor, len(tracks), budget)
-	playing, _ := m.currentPlaybackTrack()
-	var lines []string
-	for i := scroll; i < len(tracks) && len(lines) < budget; i++ {
-		t := tracks[i]
-		selected := i == m.immersive.trackCursor
-		name := trackViewName(t)
-		if t.Title != "" && t.Artist != "" {
-			name = t.Title + " · " + t.Artist
-		}
-		nameCell := fitCell(ansi.Truncate(name, max(1, titleW-2), "…"), titleW)
-		albumCell := fitCell(ansi.Truncate(t.Album, max(1, albumW-1), "…"), albumW)
-		dur := formatTrackTime(t.DurationSecs)
-		durCell := fitCell(dur, durW)
-		num := fmt.Sprintf("%*d", numW-1, i+1) + " "
-		style := playlistItemStyle
-		numStyle := dimStyle
-		switch {
-		case t.Path == playing.Path && playing.Path != "":
-			num = fmt.Sprintf("%*s", numW-1, "♪") + " "
-			style = playlistActiveStyle
-			numStyle = playlistActiveStyle
-		case selected:
-			style = playlistSelectedStyle
-			numStyle = playlistSelectedStyle
-		}
-		if t.Unplayable {
-			style = playlistUnavailableStyle
-			if selected {
-				style = dimStyle
-			}
-		}
-		lines = append(lines, numStyle.Render(num)+style.Render(nameCell)+dimStyle.Render(albumCell)+dimStyle.Render(durCell))
-	}
-	return lines
-}
-
-// — right rail —
-
-func (m Model) renderImmRight(w, rows int) []string {
-	// Tabs.
-	var tabs []string
-	for t := immersiveRightTab(0); t < immTabCount; t++ {
-		label := "Now playing"
-		if t == immTabQueue {
-			label = "Queue"
-		}
-		if t == m.immersive.rightTab {
-			tabs = append(tabs, helpKeyStyle.Render(" "+label+" "))
-		} else {
-			tabs = append(tabs, dimStyle.Render(" "+label+" "))
-		}
-	}
-	lines := []string{strings.Join(tabs, ""), ""}
-	if m.immersive.rightTab == immTabQueue {
-		return append(lines, m.renderImmQueue(w, rows-len(lines))...)
-	}
-	return append(lines, m.renderImmNowPlaying(w, rows-len(lines))...)
-}
-
-func (m Model) renderImmNowPlaying(w, rows int) []string {
-	track, _ := m.currentPlaybackTrack()
-	name := track.Title
-	if name == "" {
-		name = trackViewName(track)
-	}
-	if name == "" {
-		name = "Nothing playing"
-	}
-	var lines []string
-	ctx := m.playingContextName()
-	if ctx != "" {
-		lines = append(lines, labelStyle.Render(ansi.Truncate(ctx, max(1, w), "…")), "")
-	}
-	art := immArtBlock(name, w-4, min(6, rows/3), true)
-	lines = append(lines, art...)
-	lines = append(lines, "")
-	liked := ""
-	if m.favSet != nil {
-		if _, ok := m.favSet[track.Path]; ok {
-			liked = " " + favMarkerStyle.Render(favHeart)
-		}
-	}
-	lines = append(lines,
-		playlistActiveStyle.Render(ansi.Truncate(name, max(1, w-3), "…"))+liked,
-		dimStyle.Render(ansi.Truncate(track.Artist, max(1, w), "…")),
-		"")
-	if m.immersive.artistLoading {
-		lines = append(lines, dimStyle.Render("About the artist"), m.immLoadingLine("artist"))
-	} else if d := m.immersive.artistMeta; d.Info.Name != "" {
-		lines = append(lines, labelStyle.Render("About the artist"), "")
-		lines = append(lines, immArtBlock(d.Info.Name, w-4, 3, false)...)
-		lines = append(lines, playlistItemStyle.Render(d.Info.Name))
-		if d.Followers > 0 {
-			lines = append(lines, dimStyle.Render(fmt.Sprintf("%s monthly listeners", commaNum(d.Followers))))
-		}
-		if len(d.Genres) > 0 {
-			lines = append(lines, dimStyle.Render(ansi.Truncate(strings.Join(d.Genres, ", "), max(1, w), "…")))
-		}
-	}
-	return lines
-}
-
-func (m Model) renderImmQueue(w, rows int) []string {
-	var lines []string
-	track, _ := m.currentPlaybackTrack()
-	if name := trackViewName(track); name != "" {
-		lines = append(lines, dimStyle.Render("Now playing"),
-			playlistActiveStyle.Render("♪ "+ansi.Truncate(name, max(1, w-3), "…")))
-		if track.Artist != "" {
-			lines = append(lines, "  "+dimStyle.Render(ansi.Truncate(track.Artist, max(1, w-3), "…")))
-		}
-		lines = append(lines, "")
-	}
-	ctx := m.playingContextName()
-	if ctx == "" {
-		ctx = "queue"
-	}
-	lines = append(lines, dimStyle.Render("Next from: "+ctx))
-	total := m.playlist.QueueLen()
-	if total == 0 {
-		lines = append(lines, "", dimStyle.Render("  (queue empty — 'a' on a track adds it)"))
-		return lines
-	}
-	budget := max(1, rows-len(lines))
-	scroll := clampedScroll(m.immersive.rightScroll, m.immersive.rightCursor, total, budget)
-	for i := scroll; i < total && len(lines) < rows; i++ {
-		tracks := m.playlist.QueueWindow(i, 1)
-		if len(tracks) == 0 {
-			break
-		}
-		t := tracks[0]
-		name := t.Title
-		if name == "" {
-			name = trackViewName(t)
-		}
-		if t.Artist != "" && t.Title != "" {
-			name += " · " + t.Artist
-		}
-		style := playlistItemStyle
-		num := dimStyle.Render(fmt.Sprintf("%2d ", i+1))
-		if i == m.immersive.rightCursor && m.immersive.focus == immPaneRight {
-			style = playlistSelectedStyle
-			num = playlistSelectedStyle.Render(fmt.Sprintf("%2d ", i+1))
-		}
-		lines = append(lines, num+style.Render(ansi.Truncate(name, max(1, w-4), "…")))
-	}
-	return lines
-}
-
-// playingContextName names the list the live queue is playing from.
-func (m Model) playingContextName() string {
-	if m.loadedPlaylist != "" {
-		return m.loadedPlaylist
-	}
-	if m.activeProviderPlaylistID != "" {
-		for _, l := range m.immersive.lists {
-			if l.ID == m.activeProviderPlaylistID {
-				return l.Name
-			}
-		}
-	}
-	return ""
-}
-
-// — player bar —
-
-// immPlayerLeft is the truncated now-playing label on the player bar's left.
-func (m Model) immPlayerLeft() string {
-	track, _ := m.currentPlaybackTrack()
-	name := trackViewName(track)
-	if name == "" {
-		name = "—"
-	}
-	liked := " "
-	if m.favSet != nil {
-		if _, ok := m.favSet[track.Path]; ok {
-			liked = " " + favMarkerStyle.Render(favHeart) + " "
-		}
-	}
-	left := dimStyle.Render("♪ ") + trackStyle.Render(name)
-	if track.Artist != "" {
-		left += dimStyle.Render(" — " + track.Artist)
-	}
-	left += liked
-	w := m.layout.panelWidth
-	if w <= 0 {
-		w = 74
-	}
-	return ansi.Truncate(left, max(1, w/3), "…")
-}
-
-// immTransportGlyphs are the player-bar transport buttons in draw order with
-// the key each one acts as when clicked.
-func (m Model) immTransportGlyphs() (glyphs []string, keys []string) {
-	play := "▶"
-	if m.isPlaying() {
-		play = "⏸"
-	}
-	return []string{"≀", "⏮", play, "⏭", "↻"}, []string{"z", "<", " ", ">", "r"}
-}
-
-func (m Model) renderImmPlayerBar(w int) string {
-	left := m.immPlayerLeft()
-
-	shufStyle, repStyle := dimStyle, dimStyle
-	if m.playlist != nil && m.playlist.Shuffled() {
-		shufStyle = playlistActiveStyle
-	}
-	if m.playlist != nil && m.playlist.Repeat() != 0 {
-		repStyle = playlistActiveStyle
-	}
-	glyphs, _ := m.immTransportGlyphs()
-	transport := shufStyle.Render(glyphs[0]) + "  " + dimStyle.Render(glyphs[1]) + "  " +
-		statusStyle.Render(glyphs[2]) + "  " + dimStyle.Render(glyphs[3]) + "  " + repStyle.Render(glyphs[4])
-
-	var vol float64
-	volMin := -60.0
-	if m.player != nil {
-		vol = m.player.Volume()
-		volMin = m.player.VolumeMin()
-	}
-	volFrac := 0
-	if vol > volMin {
-		volFrac = clampInt(int(6*(vol-volMin)/(6-volMin)), 0, 6)
-	}
-	volBar := strings.Repeat("▮", volFrac) + strings.Repeat("▯", 6-volFrac)
-	right := dimStyle.Render(volBar+fmt.Sprintf(" %+0.0fdB  ", vol)) +
-		dimStyle.Render("≣ q") + "  " + dimStyle.Render("◈ V")
-
-	line := left
-	midPad := max(1, (w-lipgloss.Width(transport))/2-lipgloss.Width(line))
-	line += strings.Repeat(" ", midPad) + transport
-	rightPad := max(1, w-lipgloss.Width(line)-lipgloss.Width(right))
-	line += strings.Repeat(" ", rightPad) + right
-	return fitCell(line, w)
-}
-
-func (m Model) renderImmSeekRow(w int) string {
-	pos := m.cachedPos
-	dur := m.cachedDur
-	posText := formatTrackTime(int(pos.Seconds()))
-	durText := formatTrackTime(int(dur.Seconds()))
-	if durText == "" {
-		durText = "--:--"
-	}
-	if posText == "" {
-		posText = "0:00"
-	}
-	barW := max(4, w-lipgloss.Width(posText)-lipgloss.Width(durText)-4)
-	var fill float64
-	if dur > 0 {
-		fill = float64(pos) / float64(dur)
-	}
-	head := clampInt(int(fill*float64(barW)), 0, barW-1)
-	bar := seekFillStyle.Render(strings.Repeat(seekFillGlyph, head)) +
-		seekFillStyle.Render(seekHeadGlyph) +
-		seekDimStyle.Render(strings.Repeat(seekEmptyGlyph, barW-head-1))
-	return dimStyle.Render(posText) + " " + bar + " " + dimStyle.Render(durText)
-}
-
-// renderImmStatusLine is the transient message + key-hint row.
-func (m Model) renderImmStatusLine(w int) string {
-	if line := m.renderTransient(); line != "" {
-		return fitCell(line, w)
-	}
-	hints := "I exit · tab panes · hjkl move · ⏎ open/play · / search · o rolodex · q queue · V vis · click open/play · drag seek"
-	return fitCell(dimStyle.Render(hints), w)
-}
-
-// immLoadingLine renders an animated loading indicator naming what is coming.
-func (m Model) immLoadingLine(what string) string {
-	return dimStyle.Render("  " + m.immSpin() + " loading " + what + "…")
-}
-
-// commaNum renders 1234567 as 1,234,567 for artist follower counts.
-func commaNum(n int) string {
-	s := fmt.Sprintf("%d", n)
-	for i := len(s) - 3; i > 0; i -= 3 {
-		s = s[:i] + "," + s[i:]
-	}
-	return s
 }

@@ -1,63 +1,99 @@
 package model
 
-// immersive.go implements the prototype "immersive" Spotify-style mode: a
-// three-pane presentation layer (library rail / content pane / now-playing or
-// queue rail) plus a bottom player bar, laid over the same provider data and
-// player the normal TUI already drives. No new data plumbing — the pane reads
-// the provider's existing playlist/artist/album/track/search surfaces.
+// immersive.go implements the v1 immersive frame: a full-width visualizer
+// band, a nav-pill row, a two-column body (Now Playing + Queue on the left,
+// the section canvas on the right), a centered controls row, and an
+// eighth-block progress bar — over the same provider data and player the
+// normal TUI already drives. No new data plumbing: the canvas reads the
+// provider's existing playlist/artist/album/show/search surfaces.
 //
-// Normal mode is untouched while the mode is off: `I` toggles it, every key
-// and renderer lives behind m.immersive.active, and exiting restores the
-// regular screens exactly where they were.
+// The mode stays opt-in: `I` toggles it (or `immersive = true` in config),
+// every key and renderer lives behind m.immersiveShown(), and the classic
+// layout takes over whenever the terminal is too small for the wireframe.
+// Cover art is still the shade-glyph placeholder (immArtBlock); every box
+// art occupies is a fixed cell-aligned rect exposed via ImmersiveArtRects()
+// so a later image layer can blit into the same rectangles.
 
 import (
 	"context"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/bjarneo/cliamp/playlist"
 	"github.com/bjarneo/cliamp/provider"
-	"github.com/bjarneo/cliamp/ui"
 )
 
-// immersivePane identifies which pane of the frame holds keyboard focus.
+// immersivePane identifies which region of the frame holds keyboard focus.
 type immersivePane int
 
 const (
-	immPaneRail immersivePane = iota
-	immPaneCenter
-	immPaneRight
+	immPaneNav    immersivePane = iota // nav pill row
+	immPaneCanvas                      // section canvas (right column)
+	immPaneQueue                       // queue panel (left column)
 	immPaneCount
 )
 
-// immersiveRailSection is the active library-rail filter pill.
-type immersiveRailSection int
+// immSection is a nav-pill destination — what the canvas browses.
+type immSection int
 
 const (
-	immSectionPlaylists immersiveRailSection = iota
-	immSectionAlbums
-	immSectionArtists
-	immSectionCount
+	immSecPlaylists immSection = iota
+	immSecArtists
+	immSecSearch
+	immSecAlbums
+	immSecPodcasts
+	immSecCount
 )
 
-var immSectionLabels = [immSectionCount]string{"Playlists", "Albums", "Artists"}
+// immSectionOrder is the visual pill order: two pills left of the wide
+// center search pill, two pills right of it.
+var immSectionOrder = [immSecCount]immSection{
+	immSecPlaylists, immSecArtists, immSecSearch, immSecAlbums, immSecPodcasts,
+}
 
-// immersiveView identifies what the center pane is showing.
+var immSectionLabels = [immSecCount]string{
+	"Playlists", "Artists", "Search", "Albums", "Podcasts",
+}
+
+// immersiveView identifies what the canvas is showing.
 type immersiveView int
 
 const (
-	immViewHome     immersiveView = iota // rolodex + card grid
-	immViewPlaylist                      // hero + track table
-	immViewAlbum                         // hero + track table
-	immViewArtist                        // artist hero + popular tracks
-	immViewSearch                        // search results table
+	immViewBrowse   immersiveView = iota // item list of the active section
+	immViewPlaylist                      // opened playlist's tracks
+	immViewAlbum                         // opened album's tracks
+	immViewArtist                        // artist detail (popular tracks)
+	immViewShow                          // podcast show episodes
+	immViewSearch                        // search results
+	immViewSettings                      // settings/EQ tab (key-only, no pill)
 )
 
-// immersiveTrackSort is the client-side track-table ordering.
+// isTrackView reports whether the canvas shows a track list (detail or
+// search results) rather than a collection browse or the settings tab.
+func (v immersiveView) isTrackView() bool {
+	switch v {
+	case immViewPlaylist, immViewAlbum, immViewArtist, immViewShow, immViewSearch:
+		return true
+	}
+	return false
+}
+
+// immCanvasMode is the canvas presentation style cycled by `v`.
+type immCanvasMode int
+
+const (
+	immCanvasList immCanvasMode = iota // one line per item
+	immCanvasRows                      // 3-row blocks with an art box
+	immCanvasGrid                      // art tiles with titles below
+	immCanvasModeCount
+)
+
+var immCanvasModeNames = [immCanvasModeCount]string{"list", "rows", "grid"}
+
+// immersiveTrackSort is the client-side track-list ordering.
 type immersiveTrackSort int
 
 const (
@@ -70,84 +106,72 @@ const (
 
 var immSortTrackLabels = [immSortTrackCount]string{"#", "title", "album", "time"}
 
-// immersiveRightTab is the active right-rail tab.
-type immersiveRightTab int
+// immBrowseSort cycles the browse canvas's client-side ordering.
+type immBrowseSort int
 
 const (
-	immTabNowPlaying immersiveRightTab = iota
-	immTabQueue
-	immTabCount
+	immBrowseSortRecents immBrowseSort = iota // provider order
+	immBrowseSortAlpha                        // case-insensitive by name
+	immBrowseSortCount
 )
 
-// immRailSort cycles the rail's client-side ordering.
-type immRailSort int
+var immBrowseSortLabels = [immBrowseSortCount]string{"recents", "a-z"}
+
+// immItemKind distinguishes what a canvas item opens into.
+type immItemKind int
 
 const (
-	immRailSortRecents immRailSort = iota // provider order
-	immRailSortAlpha                      // case-insensitive by name
-	immRailSortCount
+	immKindPlaylist immItemKind = iota
+	immKindAlbum
+	immKindArtist
+	immKindShow // podcast show
+	immKindTrack
 )
 
-var immRailSortLabels = [immRailSortCount]string{"recents", "a-z"}
-
-// roloItem is one card in the rolodex strip. kind mirrors the rail section the
-// item came from (or immKindTrack for the song picker).
-type roloItemKind int
-
-const (
-	roloKindPlaylist roloItemKind = iota // square card
-	roloKindAlbum                        // square card
-	roloKindArtist                       // circle card
-	roloKindTrack                        // square card (song picker)
-)
-
-type roloItem struct {
-	kind  roloItemKind
+// immItem is one selectable canvas row: a collection in a browse view or a
+// track in a detail/search view (id then holds its index in sortedTracks()).
+type immItem struct {
+	kind  immItemKind
 	id    string
 	title string
-	sub   string
+	sub   string // artist / playlist summary / show author
+	sub2  string // album (tracks only)
+	dur   int    // seconds; tracks only
+	path  string // tracks only: used to mark the playing row
 }
 
-// centerZone tracks which sub-region of the center pane is focused.
-type centerZone int
-
+// Minimum terminal size for the immersive frame; below it the classic
+// layout takes over automatically.
 const (
-	zoneRolo  centerZone = iota // rolodex strip (home) / full rolodex
-	zoneGrid                    // card grid (home below rolodex)
-	zoneTable                   // track table (playlist/album/artist/search)
+	immMinWidth  = 80
+	immMinHeight = 24
 )
 
-// immNavSnap is one entry on the center-pane back stack.
+// immNavSnap is one entry on the canvas back stack.
 type immNavSnap struct {
-	view        immersiveView
-	ctxID       string
-	ctxName     string
-	ctxSub      string
-	ctxKind     roloItemKind
-	tracks      []playlist.Track
-	trackCursor int
-	trackScroll int
-	gridCursor  int
-	roloCursor  int
+	view      immersiveView
+	ctxID     string
+	ctxName   string
+	ctxSub    string
+	ctxKind   immItemKind
+	tracks    []playlist.Track
+	trackSort immersiveTrackSort
+	cursor    int
+	scroll    int
 }
 
-// immersiveState holds every piece of the immersive mode. It is the one state
-// block the mode touches, so leaving immersive never disturbs normal state.
+// immersiveState holds every piece of the immersive mode. It is the one
+// state block the mode touches, so leaving immersive never disturbs normal
+// state.
 type immersiveState struct {
 	active bool
-	prov   playlist.Provider // provider the pane is browsing
+	prov   playlist.Provider // provider the canvas is browsing
 	focus  immersivePane
-	zone   centerZone // focus within the center pane
 
-	// — library rail —
-	railCollapsed bool
-	railSection   immersiveRailSection
-	railCursor    int
-	railScroll    int
-	railFiltering bool
-	railFilter    string
-	railSort      immRailSort
+	// — nav pills —
+	section immSection
 
+	// — section data —
 	lists          []playlist.PlaylistInfo
 	albums         []provider.AlbumInfo
 	artists        []provider.ArtistInfo
@@ -155,44 +179,39 @@ type immersiveState struct {
 	loadingAlbums  bool
 	loadingArtists bool
 
-	// — center pane —
-	view    immersiveView
-	ctxID   string // playlist/album/artist id the open view belongs to
-	ctxName string
-	ctxSub  string // hero subtitle line: "Public Playlist", artist name, …
-	ctxKind roloItemKind
+	// — canvas —
+	view      immersiveView
+	mode      immCanvasMode
+	ctxID     string // playlist/album/artist/show id the open view belongs to
+	ctxName   string
+	ctxSub    string
+	ctxKind   immItemKind
+	cursor    int // item index into canvasItems()/sortedTracks()
+	scroll    int // first visible item (list/rows) or tile row (grid)
+	filtering bool
+	filter    string
+	sort      immBrowseSort
 
 	tracks        []playlist.Track
 	tracksLoading bool
-	trackCursor   int
-	trackScroll   int
 	trackSort     immersiveTrackSort
-	gridCursor    int
 	back          []immNavSnap
 
-	// — rolodex —
-	roloMode    bool          // true = the rolodex owns the whole center pane
-	roloCursor  int           // index into roloItems()
-	roloSpin    int           // pending animated steps (magnitude)
-	roloSpinDir int           // +1 right, -1 left
-	roloSpinFor time.Duration // elapsed since the last consumed step
+	settingsReturn immersiveView // view `e` returns to
+	settingsCursor int           // row inside the settings tab
 
-	// — right rail —
-	rightTab      immersiveRightTab
-	rightCursor   int
-	rightScroll   int
-	artistMeta    provider.ArtistDetail
-	artistMetaFor string // artist name the cached detail belongs to
-	artistLoading bool
+	// — queue panel —
+	queueCursor int
+	queueScroll int
 
-	// — top-bar search —
-	searching     bool
-	searchQuery   string
-	searchResults []playlist.Track
+	// — search pill input —
+	searching   bool
+	searchQuery string
+
 	searchLoading bool
 
-	// spin advances on every tick while any immersive fetch is in
-	// flight, driving the loading indicators.
+	// spin advances on every tick while any immersive fetch is in flight,
+	// driving the loading indicators.
 	spin int
 }
 
@@ -208,7 +227,7 @@ func (m Model) immSpin() string {
 func (m Model) immLoadingActive() bool {
 	im := m.immersive
 	return im.loadingLists || im.loadingAlbums || im.loadingArtists ||
-		im.tracksLoading || im.artistLoading || im.searchLoading
+		im.tracksLoading || im.searchLoading
 }
 
 // — messages —
@@ -234,9 +253,10 @@ type immersiveArtistsMsg struct {
 	err          error
 }
 
-// immersiveContentMsg carries the track list for an opened playlist or album.
+// immersiveContentMsg carries the track list for an opened playlist, album,
+// or podcast show.
 type immersiveContentMsg struct {
-	kind         roloItemKind // playlist or album
+	kind         immItemKind
 	id           string
 	name         string
 	sub          string
@@ -246,22 +266,25 @@ type immersiveContentMsg struct {
 	err          error
 }
 
-// immersiveArtistMsg carries an artist profile for the artist view / panel.
+// immersiveArtistMsg carries an artist profile for the artist view.
 type immersiveArtistMsg struct {
 	detail       provider.ArtistDetail
-	forPanel     bool // true = fetched for the now-playing rail, not the view
 	providerName string
 	gen          uint64
 	err          error
 }
 
-// immersiveSearchMsg carries global-search results into the results table.
+// immersiveSearchMsg carries global-search results into the canvas.
 type immersiveSearchMsg struct {
 	tracks       []playlist.Track
 	providerName string
 	gen          uint64
 	err          error
 }
+
+// openImmersiveMsg asks Update to enter immersive mode once the program is
+// running (Init has a value receiver and cannot mutate the model).
+type openImmersiveMsg struct{}
 
 // — command constructors —
 
@@ -286,24 +309,24 @@ func fetchImmersiveArtistsCmd(ab provider.ArtistBrowser, providerName string, ge
 	}
 }
 
-func fetchImmersivePlaylistCmd(prov playlist.Provider, id, name, sub string, gen uint64) tea.Cmd {
+func fetchImmersiveContentCmd(prov playlist.Provider, kind immItemKind, id, name, sub string, gen uint64) tea.Cmd {
 	return func() tea.Msg {
 		tracks, err := prov.Tracks(id)
-		return immersiveContentMsg{kind: roloKindPlaylist, id: id, name: name, sub: sub, tracks: tracks, providerName: prov.Name(), gen: gen, err: err}
+		return immersiveContentMsg{kind: kind, id: id, name: name, sub: sub, tracks: tracks, providerName: prov.Name(), gen: gen, err: err}
 	}
 }
 
-func fetchImmersiveAlbumCmd(l provider.AlbumTrackLoader, providerName, id, name, sub string, gen uint64) tea.Cmd {
+func fetchImmersiveAlbumCmd(l provider.AlbumTrackLoader, providerName string, kind immItemKind, id, name, sub string, gen uint64) tea.Cmd {
 	return func() tea.Msg {
 		tracks, err := l.AlbumTracks(id)
-		return immersiveContentMsg{kind: roloKindAlbum, id: id, name: name, sub: sub, tracks: tracks, providerName: providerName, gen: gen, err: err}
+		return immersiveContentMsg{kind: kind, id: id, name: name, sub: sub, tracks: tracks, providerName: providerName, gen: gen, err: err}
 	}
 }
 
-func fetchImmersiveArtistCmd(l provider.ArtistDetailLoader, providerName, id string, forPanel bool, gen uint64) tea.Cmd {
+func fetchImmersiveArtistCmd(l provider.ArtistDetailLoader, providerName, id string, gen uint64) tea.Cmd {
 	return func() tea.Msg {
 		detail, err := l.ArtistDetail(id)
-		return immersiveArtistMsg{detail: detail, forPanel: forPanel, providerName: providerName, gen: gen, err: err}
+		return immersiveArtistMsg{detail: detail, providerName: providerName, gen: gen, err: err}
 	}
 }
 
@@ -316,19 +339,52 @@ func fetchImmersiveSearchCmd(ctx context.Context, s provider.Searcher, providerN
 
 // — open / close —
 
-// enterImmersive switches to the immersive frame and kicks the library-rail
-// fetches. The provider's existing playlist cache seeds the rail when it is
-// already settled for this provider.
-func (m *Model) enterImmersive() tea.Cmd {
-	m.immersive = immersiveState{
-		active:      true,
-		prov:        m.provider,
-		focus:       immPaneCenter,
-		zone:        zoneRolo,
-		view:        immViewHome,
-		railSort:    immRailSortRecents,
-		railSection: immSectionPlaylists,
+// immersiveFits reports whether the terminal can hold the immersive frame.
+// The classic layout takes over below this size.
+func (m Model) immersiveFits() bool {
+	return m.width >= immMinWidth && m.height >= immMinHeight
+}
+
+// immersiveShown reports whether the immersive frame is the one on screen:
+// the mode is active and the terminal is currently big enough.
+func (m Model) immersiveShown() bool {
+	return m.immersive.active && m.immersiveFits()
+}
+
+// toggleImmersive enters immersive when off, exits when on.
+func (m *Model) toggleImmersive() tea.Cmd {
+	if m.immersive.active {
+		m.exitImmersive()
+		return nil
 	}
+	return m.enterImmersive()
+}
+
+// enterImmersive switches to the immersive frame and kicks the section
+// fetches. The provider's existing playlist cache seeds Playlists when it
+// is already settled for this provider.
+func (m *Model) enterImmersive() tea.Cmd {
+	if !m.immersiveFits() {
+		m.status.Showf(statusTTLDefault, "Immersive needs a %dx%d terminal", immMinWidth, immMinHeight)
+		return nil
+	}
+	return m.startImmersive()
+}
+
+// startImmersive activates the mode without the size check; the frame
+// stays hidden behind the classic layout while the terminal is too small.
+func (m *Model) startImmersive() tea.Cmd {
+	m.immersive = immersiveState{
+		active:         true,
+		prov:           m.provider,
+		focus:          immPaneCanvas,
+		section:        immSecPlaylists,
+		view:           immViewBrowse,
+		mode:           immCanvasList,
+		sort:           immBrowseSortRecents,
+		settingsReturn: immViewBrowse,
+	}
+	m.recomputeLayout() // the visualizer takes the band's height
 	if m.provider == nil {
 		return nil
 	}
@@ -340,7 +396,7 @@ func (m *Model) enterImmersive() tea.Cmd {
 	}
 	if len(m.providerLists) > 0 {
 		// Reuse the already-fetched list; browse-route pseudo rows are
-		// filtered out of the rail.
+		// filtered out of the canvas.
 		m.immersive.lists = m.filterImmersivePlaylists(m.providerLists)
 	} else {
 		m.immersive.loadingLists = true
@@ -357,9 +413,13 @@ func (m *Model) exitImmersive() {
 	nextRequest(&m.requests.immersiveArtist)
 	nextRequest(&m.requests.immersiveSearch)
 	m.immersive = immersiveState{}
+	if m.immMouse != nil {
+		m.immMouse.valid = false
+	}
+	m.recomputeLayout() // hand the visualizer back its classic height
 }
 
-// fetchImmersiveSidebar dispatches the outstanding rail fetches, one
+// fetchImmersiveSidebar dispatches the outstanding section fetches, one
 // generation per section like the Home overlay.
 func (m *Model) fetchImmersiveSidebar() tea.Cmd {
 	prov := m.immersive.prov
@@ -387,8 +447,8 @@ func (m *Model) fetchImmersiveSidebar() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// isCurrentImmersiveRequest reports whether a completion still belongs to the
-// mode's current provider session.
+// isCurrentImmersiveRequest reports whether a completion still belongs to
+// the mode's current provider session.
 func (m Model) isCurrentImmersiveRequest(gen uint64, providerName string, cur uint64) bool {
 	return m.immersive.active &&
 		m.immersive.prov != nil &&
@@ -397,7 +457,8 @@ func (m Model) isCurrentImmersiveRequest(gen uint64, providerName string, cur ui
 }
 
 // filterImmersivePlaylists drops UI-only browse-route pseudo entries; real
-// provider rows — including synthetic library rows like "Liked Songs" — stay.
+// provider rows — including synthetic library rows like "Liked Songs" —
+// stay.
 func (m Model) filterImmersivePlaylists(lists []playlist.PlaylistInfo) []playlist.PlaylistInfo {
 	out := make([]playlist.PlaylistInfo, 0, len(lists))
 	for _, l := range lists {
@@ -409,60 +470,97 @@ func (m Model) filterImmersivePlaylists(lists []playlist.PlaylistInfo) []playlis
 	return out
 }
 
-// — rail rows —
+// — canvas items —
 
-// immRailRow is one selectable row in the library rail.
-type immRailRow struct {
-	kind roloItemKind
-	id   string
-	name string
-	sub  string
-}
-
-// railRows returns the rows for the active section with filter and sort
-// applied. Fetched data is never mutated.
-func (m Model) railRows() []immRailRow {
-	var rows []immRailRow
-	switch m.immersive.railSection {
-	case immSectionPlaylists:
-		for _, l := range m.immersive.lists {
-			rows = append(rows, immRailRow{
-				kind: roloKindPlaylist, id: l.ID, name: l.Name,
+// browseItems returns the item rows for the active browse section with
+// filter and sort applied. Fetched data is never mutated.
+func (m Model) browseItems() []immItem {
+	im := m.immersive
+	var items []immItem
+	switch im.section {
+	case immSecPlaylists:
+		for _, l := range im.lists {
+			items = append(items, immItem{
+				kind: immKindPlaylist, id: l.ID, title: l.Name,
 				sub: playlistRowSub(l),
 			})
 		}
-	case immSectionAlbums:
-		for _, a := range m.immersive.albums {
-			rows = append(rows, immRailRow{
-				kind: roloKindAlbum, id: a.ID, name: a.Name,
-				sub: firstNonEmpty(a.Artist, "Album"),
-			})
-		}
-	case immSectionArtists:
-		for _, a := range m.immersive.artists {
-			rows = append(rows, immRailRow{
-				kind: roloKindArtist, id: a.ID, name: a.Name,
+	case immSecArtists:
+		for _, a := range im.artists {
+			items = append(items, immItem{
+				kind: immKindArtist, id: a.ID, title: a.Name,
 				sub: "Artist",
 			})
 		}
-	}
-	if m.immersive.railFilter != "" {
-		q := strings.ToLower(m.immersive.railFilter)
-		kept := rows[:0]
-		for _, r := range rows {
-			if strings.Contains(strings.ToLower(r.name), q) ||
-				strings.Contains(strings.ToLower(r.sub), q) {
-				kept = append(kept, r)
+	case immSecAlbums:
+		for _, a := range im.albums {
+			items = append(items, immItem{
+				kind: immKindAlbum, id: a.ID, title: a.Name,
+				sub: firstNonEmpty(a.Artist, "Album"),
+			})
+		}
+	case immSecPodcasts:
+		if l, ok := im.prov.(provider.SubscriptionLister); ok {
+			for _, s := range l.Subscriptions() {
+				items = append(items, immItem{
+					kind: immKindShow, id: s.ID, title: s.Name,
+					sub: firstNonEmpty(s.Author, "Podcast"),
+				})
 			}
 		}
-		rows = kept
 	}
-	if m.immersive.railSort == immRailSortAlpha {
-		sort.SliceStable(rows, func(i, j int) bool {
-			return strings.ToLower(rows[i].name) < strings.ToLower(rows[j].name)
+	if im.filter != "" {
+		q := strings.ToLower(im.filter)
+		kept := items[:0]
+		for _, it := range items {
+			if strings.Contains(strings.ToLower(it.title), q) ||
+				strings.Contains(strings.ToLower(it.sub), q) {
+				kept = append(kept, it)
+			}
+		}
+		items = kept
+	}
+	if im.sort == immBrowseSortAlpha {
+		sort.SliceStable(items, func(i, j int) bool {
+			return strings.ToLower(items[i].title) < strings.ToLower(items[j].title)
 		})
 	}
-	return rows
+	return items
+}
+
+// trackItems wraps a track list as canvas items; id is the track's index in
+// the list so activation maps back to the same sort order.
+func trackItems(tracks []playlist.Track) []immItem {
+	items := make([]immItem, 0, len(tracks))
+	for i, t := range tracks {
+		title := t.Title
+		if title == "" {
+			title = trackViewName(t)
+		}
+		items = append(items, immItem{
+			kind:  immKindTrack,
+			id:    strconv.Itoa(i),
+			title: title,
+			sub:   t.Artist,
+			sub2:  t.Album,
+			dur:   t.DurationSecs,
+			path:  t.Path,
+		})
+	}
+	return items
+}
+
+// canvasItems returns the items the canvas lists in its current view.
+// Track views wrap sortedTracks(); the settings tab has no items.
+func (m Model) canvasItems() []immItem {
+	im := m.immersive
+	if im.view == immViewSettings {
+		return nil
+	}
+	if im.view.isTrackView() {
+		return trackItems(m.sortedTracks())
+	}
+	return m.browseItems()
 }
 
 func playlistRowSub(l playlist.PlaylistInfo) string {
@@ -489,184 +587,119 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-// — rolodex —
+// — section / view switching —
 
-// roloItems builds the rolodex deck from the current context. On the home view
-// it is the rail's section items; inside a track view with roloMode it is the
-// tracks themselves (the song picker); in the plain track view it is hidden.
-func (m Model) roloItems() []roloItem {
-	switch {
-	case m.immersive.roloMode && (m.immersive.view == immViewPlaylist ||
-		m.immersive.view == immViewAlbum || m.immersive.view == immViewSearch ||
-		m.immersive.view == immViewArtist):
-		// The deck follows the table's active sort: item ids are indexes into
-		// sortedTracks(), so activation and the table cursor stay aligned.
-		tracks := m.sortedTracks()
-		items := make([]roloItem, 0, len(tracks))
-		for i, t := range tracks {
-			title := t.Title
-			if title == "" {
-				title = trackViewName(t)
-			}
-			items = append(items, roloItem{
-				kind:  roloKindTrack,
-				id:    strconv.Itoa(i),
-				title: title,
-				sub:   firstNonEmpty(t.Artist, t.Album),
-			})
-		}
-		return items
-	default:
-		var items []roloItem
-		for _, r := range m.railRows() {
-			items = append(items, roloItem{kind: r.kind, id: r.id, title: r.name, sub: r.sub})
-		}
-		return items
+// immRootView is the view a section lands on: the search pill opens the
+// results view, everything else browses its collection list.
+func immRootView(s immSection) immersiveView {
+	if s == immSecSearch {
+		return immViewSearch
 	}
+	return immViewBrowse
 }
 
-// roloSpinStep consumes one pending spin step, moving the cursor by dir.
-// Returns false when the deck is empty or no steps remain.
-func (m *Model) roloSpinStep() bool {
-	if m.immersive.roloSpin == 0 {
-		return false
-	}
-	n := len(m.roloItems())
-	if n == 0 {
-		m.immersive.roloSpin = 0
-		return false
-	}
-	m.immersive.roloCursor = wrapIndex(m.immersive.roloCursor+m.immersive.roloSpinDir, n)
-	m.immersive.roloSpin--
-	if m.immersive.roloSpin == 0 {
-		m.immersive.roloSpinFor = 0
-	}
-	return true
+// immersiveSetSection switches the canvas to a nav-pill section, resetting
+// drill-down state.
+func (m *Model) immersiveSetSection(s immSection) {
+	m.immersive.section = s
+	m.immersive.filter = ""
+	m.immersiveHome()
 }
 
-// roloSpinKick adds momentum steps to the wheel; repeated presses make the
-// deck roll faster, a reverse press cancels then flips the spin.
-func (m *Model) roloSpinKick(dir int) {
-	if len(m.roloItems()) == 0 {
-		return
-	}
-	if m.immersive.roloSpin > 0 && m.immersive.roloSpinDir != dir {
-		m.immersive.roloSpin = 0
-		m.immersive.roloSpinFor = 0
-	}
-	m.immersive.roloSpinDir = dir
-	m.immersive.roloSpin += 2
-	const cap = 12
-	if m.immersive.roloSpin > cap {
-		m.immersive.roloSpin = cap
-	}
-	m.roloSpinStep() // first step lands immediately so a single tap never lags
+// immersiveHome returns the canvas to the section's root view, dropping the
+// opened context so no earlier list shows under the new view.
+func (m *Model) immersiveHome() {
+	m.dropImmersiveFetches()
+	im := &m.immersive
+	im.back = nil
+	im.cursor, im.scroll = 0, 0
+	im.view = immRootView(im.section)
+	im.ctxID, im.ctxName, im.ctxSub = "", "", ""
+	im.tracks = nil
 }
 
-func wrapIndex(i, n int) int {
-	if n <= 0 {
-		return 0
-	}
-	i %= n
-	if i < 0 {
-		i += n
-	}
-	return i
+// dropImmersiveFetches invalidates in-flight track fetches (collection,
+// artist, search) so a late result cannot land in the view that replaced
+// the one that asked for it.
+func (m *Model) dropImmersiveFetches() {
+	nextRequest(&m.requests.immersiveContent)
+	nextRequest(&m.requests.immersiveArtist)
+	nextRequest(&m.requests.immersiveSearch)
+	m.immersive.tracksLoading = false
+	m.immersive.searchLoading = false
 }
 
-// tickImmersive advances the rolodex spin at the fast tick quantum.
-func (m *Model) tickImmersive(dt time.Duration) {
-	if !m.immersive.active {
-		return
-	}
-	if m.immLoadingActive() {
-		m.immersive.spin++
-	}
-	if m.immersive.roloSpin == 0 {
-		return
-	}
-	m.immersive.roloSpinFor += dt
-	for m.immersive.roloSpinFor >= ui.TickFast && m.immersive.roloSpin > 0 {
-		m.immersive.roloSpinFor -= ui.TickFast
-		m.roloSpinStep()
-	}
-}
+// — navigation —
 
-// — center navigation —
-
-// openImmersiveRow opens a rail/rolodex row into the matching center view.
-func (m *Model) openImmersiveRow(row immRailRow) tea.Cmd {
+// openImmersiveItem opens a canvas item into its track view; tracks play
+// directly instead of opening.
+func (m *Model) openImmersiveItem(item immItem) tea.Cmd {
 	prov := m.immersive.prov
 	if prov == nil {
 		return nil
 	}
 	m.pushImmersiveBack()
+	m.dropImmersiveFetches()
 	providerName := prov.Name()
 	gen := nextRequest(&m.requests.immersiveContent)
 	m.immersive.tracks = nil
 	m.immersive.tracksLoading = true
-	m.immersive.trackCursor = 0
-	m.immersive.trackScroll = 0
+	m.immersive.cursor, m.immersive.scroll = 0, 0
 	m.immersive.trackSort = immSortTrackOrder
-	m.immersive.zone = zoneTable
-	m.immersive.roloMode = false
+	m.immersive.ctxID, m.immersive.ctxName, m.immersive.ctxSub = item.id, item.title, item.sub
+	m.immersive.ctxKind = item.kind
 
-	switch row.kind {
-	case roloKindPlaylist:
+	switch item.kind {
+	case immKindPlaylist:
 		m.immersive.view = immViewPlaylist
-		m.immersive.ctxID, m.immersive.ctxName, m.immersive.ctxSub = row.id, row.name, row.sub
-		m.immersive.ctxKind = roloKindPlaylist
-		return fetchImmersivePlaylistCmd(prov, row.id, row.name, row.sub, gen)
-	case roloKindAlbum:
+		return fetchImmersiveContentCmd(prov, item.kind, item.id, item.title, item.sub, gen)
+	case immKindAlbum:
 		m.immersive.view = immViewAlbum
-		m.immersive.ctxID, m.immersive.ctxName, m.immersive.ctxSub = row.id, row.name, row.sub
-		m.immersive.ctxKind = roloKindAlbum
 		if l, ok := prov.(provider.AlbumTrackLoader); ok {
-			return fetchImmersiveAlbumCmd(l, providerName, row.id, row.name, row.sub, gen)
+			return fetchImmersiveAlbumCmd(l, providerName, item.kind, item.id, item.title, item.sub, gen)
 		}
-	case roloKindArtist:
+	case immKindArtist:
 		m.immersive.view = immViewArtist
-		m.immersive.ctxID, m.immersive.ctxName, m.immersive.ctxSub = row.id, row.name, "Artist"
-		m.immersive.ctxKind = roloKindArtist
 		if l, ok := prov.(provider.ArtistDetailLoader); ok {
-			m.immersive.artistLoading = true
-			return fetchImmersiveArtistCmd(l, providerName, row.id, false, nextRequest(&m.requests.immersiveArtist))
+			return fetchImmersiveArtistCmd(l, providerName, item.id, nextRequest(&m.requests.immersiveArtist))
 		}
+	case immKindShow:
+		m.immersive.view = immViewShow
+		if l, ok := prov.(provider.AlbumTrackLoader); ok {
+			return fetchImmersiveAlbumCmd(l, providerName, item.kind, item.id, item.title, item.sub, gen)
+		}
+		return fetchImmersiveContentCmd(prov, item.kind, item.id, item.title, item.sub, gen)
 	}
 	m.immersive.tracksLoading = false
 	return nil
 }
 
-// pushImmersiveBack snapshots the current center context onto the back stack.
+// pushImmersiveBack snapshots the current canvas context onto the back
+// stack. Settings is transient and never pushed.
 func (m *Model) pushImmersiveBack() {
-	// Home and the transient search view are the root: nothing to return to.
-	if m.immersive.view == immViewHome {
+	if m.immersive.view == immViewSettings {
 		return
 	}
 	m.immersive.back = append(m.immersive.back, immNavSnap{
-		view:        m.immersive.view,
-		ctxID:       m.immersive.ctxID,
-		ctxName:     m.immersive.ctxName,
-		ctxSub:      m.immersive.ctxSub,
-		ctxKind:     m.immersive.ctxKind,
-		tracks:      m.immersive.tracks,
-		trackCursor: m.immersive.trackCursor,
-		trackScroll: m.immersive.trackScroll,
-		gridCursor:  m.immersive.gridCursor,
-		roloCursor:  m.immersive.roloCursor,
+		view:      m.immersive.view,
+		ctxID:     m.immersive.ctxID,
+		ctxName:   m.immersive.ctxName,
+		ctxSub:    m.immersive.ctxSub,
+		ctxKind:   m.immersive.ctxKind,
+		tracks:    m.immersive.tracks,
+		trackSort: m.immersive.trackSort,
+		cursor:    m.immersive.cursor,
+		scroll:    m.immersive.scroll,
 	})
 }
 
-// immersiveGoBack restores the last center context, or lands on home.
+// immersiveGoBack restores the last canvas context, or lands on the
+// section root.
 func (m *Model) immersiveGoBack() {
+	m.dropImmersiveFetches()
 	n := len(m.immersive.back)
 	if n == 0 {
-		m.immersive.view = immViewHome
-		m.immersive.zone = zoneRolo
-		m.immersive.roloMode = false
-		m.immersive.ctxID, m.immersive.ctxName, m.immersive.ctxSub = "", "", ""
-		m.immersive.tracks = nil
-		m.immersive.tracksLoading = false
+		m.immersiveHome()
 		return
 	}
 	snap := m.immersive.back[n-1]
@@ -676,15 +709,12 @@ func (m *Model) immersiveGoBack() {
 	m.immersive.ctxKind = snap.ctxKind
 	m.immersive.tracks = snap.tracks
 	m.immersive.tracksLoading = false
-	m.immersive.trackCursor = snap.trackCursor
-	m.immersive.trackScroll = snap.trackScroll
-	m.immersive.gridCursor = snap.gridCursor
-	m.immersive.roloCursor = snap.roloCursor
-	m.immersive.zone = zoneTable
-	m.immersive.roloMode = false
+	m.immersive.trackSort = snap.trackSort
+	m.immersive.cursor = snap.cursor
+	m.immersive.scroll = snap.scroll
 }
 
-// sortedTracks returns the open context's tracks in the active table order.
+// sortedTracks returns the open context's tracks in the active list order.
 func (m Model) sortedTracks() []playlist.Track {
 	tracks := m.immersive.tracks
 	if m.immersive.trackSort == immSortTrackOrder {
@@ -711,7 +741,7 @@ func (m Model) sortedTracks() []playlist.Track {
 
 // playImmersiveContext loads the open context's tracks into the queue and
 // plays from index startIdx (in sorted order). Context is remembered so the
-// queue rail can name what is playing next.
+// queue panel can name what is playing next.
 func (m *Model) playImmersiveContext(startIdx int) tea.Cmd {
 	tracks := m.sortedTracks()
 	if len(tracks) == 0 {
@@ -732,9 +762,7 @@ func (m *Model) playImmersiveContext(startIdx int) tea.Cmd {
 	return cmd
 }
 
-// playImmersiveRow plays a rolo/rail row directly: for tracks it plays the
-// song in the open context; for collections it is handled by openImmersiveRow
-// instead (Enter drills, `p` plays the context).
+// playImmersiveTrack plays the track at index in the open context.
 func (m *Model) playImmersiveTrack(index int) tea.Cmd {
 	tracks := m.sortedTracks()
 	if index < 0 || index >= len(tracks) {
@@ -751,29 +779,20 @@ func (m *Model) playImmersiveTrack(index int) tea.Cmd {
 	return cmd
 }
 
-// maybeFetchNowPlayingArtist lazily loads the artist profile shown in the
-// right rail's About-the-artist block.
-func (m *Model) maybeFetchNowPlayingArtist() tea.Cmd {
-	track, _ := m.currentPlaybackTrack()
-	if track.Artist == "" {
-		return nil
+func wrapIndex(i, n int) int {
+	if n <= 0 {
+		return 0
 	}
-	if m.immersive.artistMetaFor == track.Artist || m.immersive.artistLoading {
-		return nil
+	i %= n
+	if i < 0 {
+		i += n
 	}
-	resolver, ok := m.immersive.prov.(provider.TrackArtistResolver)
-	if !ok {
-		return nil
+	return i
+}
+
+// tickImmersive advances the loading spinner while fetches are in flight.
+func (m *Model) tickImmersive() {
+	if m.immersive.active && m.immLoadingActive() {
+		m.immersive.spin++
 	}
-	info, ok := resolver.ArtistForTrack(track)
-	if !ok || info.ID == "" {
-		return nil
-	}
-	loader, ok := m.immersive.prov.(provider.ArtistDetailLoader)
-	if !ok {
-		return nil
-	}
-	m.immersive.artistLoading = true
-	m.immersive.artistMetaFor = track.Artist
-	return fetchImmersiveArtistCmd(loader, m.immersive.prov.Name(), info.ID, true, nextRequest(&m.requests.immersiveArtist))
 }

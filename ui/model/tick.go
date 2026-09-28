@@ -31,7 +31,7 @@ func (m Model) visualizerVisible() bool {
 	if m.fullVis {
 		return true
 	}
-	return m.layout.visualizerRows > 0 && !m.usesContentFirstLayout()
+	return (m.layout.visualizerRows > 0 && !m.usesContentFirstLayout()) || m.immersiveShown()
 }
 
 func (m *Model) visualizerPlaying() bool {
@@ -219,11 +219,6 @@ func (m *Model) isFullyIdle() bool {
 		return false
 	}
 	if m.isOverlayActive() || m.buffering || m.termTitle.introActive {
-		return false
-	}
-	// A mid-spin rolodex keeps animating while paused, so the deck cannot
-	// sit half-rolled on a 1.5s idle tick.
-	if m.immersive.roloSpin > 0 {
 		return false
 	}
 	if !m.status.expiresAt.IsZero() || len(m.logLines) > 0 {

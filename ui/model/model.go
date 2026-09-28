@@ -340,6 +340,8 @@ type Model struct {
 	provAskLoc              bool            // true while the location question is on screen
 	provAuthURL             string          // OAuth URL to display while interactive auth is in flight
 	openDefaultProviderOnce bool            // open the provider's preferred hierarchy after Init
+	openImmersiveOnce       bool            // enter immersive mode after Init (immersive config)
+	nerdFontGlyphs          bool            // nerd_font_glyphs config: Nerd Font transport glyphs
 	providers               []ProviderEntry // all available providers
 	provPillIdx             int             // selected pill index
 	eqPresetIdx             int             // -1 = custom, 0+ = index into eqPresets
@@ -573,7 +575,7 @@ func (m Model) activeScreen() topLevelScreen {
 		return screenCredits
 	case m.trackMenu.visible:
 		return screenTrackMenu
-	case m.immersive.active:
+	case m.immersiveShown():
 		return screenImmersive
 	case m.keymap.visible:
 		return screenKeymap

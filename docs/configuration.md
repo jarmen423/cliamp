@@ -171,6 +171,15 @@ artist/title, time, and seek-progress strip. It hides the visualizer, playback
 controls, and playlist. Provider browsing and overlays keep their list-focused
 layout. Start one session with `cliamp --simplified`.
 
+`immersive = true` starts cliamp in the immersive layout (prototype):
+a visualizer band on top, nav pills, a Now Playing + Queue column beside a
+browseable canvas, transport controls, and a thin-line seek bar. Toggle
+anytime with `I`; terminals under 80x24 fall back to the classic layout.
+
+`nerd_font_glyphs = true` swaps the immersive transport controls for a Nerd
+Font glyph set; the default is plain Unicode. Only set it on terminals with a
+Nerd Font patched font.
+
 `hide_help_bar = true` removes the key-binding hint bar above the status line
 and gives that row back to the playlist. The full keymap stays available with
 `?`. `Ctrl+G` toggles the bar and writes the new value back to this key, so the
