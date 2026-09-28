@@ -440,7 +440,7 @@ func (m Model) renderImmNowPlaying(g immGeom) []string {
 	if name == "" {
 		name = trackViewName(track)
 	}
-	art := immArtBlock(firstNonEmpty(name, "cliamp"), g.npArt.W, g.npArt.H, name != "")
+	art := m.immArtOr(track.AlbumArtURL, firstNonEmpty(name, "cliamp"), g.npArt.W, g.npArt.H, name != "")
 	side := boxSide(false)
 	indent := strings.Repeat(" ", g.npArt.X-1)
 	for i := 0; i < g.npArt.H; i++ {
@@ -767,7 +767,7 @@ func (m Model) immItemListLine(item immItem, idx, w int, sel bool, playingPath s
 // immItemRowLines draws a rows-mode item: a 3-row art box on the left, then
 // title / artist / album (+duration) text filling the rest of the row.
 func (m Model) immItemRowLines(item immItem, w int, sel bool, playingPath string) []string {
-	art := immArtBlock(item.title, immRowsArtW, immRowsItemH, sel)
+	art := m.immArtOr(item.art, item.title, immRowsArtW, immRowsItemH, sel)
 	textW := max(1, w-immRowsArtW-2)
 	titleStyle := playlistItemStyle
 	subStyle := dimStyle
@@ -800,7 +800,7 @@ func (m Model) immItemTileLines(item immItem, w, h int, sel bool) []string {
 	if artH < 1 {
 		artH = h
 	}
-	art := immArtBlock(item.title, w, artH, sel)
+	art := m.immArtOr(item.art, item.title, w, artH, sel)
 	lines := make([]string, 0, h)
 	for _, r := range art {
 		lines = append(lines, fitCell(r, w))
@@ -1189,6 +1189,15 @@ func (m Model) playingContextName() string {
 }
 
 // immArtBlock draws a deterministic shade-glyph mosaic stand-in for cover art.
+// immArtOr is the art box content: the cover when it is ready (see
+// immersive_art.go), otherwise the text placeholder.
+func (m Model) immArtOr(url, name string, w, h int, bright bool) []string {
+	if lines, ok := m.immArtCells(url, w, h); ok {
+		return lines
+	}
+	return immArtBlock(name, w, h, bright)
+}
+
 func immArtBlock(name string, w, h int, bright bool) []string {
 	if w < 1 || h < 1 {
 		return nil

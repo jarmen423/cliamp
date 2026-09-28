@@ -214,7 +214,9 @@ func (m Model) View() tea.View {
 	var rendered string
 	if screen == screenImmersive {
 		rendered = m.immPadFrame(content)
+		m.imgLayer.Set(m.immArtPlacements())
 	} else {
+		m.imgLayer.Set(nil)
 		rendered = m.centerFrame(ui.FrameStyle.Render(content))
 		rendered = ui.FitRect(rendered, m.layout.frameWidth, max(1, m.height))
 	}

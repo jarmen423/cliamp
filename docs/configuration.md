@@ -180,6 +180,13 @@ anytime with `I`; terminals under 80x24 fall back to the classic layout.
 Font glyph set; the default is plain Unicode. Only set it on terminals with a
 Nerd Font patched font.
 
+`images` controls cover art in the immersive layout (Now Playing and the
+rows/grid canvas thumbnails). `"auto"` (the default) draws real images with
+Sixel on terminals that report support (Windows Terminal, WezTerm, foot, xterm
+with Sixel enabled) and colored half-block text on the rest; `"sixel"` or
+`"blocks"` forces one, and `"off"` keeps the text placeholders. Covers come from
+the track's album art or the provider's playlist/album/artist image.
+
 `hide_help_bar = true` removes the key-binding hint bar above the status line
 and gives that row back to the playlist. The full keymap stays available with
 `?`. `Ctrl+G` toggles the bar and writes the new value back to this key, so the

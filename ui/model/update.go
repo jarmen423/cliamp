@@ -31,6 +31,12 @@ func (m *Model) scheduleReconnect(now time.Time) {
 
 // Update handles messages: key presses, ticks, and window resizes.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.handleTermImageEvent(msg) {
+		return m, nil
+	}
+	if cmd, ok := m.handleArtMsg(msg); ok {
+		return m, cmd
+	}
 	wasScreen := m.activeScreen()
 	wasVisualizerVisible := m.visualizerVisible()
 	wasMode := ui.VisNone
