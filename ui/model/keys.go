@@ -209,7 +209,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	// Immersive mode owns the whole frame: it claims keys before the keymap
 	// and every overlay so normal-mode dispatch is untouched when it is off.
-	if m.immersive.active {
+	if m.immersiveShown() {
 		return m.handleImmersiveKey(msg)
 	}
 	if msg.String() == "ctrl+k" && !m.keymap.visible {
@@ -566,7 +566,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "ctrl+f":
 			m.openProviderSearch()
 		case "I":
-			return m.enterImmersive()
+			return m.toggleImmersive()
 		}
 		return nil
 	}
@@ -961,7 +961,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 
 	case "I":
-		return m.enterImmersive()
+		return m.toggleImmersive()
 
 	case "o":
 		m.openFileBrowser()

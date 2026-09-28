@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"testing"
@@ -28,6 +29,35 @@ func keyMsg(s string) tea.KeyPressMsg {
 	}
 }
 
+// immProvStub is a minimal playlist.Provider for browse/open tests.
+type immProvStub struct{}
+
+func (immProvStub) Name() string { return "stub" }
+
+func (immProvStub) Playlists() ([]playlist.PlaylistInfo, error) { return nil, nil }
+
+func (immProvStub) Tracks(string) ([]playlist.Track, error) {
+	return []playlist.Track{
+		{Title: "Song A", Artist: "Artist", Album: "Alb", DurationSecs: 61, Path: "/a"},
+		{Title: "Song B", Artist: "Artist", Album: "Alb", DurationSecs: 62, Path: "/b"},
+	}, nil
+}
+
+func (immProvStub) SearchTracks(_ context.Context, query string, _ int) ([]playlist.Track, error) {
+	return []playlist.Track{
+		{Title: "Found " + query, Artist: "Artist", Path: "/found"},
+	}, nil
+}
+
+// immSubStub adds SubscriptionLister for the Podcasts pill.
+type immSubStub struct{ immProvStub }
+
+func (immSubStub) Subscriptions() []provider.SubscriptionInfo {
+	return []provider.SubscriptionInfo{
+		{ID: "pd1", Name: "Some Show", Author: "Some Author"},
+	}
+}
+
 // immersiveModel builds a Model with immersive state populated directly —
 // tests exercise pure logic and rendering without a live provider.
 func immersiveModel(t *testing.T) *Model {
@@ -39,10 +69,12 @@ func immersiveModel(t *testing.T) *Model {
 	m := &Model{playlist: playlist.New(), width: 120, height: 34}
 	m.recomputeLayout()
 	m.immersive = immersiveState{
-		active: true,
-		focus:  immPaneCenter,
-		zone:   zoneRolo,
-		view:   immViewHome,
+		active:  true,
+		prov:    immProvStub{},
+		focus:   immPaneCanvas,
+		section: immSecPlaylists,
+		view:    immViewBrowse,
+		mode:    immCanvasList,
 		lists: []playlist.PlaylistInfo{
 			{ID: "pl1", Name: "Stuff to listen 2", TrackCount: 12},
 			{ID: "pl2", Name: "kanyesTimelessSound", TrackCount: 40},
@@ -60,391 +92,299 @@ func immersiveModel(t *testing.T) *Model {
 	return m
 }
 
-func TestImmersiveRailRows(t *testing.T) {
+func TestImmersiveBrowseItems(t *testing.T) {
+	m := immersiveModel(t)
 	tests := []struct {
 		name     string
-		section  immersiveRailSection
+		section  immSection
 		filter   string
-		sort     immRailSort
+		sort     immBrowseSort
 		wantName []string
 	}{
-		{"playlists recents", immSectionPlaylists, "", immRailSortRecents,
+		{"playlists recents", immSecPlaylists, "", immBrowseSortRecents,
 			[]string{"Stuff to listen 2", "kanyesTimelessSound", "Liked Songs"}},
-		{"playlists alpha", immSectionPlaylists, "", immRailSortAlpha,
+		{"playlists alpha", immSecPlaylists, "", immBrowseSortAlpha,
 			[]string{"kanyesTimelessSound", "Liked Songs", "Stuff to listen 2"}},
-		{"playlists filtered", immSectionPlaylists, "liked", immRailSortRecents,
+		{"playlists filtered", immSecPlaylists, "liked", immBrowseSortRecents,
 			[]string{"Liked Songs"}},
-		{"albums", immSectionAlbums, "", immRailSortRecents,
+		{"albums", immSecAlbums, "", immBrowseSortRecents,
 			[]string{"Charm", "BRAT"}},
-		{"artists", immSectionArtists, "", immRailSortRecents,
+		{"artists", immSecArtists, "", immBrowseSortRecents,
 			[]string{"Lizzo", "Frankie Valli & The Four Seasons"}},
-		{"artists filtered by kind", immSectionArtists, "lizzo", immRailSortRecents,
-			[]string{"Lizzo"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := immersiveModel(t)
-			m.immersive.railSection = tt.section
-			m.immersive.railFilter = tt.filter
-			m.immersive.railSort = tt.sort
-			rows := m.railRows()
-			if len(rows) != len(tt.wantName) {
-				t.Fatalf("railRows() = %d rows, want %d", len(rows), len(tt.wantName))
+			m.immersive.section = tt.section
+			m.immersive.filter = tt.filter
+			m.immersive.sort = tt.sort
+			items := m.browseItems()
+			if len(items) != len(tt.wantName) {
+				t.Fatalf("len(items) = %d, want %d", len(items), len(tt.wantName))
 			}
-			for i, want := range tt.wantName {
-				if rows[i].name != want {
-					t.Errorf("railRows()[%d].name = %q, want %q", i, rows[i].name, want)
+			for i, it := range items {
+				if it.title != tt.wantName[i] {
+					t.Fatalf("items[%d] = %q, want %q", i, it.title, tt.wantName[i])
 				}
 			}
 		})
 	}
 }
 
-func TestImmersiveRoloSpin(t *testing.T) {
-	tests := []struct {
-		name       string
-		cursor     int
-		kicks      []int
-		steps      int // steps to consume; -1 = all
-		wantCursor int
-	}{
-		{"single kick right", 0, []int{1}, -1, 2},
-		{"single kick left wraps", 0, []int{-1}, -1, 1},
-		{"three kicks momentum", 0, []int{1, 1, 1}, -1, 0},
-		{"reverse cancels then spins left", 0, []int{1, -1}, -1, 2},
-		{"partial consumption", 0, []int{1}, 1, 2},
+func TestImmersiveBrowseItemsPodcasts(t *testing.T) {
+	m := immersiveModel(t)
+	m.immersive.prov = immSubStub{}
+	m.immersive.section = immSecPodcasts
+	items := m.browseItems()
+	if len(items) != 1 || items[0].title != "Some Show" || items[0].sub != "Some Author" {
+		t.Fatalf("podcast items = %+v", items)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := immersiveModel(t)
-			m.immersive.roloCursor = tt.cursor
-			for _, dir := range tt.kicks {
-				m.roloSpinKick(dir)
-			}
-			steps := tt.steps
-			if steps < 0 {
-				steps = 100
-			}
-			for i := 0; i < steps && m.immersive.roloSpin > 0; i++ {
-				m.roloSpinStep()
-			}
-			if got := m.immersive.roloCursor; got != tt.wantCursor {
-				t.Errorf("roloCursor = %d, want %d", got, tt.wantCursor)
-			}
-		})
+	if items[0].kind != immKindShow {
+		t.Fatalf("kind = %d, want show", items[0].kind)
 	}
 }
 
-func TestImmersiveRoloSpinEmptyDeck(t *testing.T) {
+func TestImmersiveDigitKeysSelectSections(t *testing.T) {
 	m := immersiveModel(t)
+	for i, want := range immSectionOrder {
+		m.handleImmersiveKey(keyMsg(strconv.Itoa(i + 1)))
+		if want == immSecSearch && m.immersive.searching {
+			// digits typed into the search field are input, not pill shortcuts
+			m.handleImmersiveKey(keyMsg("esc"))
+		}
+		if m.immersive.section != want {
+			t.Fatalf("key %d: section = %d, want %d", i+1, m.immersive.section, want)
+		}
+		if m.immersive.view != immRootView(want) {
+			t.Fatalf("key %d: view = %d, want %d", i+1, m.immersive.view, immRootView(want))
+		}
+	}
+}
+
+func TestImmersiveModeCycles(t *testing.T) {
+	m := immersiveModel(t)
+	for i := 0; i < int(immCanvasModeCount); i++ {
+		want := immCanvasMode((int(immCanvasList) + i) % int(immCanvasModeCount))
+		if m.immersive.mode != want {
+			t.Fatalf("step %d: mode = %d, want %d", i, m.immersive.mode, want)
+		}
+		m.handleImmersiveKey(keyMsg("v"))
+	}
+}
+
+func TestImmersiveOpenPlaylistSetsContext(t *testing.T) {
+	m := immersiveModel(t)
+	items := m.browseItems()
+	cmd := m.openImmersiveItem(items[0])
+	if m.immersive.view != immViewPlaylist {
+		t.Fatalf("view = %d, want playlist", m.immersive.view)
+	}
+	if !m.immersive.tracksLoading {
+		t.Fatal("expected tracksLoading")
+	}
+	if m.immersive.ctxID != "pl1" {
+		t.Fatalf("ctxID = %q, want pl1", m.immersive.ctxID)
+	}
+	if cmd == nil {
+		t.Fatal("expected a fetch cmd")
+	}
+	msg := cmd()
+	content, ok := msg.(immersiveContentMsg)
+	if !ok {
+		t.Fatalf("cmd returned %T, want immersiveContentMsg", msg)
+	}
+	if len(content.tracks) != 2 {
+		t.Fatalf("fetched %d tracks, want 2", len(content.tracks))
+	}
+}
+
+func TestImmersiveBackStack(t *testing.T) {
+	m := immersiveModel(t)
+	items := m.browseItems()
+	m.openImmersiveItem(items[0])
+	m.immersive.tracksLoading = false
+	m.immersive.tracks = []playlist.Track{{Title: "t", Path: "/t"}}
+
+	m.pushImmersiveBack()
+	m.immersive.view = immViewAlbum
+	m.immersiveEscape()
+	if m.immersive.view != immViewPlaylist {
+		t.Fatalf("esc: view = %d, want playlist", m.immersive.view)
+	}
+	m.immersiveGoBack()
+	if m.immersive.view != immViewBrowse {
+		t.Fatalf("back to root: view = %d, want browse", m.immersive.view)
+	}
+	m.immersiveEscape()
+	if m.immersive.active {
+		t.Fatal("esc at root should exit immersive mode")
+	}
+}
+
+func TestImmersiveSettingsTab(t *testing.T) {
+	m := immersiveModel(t)
+	m.handleImmersiveKey(keyMsg("e"))
+	if m.immersive.view != immViewSettings {
+		t.Fatalf("view = %d, want settings", m.immersive.view)
+	}
 	m.immersive.view = immViewPlaylist
-	m.immersive.roloMode = true
-	m.immersive.tracks = nil
-	m.roloSpinKick(1)
-	if m.immersive.roloSpin != 0 {
-		t.Errorf("empty deck still queued %d spin steps", m.immersive.roloSpin)
+	m.immersive.settingsReturn = immViewPlaylist
+	m.immersive.view = immViewSettings
+	m.handleImmersiveKey(keyMsg("esc"))
+	if m.immersive.view != immViewPlaylist {
+		t.Fatalf("esc: view = %d, want playlist", m.immersive.view)
 	}
 }
 
 func TestImmersiveSortedTracks(t *testing.T) {
 	m := immersiveModel(t)
 	m.immersive.tracks = []playlist.Track{
-		{Title: "Banana", Album: "B", DurationSecs: 300},
-		{Title: "apple", Album: "a", DurationSecs: 10},
-		{Title: "Cherry", Album: "C", DurationSecs: 200},
+		{Title: "Zed", DurationSecs: 60, Path: "/z"},
+		{Title: "Ann", DurationSecs: 30, Path: "/a"},
 	}
-	tests := []struct {
-		sort  immersiveTrackSort
-		want0 string
-		want2 string
-	}{
-		{immSortTrackOrder, "Banana", "Cherry"},
-		{immSortTrackTitle, "apple", "Cherry"},
-		{immSortTrackAlbum, "apple", "Cherry"},
-		{immSortTrackDuration, "apple", "Banana"},
+	got := m.sortedTracks()
+	if got[0].Title != "Zed" {
+		t.Fatal("track-order sort must keep playlist order")
 	}
-	for _, tt := range tests {
-		t.Run(immSortTrackLabels[tt.sort], func(t *testing.T) {
-			m.immersive.trackSort = tt.sort
-			got := m.sortedTracks()
-			if got[0].Title != tt.want0 || got[2].Title != tt.want2 {
-				t.Errorf("sorted order = %q,%q,%q; want %q first, %q last",
-					got[0].Title, got[1].Title, got[2].Title, tt.want0, tt.want2)
-			}
-			// Source list must be untouched.
-			if m.immersive.tracks[0].Title != "Banana" {
-				t.Errorf("source order mutated: %q", m.immersive.tracks[0].Title)
-			}
-		})
+	m.immersive.trackSort = immSortTrackTitle
+	if got := m.sortedTracks(); got[0].Title != "Ann" {
+		t.Fatalf("title sort: first = %q, want Ann", got[0].Title)
+	}
+	m.immersive.trackSort = immSortTrackDuration
+	if got := m.sortedTracks(); got[0].DurationSecs != 30 {
+		t.Fatalf("duration sort: first = %v", got[0].DurationSecs)
 	}
 }
 
-func TestImmersiveEscapeLayers(t *testing.T) {
-	tests := []struct {
-		name       string
-		view       immersiveView
-		roloMode   bool
-		back       int
-		wantView   immersiveView
-		wantRolo   bool
-		wantActive bool
-	}{
-		{"rolodex closes first", immViewPlaylist, true, 1, immViewPlaylist, false, true},
-		{"back restores previous view", immViewPlaylist, false, 1, immViewPlaylist, false, true},
-		{"no back at playlist goes home", immViewPlaylist, false, 0, immViewHome, false, true},
-		{"home exits the mode", immViewHome, false, 0, immViewHome, false, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := immersiveModel(t)
-			m.immersive.view = tt.view
-			m.immersive.roloMode = tt.roloMode
-			for i := 0; i < tt.back; i++ {
-				m.immersive.back = append(m.immersive.back, immNavSnap{view: immViewPlaylist})
-			}
-			m.immersiveEscape()
-			if m.immersive.view != tt.wantView || m.immersive.roloMode != tt.wantRolo || m.immersive.active != tt.wantActive {
-				t.Errorf("after esc: view=%d rolo=%v active=%v; want %d %v %v",
-					m.immersive.view, m.immersive.roloMode, m.immersive.active,
-					tt.wantView, tt.wantRolo, tt.wantActive)
-			}
-		})
-	}
-}
-
-func TestImmersiveBackStackRestoresContext(t *testing.T) {
+func TestImmersiveMoveSnap(t *testing.T) {
 	m := immersiveModel(t)
+	m.immersive.tracks = make([]playlist.Track, 30)
+	for i := range m.immersive.tracks {
+		m.immersive.tracks[i] = playlist.Track{Title: "t" + strconv.Itoa(i)}
+	}
 	m.immersive.view = immViewPlaylist
-	m.immersive.ctxID, m.immersive.ctxName = "pl1", "Stuff to listen 2"
-	m.immersive.tracks = []playlist.Track{{Title: "One"}, {Title: "Two"}}
-	m.immersive.trackCursor = 1
-
-	m.pushImmersiveBack()
-	m.immersive.view = immViewSearch
-	m.immersive.ctxID = ""
-	m.immersive.tracks = nil
-
-	m.immersiveGoBack()
-	if m.immersive.view != immViewPlaylist || m.immersive.ctxID != "pl1" ||
-		len(m.immersive.tracks) != 2 || m.immersive.trackCursor != 1 {
-		t.Errorf("back did not restore context: %+v", m.immersive.ctxID)
+	m.handleImmersiveKey(keyMsg("j"))
+	if m.immersive.cursor != 1 {
+		t.Fatalf("cursor = %d, want 1", m.immersive.cursor)
+	}
+	m.handleImmersiveKey(keyMsg("pgdown"))
+	if m.immersive.cursor < 3 {
+		t.Fatalf("cursor = %d, want page step", m.immersive.cursor)
+	}
+	m.handleImmersiveKey(keyMsg("k"))
+	m.handleImmersiveKey(keyMsg("shift+home"))
+	if m.immersive.cursor != 0 {
+		t.Fatalf("home: cursor = %d, want 0", m.immersive.cursor)
 	}
 }
 
-func TestImmersivePaneWidths(t *testing.T) {
-	tests := []struct {
-		width     int
-		collapsed bool
-		wantRail  int // 0 = hidden
-		wantRight int // 0 = hidden
-	}{
-		{140, false, immRailMaxW, immRightMaxW},
-		{110, false, 27, immRightMaxW},
-		{90, false, 22, immRightMinW},
-		{70, false, immRailMinW, 0},
-		{60, false, 0, 0},
-		{140, true, immRailIconW, immRightMaxW},
-		{60, true, immRailIconW, 0},
-	}
-	for _, tt := range tests {
-		name := "w=" + strconv.Itoa(tt.width)
-		if tt.collapsed {
-			name += "+collapsed"
-		}
-		t.Run(name, func(t *testing.T) {
-			m := immersiveModel(t)
-			m.immersive.railCollapsed = tt.collapsed
-			if got := m.immersiveRailWidth(tt.width); got != tt.wantRail {
-				t.Errorf("immersiveRailWidth(%d) = %d, want %d", tt.width, got, tt.wantRail)
-			}
-			if got := m.immersiveRightWidth(tt.width); got != tt.wantRight {
-				t.Errorf("immersiveRightWidth(%d) = %d, want %d", tt.width, got, tt.wantRight)
-			}
-		})
-	}
-}
-
-func TestImmersiveFitCell(t *testing.T) {
-	tests := []struct {
-		in   string
-		w    int
-		want string
-	}{
-		{"abc", 5, "abc  "},
-		{"abcdef", 4, "abcd"},
-		{"", 3, "   "},
-		{"x", 0, ""},
-	}
-	for _, tt := range tests {
-		if got := fitCell(tt.in, tt.w); got != tt.want {
-			t.Errorf("fitCell(%q, %d) = %q, want %q", tt.in, tt.w, got, tt.want)
-		}
-	}
-}
-
-func TestImmersiveHandleKeyBasics(t *testing.T) {
-	tests := []struct {
-		name       string
-		key        string
-		wantFocus  immersivePane
-		wantActive bool
-	}{
-		{"tab moves center→right", "tab", immPaneRight, true},
-		{"shift+tab moves center→rail", "shift+tab", immPaneRail, true},
-		{"I exits", "I", immPaneRail, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := immersiveModel(t)
-			m.handleImmersiveKey(keyMsg(tt.key))
-			if m.immersive.focus != tt.wantFocus || m.immersive.active != tt.wantActive {
-				t.Errorf("key %q: focus=%d active=%v; want %d %v",
-					tt.key, m.immersive.focus, m.immersive.active, tt.wantFocus, tt.wantActive)
-			}
-		})
-	}
-}
-
-func TestImmersiveSectionKeys(t *testing.T) {
+func TestImmersiveFrameShape(t *testing.T) {
 	m := immersiveModel(t)
-	for _, key := range []string{"2", "3", "1"} {
-		m.handleImmersiveKey(keyMsg(key))
-	}
-	if m.immersive.railSection != immSectionPlaylists {
-		t.Errorf("railSection = %d after 1, want playlists", m.immersive.railSection)
-	}
-	m.handleImmersiveKey(keyMsg("3"))
-	if m.immersive.railSection != immSectionArtists {
-		t.Errorf("railSection = %d after 3, want artists", m.immersive.railSection)
-	}
-}
-
-func TestImmersiveTrackSortKey(t *testing.T) {
-	m := immersiveModel(t)
-	m.immersive.view = immViewPlaylist
-	m.immersive.zone = zoneTable
-	m.handleImmersiveKey(keyMsg("t"))
-	if m.immersive.trackSort != immSortTrackTitle {
-		t.Errorf("trackSort = %d, want title", m.immersive.trackSort)
-	}
-	m.handleImmersiveKey(keyMsg("t"))
-	if m.immersive.trackSort != immSortTrackAlbum {
-		t.Errorf("trackSort = %d, want album", m.immersive.trackSort)
-	}
-}
-
-func TestImmersiveRoloToggle(t *testing.T) {
-	m := immersiveModel(t)
-	m.immersive.view = immViewPlaylist
-	m.handleImmersiveKey(keyMsg("o"))
-	if !m.immersive.roloMode || m.immersive.zone != zoneRolo {
-		t.Errorf("o did not open rolodex: mode=%v zone=%d", m.immersive.roloMode, m.immersive.zone)
-	}
-	m.handleImmersiveKey(keyMsg("o"))
-	if m.immersive.roloMode {
-		t.Error("o did not close rolodex")
-	}
-}
-
-func TestImmersiveRenderFrameShape(t *testing.T) {
-	m := immersiveModel(t)
-	m.width, m.height = 120, 34
-	m.recomputeLayout()
 	out := stripAnsi(m.renderImmersive())
 	lines := strings.Split(out, "\n")
-	if len(lines) < 20 {
-		t.Fatalf("immersive frame = %d rows", len(lines))
+	g := m.immGeom()
+	if len(lines) != g.h {
+		t.Fatalf("lines = %d, want %d", len(lines), g.h)
 	}
-	// Top bar carries the search field; the player bar carries transport.
-	joined := strings.Join(lines, "\n")
-	for _, want := range []string{"what do you want to play", "Your Library", "Playlists", "Jump back in"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("frame missing %q\ngot:\n%s", want, joined)
+	for _, want := range []string{"Playlists", "Search", "Podcasts", "Now Playing", "Queue"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("frame missing %q", want)
 		}
+	}
+	if !strings.Contains(lines[immNavY], "╭") {
+		t.Fatal("nav row lacks pill borders")
+	}
+	if !strings.Contains(lines[g.seekY], "█") && !strings.Contains(lines[g.seekY], "0:00") {
+		t.Fatal("progress row missing")
 	}
 }
 
-func TestImmersiveRolodexStripHasNeighbors(t *testing.T) {
+func TestImmersiveTooSmallFallsBack(t *testing.T) {
 	m := immersiveModel(t)
-	m.immersive.roloCursor = 1
-	strip := strings.Join(m.renderImmRolodexStrip(80), "\n")
-	// Focused card plus left/right neighbors all render (neighbors truncated).
-	for _, want := range []string{"Stuff t", "kanyesTimelessSound", "Liked S", "◂ 2/3 ▸"} {
-		if !strings.Contains(strip, want) {
-			t.Errorf("rolodex strip missing %q\ngot:\n%s", want, strip)
-		}
+	m.player = &playbackFakeEngine{}
+	m.mouse = &mouseState{}
+	m.immMouse = &immMouseGeom{}
+	m.width, m.height = 70, 20
+	m.recomputeLayout()
+	if m.activeScreen() == screenImmersive {
+		t.Fatal("immersive shown below min size")
 	}
-}
-
-func TestImmersiveTableRowsHighlight(t *testing.T) {
-	m := immersiveModel(t)
-	m.immersive.view = immViewPlaylist
-	m.immersive.tracks = []playlist.Track{
-		{Title: "One", Album: "A", DurationSecs: 60},
-		{Title: "Two", Album: "B", DurationSecs: 120},
+	out := m.View().Content
+	if strings.Contains(stripAnsi(out), "Now Playing") {
+		t.Fatal("immersive frame drew while too small")
 	}
-	rows := strings.Join(m.immTableRows(60, 10, m.sortedTracks()), "\n")
-	for _, want := range []string{"One", "Two", "1:00", "2:00"} {
-		if !strings.Contains(rows, want) {
-			t.Errorf("table missing %q\ngot:\n%s", want, rows)
-		}
-	}
-}
-
-func TestImmersiveEnterExitRestoresNothing(t *testing.T) {
-	m := immersiveModel(t)
-	m.immersive = immersiveState{} // simulate normal mode
-	m.immersive.active = false
-
-	// Exiting a mode that was never entered must not corrupt state.
-	m.exitImmersive()
+	// I still exits immersive state on a too-small terminal.
+	m.handleKey(keyMsg("I"))
 	if m.immersive.active {
-		t.Error("exitImmersive left active=true")
-	}
-
-	m.provider = nil
-	if cmd := m.enterImmersive(); cmd != nil {
-		t.Error("enterImmersive with no provider returned a fetch cmd")
-	}
-	if !m.immersive.active || m.immersive.view != immViewHome {
-		t.Errorf("enterImmersive: active=%v view=%d", m.immersive.active, m.immersive.view)
+		t.Fatal("I did not exit immersive")
 	}
 }
 
-func TestImmersiveGridMove(t *testing.T) {
+func TestImmersiveArtRectsExposed(t *testing.T) {
 	m := immersiveModel(t)
-	m.immersive.zone = zoneGrid
-	m.immersive.gridCursor = 0
-	// gridCols depends on width; with 3 items one row covers all.
-	cols := m.immersiveGridCols()
-	if cols < 1 {
-		t.Fatalf("immersiveGridCols = %d", cols)
+	m.mouse = &mouseState{}
+	m.immMouse = &immMouseGeom{}
+	m.View()
+	rects := m.ImmersiveArtRects()
+	if len(rects) == 0 {
+		t.Fatal("no art rects recorded")
 	}
-	m.immersiveMoveCenter(0, 1)
-	if m.immersive.gridCursor != 1 {
-		t.Errorf("gridCursor = %d after l, want 1", m.immersive.gridCursor)
-	}
-	m.immersiveMoveCenter(0, -1)
-	if m.immersive.gridCursor != 0 {
-		t.Errorf("gridCursor = %d after h, want 0", m.immersive.gridCursor)
-	}
-	m.immersiveMoveCenter(-1, 0)
-	if m.immersive.zone != zoneRolo {
-		t.Errorf("up on top grid row did not return to rolodex (zone=%d)", m.immersive.zone)
+	g := m.immGeom()
+	if rects[0].W != g.npArt.W || rects[0].H != g.npArt.H {
+		t.Fatalf("first art rect = %+v, want now-playing %+v", rects[0], g.npArt)
 	}
 }
 
-func TestImmersiveTableStaysInTable(t *testing.T) {
+func TestImmersiveGlyphSets(t *testing.T) {
 	m := immersiveModel(t)
-	m.immersive.view = immViewPlaylist
-	m.immersive.zone = zoneTable
-	m.immersiveMoveCenter(0, -1) // h on a track table: no grid zone exists here
-	if m.immersive.zone != zoneTable {
-		t.Errorf("h on playlist table dropped to zone=%d, want zoneTable", m.immersive.zone)
+	m.player = &playbackFakeEngine{playing: true}
+	g := m.immGeom()
+	plain := stripAnsi(strings.Join(m.renderImmControls(g), "\n"))
+	m.nerdFontGlyphs = true
+	nerd := stripAnsi(strings.Join(m.renderImmControls(g), "\n"))
+	if !strings.Contains(plain, "⏸") {
+		t.Fatal("unicode pause glyph missing")
 	}
-	m.immersive.zone = zoneRolo
-	m.immersiveMoveCenter(1, 0) // j on the deck strip of a non-home view must not enter grid
-	if m.immersive.zone != zoneRolo {
-		t.Errorf("j off the deck leaked to zone=%d, want zoneRolo", m.immersive.zone)
+	if !strings.Contains(nerd, "\uf04c") {
+		t.Fatal("nerd font pause glyph missing")
+	}
+}
+
+func TestImmersiveSearchFlow(t *testing.T) {
+	m := immersiveModel(t)
+	m.handleImmersiveKey(keyMsg("/"))
+	if !m.immersive.searching || m.immersive.section != immSecSearch {
+		t.Fatalf("search not open: %+v", m.immersive)
+	}
+	for _, r := range "lizzo" {
+		m.handleImmersiveKey(tea.KeyPressMsg{Text: string(r)})
+	}
+	if m.immersive.searchQuery != "lizzo" {
+		t.Fatalf("query = %q", m.immersive.searchQuery)
+	}
+	// no Searcher on the stub: enter just closes the input.
+	m.handleImmersiveKey(keyMsg("enter"))
+	if m.immersive.searching {
+		t.Fatal("enter did not close search input")
+	}
+	if m.immersive.view != immViewSearch || !m.immersive.searchLoading {
+		t.Fatalf("view = %d loading=%v, want search view", m.immersive.view, m.immersive.searchLoading)
+	}
+}
+
+func TestImmersiveQueuePanel(t *testing.T) {
+	m := immersiveModel(t)
+	tracks := []playlist.Track{
+		{Title: "one", Path: "/1"}, {Title: "two", Path: "/2"}, {Title: "three", Path: "/3"},
+	}
+	for i := range tracks {
+		m.playlist.Add(tracks[i])
+	}
+	m.playlist.Queue(1)
+	m.playlist.Queue(2)
+	g := m.immGeom()
+	lines := m.renderImmQueue(g)
+	out := stripAnsi(strings.Join(lines, "\n"))
+	if !strings.Contains(out, " 1 two") || !strings.Contains(out, " 2 three") {
+		t.Fatalf("queue rows missing: %q", out)
 	}
 }

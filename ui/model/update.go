@@ -227,7 +227,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.tickPendingSpeedSave(dt)
 		m.tickPendingEQSave(dt)
-		m.tickImmersive(dt)
+		m.tickImmersive()
 		if m.pendingSeekActive && !m.pendingSeekExpiresAt.IsZero() && !now.Before(m.pendingSeekExpiresAt) {
 			m.pendingSeekActive = false
 			m.pendingSeekExpiresAt = time.Time{}
@@ -442,6 +442,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.openDefaultProviderOnce = false
 		cmd := m.openDefaultProviderBrowser()
 		return m, cmd
+
+	case openImmersiveMsg:
+		if !m.openImmersiveOnce {
+			return m, nil
+		}
+		m.openImmersiveOnce = false
+		return m, m.enterImmersive()
 
 	case radioListsRefreshMsg:
 		if msg.gen != m.requests.provider || !m.isActiveProvider("Radio") {
@@ -1222,18 +1229,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.isCurrentImmersiveRequest(msg.gen, msg.providerName, m.requests.immersiveArtist) {
 			return m, nil
 		}
-		m.immersive.artistLoading = false
+		m.immersive.tracksLoading = false
 		if msg.err != nil {
-			if !msg.forPanel {
-				m.status.Errorf(statusTTLDefault, "Artist load failed: %s", msg.err)
-			}
+			m.status.Errorf(statusTTLDefault, "Artist load failed: %s", msg.err)
 			return m, nil
 		}
-		if msg.forPanel {
-			m.immersive.artistMeta = msg.detail
-			return m, nil
-		}
-		m.immersive.artistMeta = msg.detail
 		m.immersive.tracks = msg.detail.Popular
 		m.immersive.ctxSub = msg.detail.Info.Name
 		return m, nil
@@ -1248,7 +1248,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status.Errorf(statusTTLDefault, "Search failed: %s", msg.err)
 			return m, nil
 		}
-		m.immersive.searchResults = msg.tracks
 		m.immersive.tracks = msg.tracks
 		return m, nil
 

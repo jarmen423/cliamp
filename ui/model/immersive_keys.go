@@ -1,9 +1,10 @@
 package model
 
-// immersive_keys.go owns every keypress while immersive mode is active. The
+// immersive_keys.go owns every keypress while immersive mode is shown. The
 // handler is reached before every other screen handler, so bindings here can
-// reuse familiar letters without touching normal-mode dispatch. Playback verbs
-// (space, </>, z, r, volume) forward to the same helpers the main screen uses.
+// reuse familiar letters without touching normal-mode dispatch. Playback
+// verbs (space, </>, z, r, volume) forward to the same helpers the main
+// screen uses.
 
 import (
 	"context"
@@ -21,7 +22,7 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 	if m.fullVis {
 		return m.handleFullVisualizerKey(msg)
 	}
-	if m.immersive.searching || m.immersive.railFiltering {
+	if m.immersive.searching || m.immersive.filtering {
 		return m.handleImmersiveInputKey(msg)
 	}
 
@@ -40,41 +41,27 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "shift+tab":
 		m.immersive.focus = immersivePane((int(m.immersive.focus) + int(immPaneCount) - 1) % int(immPaneCount))
 		return nil
-	case "home":
-		m.immersive.focus = immPaneCenter
-		m.immersiveGoBack()
-		m.immersive.back = nil
-		return nil
 
-	// — playback bar —
+	// — playback —
 	case "space":
-		cmd := m.togglePlayPause()
-		m.notifyPlayback()
-		return cmd
+		return m.immTogglePlay()
 	case ">", ".":
-		refresh := m.scrobbleCurrent()
-		cmd := m.nextTrack()
-		m.notifyPlayback()
-		return tea.Batch(refresh, cmd)
+		return m.immNext()
 	case "<", ",":
-		refresh := m.scrobbleCurrent()
-		cmd := m.prevTrack()
-		m.notifyPlayback()
-		return tea.Batch(refresh, cmd)
+		return m.immPrev()
 	case "z":
-		m.playlist.ToggleShuffle()
-		m.saveConfigKey("shuffle", boolString(m.playlist.Shuffled()))
-		return m.rearmPreload()
+		return m.immToggleShuffle()
 	case "r":
-		const repeatModes = playlist.RepeatOne + 1
-		m.playlist.SetRepeat((m.playlist.Repeat() + 1) % repeatModes)
-		m.saveConfigKey("repeat", repeatLabel(m.playlist.Repeat()))
-		return nil
+		return m.immCycleRepeat()
 	case "+", "=":
-		m.player.SetVolume(m.player.Volume() + 1)
+		if m.player != nil {
+			m.player.SetVolume(m.player.Volume() + 1)
+		}
 		return nil
 	case "-":
-		m.player.SetVolume(m.player.Volume() - 1)
+		if m.player != nil {
+			m.player.SetVolume(m.player.Volume() - 1)
+		}
 		return nil
 	case "shift+left":
 		return m.doSeek(-m.seekStepLarge)
@@ -82,83 +69,71 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.doSeek(m.seekStepLarge)
 
 	// — frame —
-	case "c":
-		m.immersive.railCollapsed = !m.immersive.railCollapsed
+	case "g", "home":
+		m.immersive.focus = immPaneCanvas
+		m.immersiveHome()
 		return nil
 	case "q":
-		m.immersive.rightTab = immersiveRightTab((int(m.immersive.rightTab) + 1) % int(immTabCount))
-		if m.immersive.rightTab == immTabNowPlaying {
-			return m.maybeFetchNowPlayingArtist()
+		if m.immersive.focus == immPaneQueue {
+			m.immersive.focus = immPaneCanvas
+		} else {
+			m.immersive.focus = immPaneQueue
 		}
-		return nil
-	case "g":
-		m.immersive.focus = immPaneCenter
-		m.immersiveGoBack()
-		m.immersive.back = nil
-		m.immersive.view = immViewHome
-		m.immersive.zone = zoneRolo
 		return nil
 	case "V":
 		m.fullVis = true
 		return nil
 
-	// — rail pills / ordering —
-	case "1":
-		m.immersive.railSection = immSectionPlaylists
-		m.immersive.railCursor, m.immersive.railScroll = 0, 0
-		return nil
-	case "2":
-		m.immersive.railSection = immSectionAlbums
-		m.immersive.railCursor, m.immersive.railScroll = 0, 0
-		return nil
-	case "3":
-		m.immersive.railSection = immSectionArtists
-		m.immersive.railCursor, m.immersive.railScroll = 0, 0
-		return nil
-	case "s":
-		m.immersive.railSort = immRailSort((int(m.immersive.railSort) + 1) % int(immRailSortCount))
-		return nil
-	case "f":
-		m.immersive.railFiltering = true
-		m.immersive.railFilter = ""
-		return nil
-
-	// — search —
-	case "/", "ctrl+f":
-		if _, ok := m.immersive.prov.(provider.Searcher); ok {
-			m.immersive.searching = true
-			m.immersive.searchQuery = ""
+	// — nav pills —
+	case "1", "2", "3", "4", "5":
+		m.immersiveSetSection(immSection(msg.String()[0] - '1'))
+		if m.immersive.section == immSecSearch {
+			return m.openImmersiveSearch()
 		}
 		return nil
 
-	// — center modes —
-	case "o":
-		m.immersive.roloMode = !m.immersive.roloMode
-		m.immersive.roloSpin = 0
-		if m.immersive.roloMode {
-			if m.immersive.zone == zoneTable {
-				m.immersive.roloCursor = m.immersive.trackCursor
-			}
-			m.immersive.zone = zoneRolo
-			m.immersive.focus = immPaneCenter
-		} else if m.immersive.view == immViewHome {
-			m.immersive.zone = zoneGrid
+	// — canvas —
+	case "v":
+		m.immersive.mode = immCanvasMode((int(m.immersive.mode) + 1) % int(immCanvasModeCount))
+		m.immersive.scroll = 0
+		return nil
+	case "e":
+		if m.immersive.view == immViewSettings {
+			m.immersive.view = m.immersive.settingsReturn
 		} else {
-			m.immersive.zone = zoneTable
+			m.immersive.settingsReturn = m.immersive.view
+			m.immersive.view = immViewSettings
+			m.immersive.focus = immPaneCanvas
+		}
+		return nil
+	case "s":
+		m.immersive.sort = immBrowseSort((int(m.immersive.sort) + 1) % int(immBrowseSortCount))
+		return nil
+	case "f":
+		if m.immersive.view == immViewBrowse {
+			m.immersive.filtering = true
+			m.immersive.filter = ""
 		}
 		return nil
 	case "t":
-		if m.immersiveTableActive() {
+		if m.immersive.view.isTrackView() {
 			m.immersive.trackSort = immersiveTrackSort((int(m.immersive.trackSort) + 1) % int(immSortTrackCount))
-			m.immersive.trackScroll = 0
+			m.immersive.scroll = 0
 		}
 		return nil
 	case "p":
-		return m.playImmersiveContext(m.immersive.trackCursor)
+		if m.immersive.view.isTrackView() {
+			return m.playImmersiveContext(m.immersive.cursor)
+		}
+		return nil
 	case "n":
 		return m.immersiveToggleLike()
 	case "a":
 		return m.immersiveQueueAppend()
+
+	// — search —
+	case "/", "ctrl+f":
+		return m.openImmersiveSearch()
 
 	case "enter":
 		return m.immersiveActivate()
@@ -189,17 +164,60 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// immersiveEscape peels the innermost state: a running filter, the big
-// rolodex, one back-stack level, then the mode itself.
+// Playback verbs shared by the key handler and the controls-row click
+// targets (a click on a box-drawn button is dispatched as its key).
+func (m *Model) immTogglePlay() tea.Cmd {
+	cmd := m.togglePlayPause()
+	m.notifyPlayback()
+	return cmd
+}
+
+func (m *Model) immNext() tea.Cmd {
+	refresh := m.scrobbleCurrent()
+	cmd := m.nextTrack()
+	m.notifyPlayback()
+	return tea.Batch(refresh, cmd)
+}
+
+func (m *Model) immPrev() tea.Cmd {
+	refresh := m.scrobbleCurrent()
+	cmd := m.prevTrack()
+	m.notifyPlayback()
+	return tea.Batch(refresh, cmd)
+}
+
+func (m *Model) immToggleShuffle() tea.Cmd {
+	m.playlist.ToggleShuffle()
+	m.saveConfigKey("shuffle", boolString(m.playlist.Shuffled()))
+	return m.rearmPreload()
+}
+
+func (m *Model) immCycleRepeat() tea.Cmd {
+	const repeatModes = playlist.RepeatOne + 1
+	m.playlist.SetRepeat((m.playlist.Repeat() + 1) % repeatModes)
+	m.saveConfigKey("repeat", repeatLabel(m.playlist.Repeat()))
+	return nil
+}
+
+// openImmersiveSearch activates the Search pill's input field.
+func (m *Model) openImmersiveSearch() tea.Cmd {
+	if _, ok := m.immersive.prov.(provider.Searcher); !ok {
+		m.immersiveSetSection(immSecSearch)
+		return nil
+	}
+	m.immersiveSetSection(immSecSearch)
+	m.immersive.searching = true
+	m.immersive.searchQuery = ""
+	return nil
+}
+
+// immersiveEscape peels the innermost state: the settings tab, one
+// back-stack level, then the mode itself.
 func (m *Model) immersiveEscape() tea.Cmd {
 	switch {
-	case m.immersive.roloMode:
-		m.immersive.roloMode = false
-		m.immersive.roloSpin = 0
-		if m.immersive.view != immViewHome {
-			m.immersive.zone = zoneTable
-		}
-	case len(m.immersive.back) > 0 || m.immersive.view != immViewHome:
+	case m.immersive.view == immViewSettings:
+		m.immersive.view = m.immersive.settingsReturn
+	case len(m.immersive.back) > 0 || m.immersive.view != immViewBrowse && m.immersive.view != immViewSearch:
 		m.immersiveGoBack()
 	default:
 		m.exitImmersive()
@@ -207,159 +225,156 @@ func (m *Model) immersiveEscape() tea.Cmd {
 	return nil
 }
 
-// immersiveTableActive reports whether the center pane is on a track table.
-func (m Model) immersiveTableActive() bool {
-	switch m.immersive.view {
-	case immViewPlaylist, immViewAlbum, immViewSearch, immViewArtist:
-		return !m.immersive.roloMode
+// immersivePageStep is the page-scroll step in the active cursor domain.
+func (m Model) immersivePageStep() int {
+	g := m.immGeom()
+	switch m.immersive.mode {
+	case immCanvasRows:
+		return max(1, g.canvasIH/immRowsItemH-1)
+	case immCanvasGrid:
+		tileH := max(3, (g.canvasIW/m.immGridCols(g.canvasIW))/2+2)
+		return max(1, g.canvasIH/(tileH+1)-1) * m.immGridCols(g.canvasIW)
+	default:
+		return max(3, g.canvasIH-1)
 	}
-	return false
 }
 
-// immersiveMove applies a (vertical, horizontal) step to the focused pane.
+// immersiveMove applies a (vertical, horizontal) step to the focused region.
 func (m *Model) immersiveMove(dy, dx int) {
 	switch m.immersive.focus {
-	case immPaneRail:
-		rows := m.railRows()
-		m.immersive.railCursor = clampInt(m.immersive.railCursor+dy, 0, max(0, len(rows)-1))
-		m.immersive.railScroll = clampedScroll(m.immersive.railScroll, m.immersive.railCursor, len(rows), m.immersiveRailBudget())
-	case immPaneRight:
+	case immPaneNav:
+		if dx != 0 {
+			sec := immSection(wrapIndex(int(m.immersive.section)+dx, int(immSecCount)))
+			m.immersiveSetSection(sec)
+		}
+		if dy > 0 {
+			m.immersive.focus = immPaneCanvas
+		}
+	case immPaneQueue:
 		total := m.playlist.QueueLen()
-		m.immersive.rightCursor = clampInt(m.immersive.rightCursor+dy, 0, max(0, total-1))
-		m.immersive.rightScroll = clampedScroll(m.immersive.rightScroll, m.immersive.rightCursor, total, m.immersiveRightBudget())
+		m.immersive.queueCursor = clampInt(m.immersive.queueCursor+dy+dx, 0, max(0, total-1))
 	default:
-		m.immersiveMoveCenter(dy, dx)
+		m.immersiveMoveCanvas(dy, dx)
 	}
 }
 
-// immersiveMoveCenter routes a step inside the center pane: the rolodex eats
-// horizontal moves, the grid and table eat vertical ones.
-func (m *Model) immersiveMoveCenter(dy, dx int) {
-	if m.immersive.roloMode {
-		if dx != 0 {
-			m.roloSpinKick(dx)
-		}
+// immersiveMoveCanvas routes a step inside the canvas: j/k move by item
+// (tile row in grid mode); h/l move by item (or tile row in grid mode), and
+// adjust the focused value in the settings tab.
+func (m *Model) immersiveMoveCanvas(dy, dx int) {
+	im := &m.immersive
+	if im.view == immViewSettings {
 		if dy != 0 {
-			m.roloSpinKick(dy) // j/k also roll while the wheel owns the pane
+			im.settingsCursor = clampInt(im.settingsCursor+dy, 0, immSetCount-1)
 		}
-		return
-	}
-	switch m.immersive.zone {
-	case zoneRolo:
 		if dx != 0 {
-			m.roloSpinKick(dx)
-			return
+			m.immersiveAdjustSetting(im.settingsCursor, dx)
 		}
-		if dy > 0 && m.immersive.view == immViewHome {
-			m.immersive.zone = zoneGrid
-			return
-		}
-	case zoneGrid:
-		m.immersiveMoveGrid(dy, dx)
-	case zoneTable:
-		n := len(m.sortedTracks())
-		m.immersive.trackCursor = clampInt(m.immersive.trackCursor+dy, 0, max(0, n-1))
-		m.immersive.trackScroll = clampedScroll(m.immersive.trackScroll, m.immersive.trackCursor, n, m.immersiveTableBudget())
-		if dx < 0 && m.immersive.view == immViewHome {
-			m.immersive.zone = zoneGrid // columns to the left hop back to cards
-		}
+		return
+	}
+	n := len(m.canvasItems())
+	if n == 0 {
+		return
+	}
+	step := dy
+	if im.mode == immCanvasGrid {
+		cols := m.immGridCols(m.immGeom().canvasIW)
+		step = dy*cols + dx
+	} else {
+		step += dx
+	}
+	im.cursor = clampInt(im.cursor+step, 0, n-1)
+	m.clampCanvasScroll()
+}
+
+// clampCanvasScroll re-derives scroll so the cursor row stays visible. In
+// grid mode scroll is in tile rows; in list/rows it is in items.
+func (m *Model) clampCanvasScroll() {
+	im := &m.immersive
+	g := m.immGeom()
+	n := len(m.canvasItems())
+	switch im.mode {
+	case immCanvasRows:
+		per := max(1, g.canvasIH/immRowsItemH)
+		im.scroll = clampedScroll(im.scroll, im.cursor, n, per)
+	case immCanvasGrid:
+		cols := m.immGridCols(g.canvasIW)
+		tileH := max(3, (g.canvasIW/cols)/2+2)
+		visible := max(1, g.canvasIH/(tileH+1))
+		tileRows := (n + cols - 1) / cols
+		im.scroll = clampedScroll(im.scroll, im.cursor/cols, tileRows, visible)
+	default:
+		im.scroll = clampedScroll(im.scroll, im.cursor, n, g.canvasIH)
 	}
 }
 
-// immersiveMoveGrid moves the card-grid cursor in 2D. Column count comes from
-// the current center width so keys and rendering share the same math.
-func (m *Model) immersiveMoveGrid(dy, dx int) {
-	cols := m.immersiveGridCols()
-	items := len(m.roloItems())
-	if items == 0 {
-		return
-	}
-	cur := m.immersive.gridCursor
-	row, col := cur/cols, cur%cols
-	rows := (items + cols - 1) / cols
-	switch {
-	case dy < 0 && row == 0:
-		m.immersive.zone = zoneRolo
-		return
-	case dy < 0:
-		row--
-	case dy > 0:
-		row++
-	case dx < 0:
-		col--
-	case dx > 0:
-		col++
-	}
-	row = clampInt(row, 0, max(0, rows-1))
-	col = clampInt(col, 0, cols-1)
-	m.immersive.gridCursor = min(row*cols+col, items-1)
-}
-
-// immersiveActivate is Enter: rail rows and cards open their context, table
-// rows play in place, queue rows jump the live queue.
+// immersiveActivate is Enter: pills apply, collections open, tracks play,
+// queue rows jump the live queue, and settings rows adjust +1.
 func (m *Model) immersiveActivate() tea.Cmd {
 	switch m.immersive.focus {
-	case immPaneRail:
-		rows := m.railRows()
-		if m.immersive.railCursor < len(rows) {
-			m.immersive.focus = immPaneCenter
-			return m.openImmersiveRow(rows[m.immersive.railCursor])
-		}
-	case immPaneRight:
-		if m.immersive.rightTab == immTabQueue {
-			return m.immersiveQueueJump()
-		}
-	default:
-		if m.immersive.roloMode || m.immersive.zone == zoneRolo {
-			items := m.roloItems()
-			if m.immersive.roloCursor < len(items) {
-				return m.activateRoloItem(items[m.immersive.roloCursor])
-			}
-			return nil
-		}
-		if m.immersive.zone == zoneGrid {
-			items := m.roloItems()
-			if m.immersive.gridCursor < len(items) {
-				return m.activateRoloItem(items[m.immersive.gridCursor])
-			}
-			return nil
-		}
-		return m.playImmersiveTrack(m.immersive.trackCursor)
-	}
-	return nil
-}
-
-// activateRoloItem opens a deck item: tracks play, collections open.
-func (m *Model) activateRoloItem(item roloItem) tea.Cmd {
-	if item.kind == roloKindTrack {
-		idx := indexOfRoloTrack(m.sortedTracks(), item.id)
-		if idx >= 0 {
-			m.immersive.trackCursor = idx
-			return m.playImmersiveTrack(idx)
+	case immPaneNav:
+		if m.immersive.section == immSecSearch {
+			return m.openImmersiveSearch()
 		}
 		return nil
+	case immPaneQueue:
+		return m.immersiveQueueJump()
+	default:
+		im := &m.immersive
+		if im.view == immViewSettings {
+			m.immersiveAdjustSetting(im.settingsCursor, 1)
+			return nil
+		}
+		items := m.canvasItems()
+		if im.cursor < 0 || im.cursor >= len(items) {
+			return nil
+		}
+		return m.activateItem(items[im.cursor])
 	}
-	return m.openImmersiveRow(immRailRow{kind: item.kind, id: item.id, name: item.title, sub: item.sub})
 }
 
-// indexOfRoloTrack resolves a roloItem track id (its position in the track
-// list) back to a table index.
-func indexOfRoloTrack(tracks []playlist.Track, id string) int {
-	for i := range tracks {
-		if strconv.Itoa(i) == id {
-			return i
+// activateItem runs a canvas item: collections open, tracks play.
+func (m *Model) activateItem(item immItem) tea.Cmd {
+	if item.kind == immKindTrack {
+		idx, err := strconv.Atoi(item.id)
+		if err != nil || idx < 0 || idx >= len(m.sortedTracks()) {
+			return nil
+		}
+		m.immersive.cursor = idx
+		return m.playImmersiveTrack(idx)
+	}
+	return m.openImmersiveItem(item)
+}
+
+// immersiveAdjustSetting applies a +/- adjustment to a settings row.
+func (m *Model) immersiveAdjustSetting(row, dir int) {
+	if m.player == nil {
+		return
+	}
+	switch {
+	case row == immSetPreset:
+		m.cycleEQPreset()
+	case row >= immSetBand0 && row < immSetBand0+eqBandCount:
+		bands := m.player.EQBands()
+		m.setCustomEQBand(row-immSetBand0, bands[row-immSetBand0]+float64(dir))
+	case row == immSetVol:
+		m.player.SetVolume(m.player.Volume() + float64(dir))
+	case row == immSetSpeed:
+		m.changeSpeed(0.25 * float64(dir))
+	case row == immSetVis:
+		if m.vis != nil {
+			m.vis.CycleMode()
 		}
 	}
-	return -1
 }
 
-// immersiveQueueJump plays the queue row under the right-rail cursor.
+// immersiveQueueJump plays the queue row under the queue cursor.
 func (m *Model) immersiveQueueJump() tea.Cmd {
 	entries := m.playlist.QueueEntries()
-	if m.immersive.rightCursor < 0 || m.immersive.rightCursor >= len(entries) {
+	if m.immersive.queueCursor < 0 || m.immersive.queueCursor >= len(entries) {
 		return nil
 	}
-	idx := entries[m.immersive.rightCursor].TrackIndex
+	idx := entries[m.immersive.queueCursor].TrackIndex
 	if idx < 0 || idx >= m.playlist.Len() {
 		return nil
 	}
@@ -371,29 +386,16 @@ func (m *Model) immersiveQueueJump() tea.Cmd {
 	return cmd
 }
 
-// immersiveQueueAppend adds the focused table/rolodex track to the live queue.
+// immersiveQueueAppend adds the focused track to the live queue.
 func (m *Model) immersiveQueueAppend() tea.Cmd {
-	if !m.immersiveTableActive() && !m.immersive.roloMode {
+	if !m.immersive.view.isTrackView() {
 		return nil
 	}
-	var track playlist.Track
-	if m.immersive.roloMode {
-		items := m.roloItems()
-		if m.immersive.roloCursor >= len(items) || items[m.immersive.roloCursor].kind != roloKindTrack {
-			return nil
-		}
-		idx := indexOfRoloTrack(m.sortedTracks(), items[m.immersive.roloCursor].id)
-		if idx < 0 {
-			return nil
-		}
-		track = m.sortedTracks()[idx]
-	} else {
-		tracks := m.sortedTracks()
-		if m.immersive.trackCursor >= len(tracks) {
-			return nil
-		}
-		track = tracks[m.immersive.trackCursor]
+	tracks := m.sortedTracks()
+	if m.immersive.cursor < 0 || m.immersive.cursor >= len(tracks) {
+		return nil
 	}
+	track := tracks[m.immersive.cursor]
 	if track.Path == "" {
 		return nil
 	}
@@ -403,18 +405,18 @@ func (m *Model) immersiveQueueAppend() tea.Cmd {
 	return m.rearmPreload()
 }
 
-// immersiveToggleLike hearts the focused track (table/rolo) or, lacking a
-// track context, the playing track — mirroring `n` on the playlist pane.
+// immersiveToggleLike hearts the focused track or, lacking a track context,
+// the playing track — mirroring `n` on the playlist pane.
 func (m *Model) immersiveToggleLike() tea.Cmd {
 	if m.favMgr == nil {
 		return nil
 	}
 	var track playlist.Track
 	var ok bool
-	if m.immersiveTableActive() {
+	if m.immersive.view.isTrackView() {
 		tracks := m.sortedTracks()
-		if m.immersive.trackCursor < len(tracks) {
-			track, ok = tracks[m.immersive.trackCursor], true
+		if m.immersive.cursor < len(tracks) {
+			track, ok = tracks[m.immersive.cursor], true
 		}
 	} else {
 		track, _ = m.currentPlaybackTrack()
@@ -437,25 +439,25 @@ func (m *Model) immersiveToggleLike() tea.Cmd {
 	return m.fetchProviderPlaylists()
 }
 
-// handleImmersiveInputKey drives the two text fields (top-bar search and the
-// rail filter). Both are simple line editors.
+// handleImmersiveInputKey drives the two text fields (search pill input and
+// the canvas filter). Both are simple line editors.
 func (m *Model) handleImmersiveInputKey(msg tea.KeyPressMsg) tea.Cmd {
 	field := &m.immersive.searchQuery
-	if m.immersive.railFiltering {
-		field = &m.immersive.railFilter
+	if m.immersive.filtering {
+		field = &m.immersive.filter
 	}
 	switch msg.String() {
 	case "esc":
 		m.immersive.searching = false
-		m.immersive.railFiltering = false
+		m.immersive.filtering = false
 		return nil
 	case "enter":
 		if m.immersive.searching {
 			m.immersive.searching = false
 			return m.runImmersiveSearch()
 		}
-		m.immersive.railFiltering = false
-		m.immersive.railCursor, m.immersive.railScroll = 0, 0
+		m.immersive.filtering = false
+		m.immersive.cursor, m.immersive.scroll = 0, 0
 		return nil
 	case "backspace":
 		if *field != "" {
@@ -472,7 +474,7 @@ func (m *Model) handleImmersiveInputKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// runImmersiveSearch fires the provider's track search into the center table.
+// runImmersiveSearch fires the provider's track search into the canvas.
 func (m *Model) runImmersiveSearch() tea.Cmd {
 	s, ok := m.immersive.prov.(provider.Searcher)
 	if !ok || m.immersive.searchQuery == "" {
@@ -482,27 +484,23 @@ func (m *Model) runImmersiveSearch() tea.Cmd {
 	m.immersive.view = immViewSearch
 	m.immersive.ctxID, m.immersive.ctxName = "", "Search: "+m.immersive.searchQuery
 	m.immersive.ctxSub = "Results"
-	m.immersive.ctxKind = roloKindTrack
+	m.immersive.ctxKind = immKindTrack
 	m.immersive.searchLoading = true
 	m.immersive.tracks = nil
 	m.immersive.tracksLoading = true
-	m.immersive.trackCursor, m.immersive.trackScroll = 0, 0
-	m.immersive.zone = zoneTable
-	m.immersive.focus = immPaneCenter
+	m.immersive.cursor, m.immersive.scroll = 0, 0
+	m.immersive.focus = immPaneCanvas
 	return fetchImmersiveSearchCmd(context.Background(), s, m.immersive.prov.Name(), m.immersive.searchQuery, nextRequest(&m.requests.immersiveSearch))
 }
 
 // immersiveCursorHome snaps the active cursor back to the first row.
 func (m *Model) immersiveCursorHome() {
 	switch m.immersive.focus {
-	case immPaneRail:
-		m.immersive.railCursor, m.immersive.railScroll = 0, 0
-	case immPaneRight:
-		m.immersive.rightCursor, m.immersive.rightScroll = 0, 0
+	case immPaneQueue:
+		m.immersive.queueCursor = 0
 	default:
-		m.immersive.trackCursor, m.immersive.trackScroll = 0, 0
-		m.immersive.roloCursor = 0
-		m.immersive.gridCursor = 0
+		m.immersive.cursor, m.immersive.scroll = 0, 0
+		m.immersive.settingsCursor = 0
 	}
 }
 
