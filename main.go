@@ -592,6 +592,7 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 		m.SetNerdFontGlyphs(true)
 	}
 	m.SetImageMode(cfg.Images)
+	m.SetImmersiveView(cfg.ImmersiveView)
 	imgLayer := termimg.NewLayer()
 	m.SetImageLayer(imgLayer)
 	if cfg.HideHelpBar {

@@ -175,11 +175,12 @@ func albumFromItem(a *spotifyAlbumItem) playlist.Track {
 	}
 
 	return playlist.Track{
-		Path:   uri,
-		Title:  a.Name,
-		Artist: artistNames(a.Artists),
-		Album:  a.Name,
-		Year:   year,
+		Path:        uri,
+		Title:       a.Name,
+		Artist:      artistNames(a.Artists),
+		Album:       a.Name,
+		Year:        year,
+		AlbumArtURL: pickCoverImage(a.Images),
 		ProviderMeta: map[string]string{
 			playlist.MetaKind:    playlist.MetaKindAlbum,
 			playlist.MetaAlbumID: a.ID,

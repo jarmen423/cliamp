@@ -391,7 +391,7 @@ func (m *Model) startImmersive() tea.Cmd {
 		focus:          immPaneCanvas,
 		section:        immSecPlaylists,
 		view:           immViewBrowse,
-		mode:           immCanvasList,
+		mode:           m.immCanvasPref,
 		sort:           immBrowseSortRecents,
 		settingsReturn: immViewBrowse,
 	}

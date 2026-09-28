@@ -215,10 +215,12 @@ func (m Model) View() tea.View {
 	if screen == screenImmersive {
 		rendered = m.immPadFrame(content)
 		m.imgLayer.Set(m.immArtPlacements())
+		m.touchChangedRows(rendered)
 		m.feedPixelVis()
 	} else {
 		m.imgLayer.Set(nil)
 		m.imgLayer.SetLive(nil)
+		m.touchChangedRows("")
 		rendered = m.centerFrame(ui.FrameStyle.Render(content))
 		rendered = ui.FitRect(rendered, m.layout.frameWidth, max(1, m.height))
 	}

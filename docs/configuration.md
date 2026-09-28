@@ -189,6 +189,10 @@ with Sixel enabled) and colored half-block text on the rest; `"sixel"` or
 `"blocks"` forces one, and `"off"` keeps the text placeholders. Covers come from
 the track's album art or the provider's playlist/album/artist image.
 
+`immersive_view` is the canvas view immersive opens in: `"list"` (default),
+`"rows"` or `"grid"`. Pressing `c` in immersive cycles the view and saves it
+here.
+
 `hide_help_bar = true` removes the key-binding hint bar above the status line
 and gives that row back to the playlist. The full keymap stays available with
 `?`. `Ctrl+G` toggles the bar and writes the new value back to this key, so the

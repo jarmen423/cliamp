@@ -246,3 +246,13 @@ func TestCollectionImageURLs(t *testing.T) {
 		})
 	}
 }
+
+func TestAlbumSearchHitCarriesCover(t *testing.T) {
+	hit := albumFromItem(&spotifyAlbumItem{
+		ID: "al1", Name: "Kamikaze",
+		Images: []spotifyImage{{URL: "https://i.scdn.co/image/big", Width: 640}, {URL: "https://i.scdn.co/image/mid", Width: 300}},
+	})
+	if !hit.IsAlbum() || hit.AlbumArtURL != "https://i.scdn.co/image/mid" {
+		t.Fatalf("album hit: album=%v art=%q, want the ~300px cover", hit.IsAlbum(), hit.AlbumArtURL)
+	}
+}
