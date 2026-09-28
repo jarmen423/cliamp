@@ -458,16 +458,20 @@ func (m Model) renderImmQueue(g immGeom) []string {
 // the opened collection's name inside a detail view.
 func (m Model) immCanvasTitle() string {
 	im := m.immersive
+	var title string
 	switch im.view {
 	case immViewBrowse:
-		return immSectionLabels[im.section]
+		title = immSectionLabels[im.section]
+		if im.sort != immBrowseSortRecents {
+			title += " · " + immBrowseSortLabels[im.sort]
+		}
 	case immViewSettings:
 		return "Settings"
 	case immViewSearch:
+		title = "Search"
 		if im.ctxName != "" {
-			return im.ctxName
+			title = im.ctxName
 		}
-		return "Search"
 	default:
 		kind := "Playlist"
 		switch im.view {
@@ -478,8 +482,12 @@ func (m Model) immCanvasTitle() string {
 		case immViewShow:
 			kind = "Podcast"
 		}
-		return kind + ": " + firstNonEmpty(im.ctxName, "…")
+		title = kind + ": " + firstNonEmpty(im.ctxName, "…")
+		if im.trackSort != immSortTrackOrder {
+			title += " · " + immSortTrackLabels[im.trackSort]
+		}
 	}
+	return title + " · " + immCanvasModeNames[im.mode]
 }
 
 func (m Model) renderImmCanvas(g immGeom) []string {
