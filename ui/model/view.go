@@ -191,14 +191,18 @@ func (m Model) View() tea.View {
 	var content string
 	switch screen {
 	case screenFullVisualizer:
-		content = m.renderFullVisualizer()
+		sections := m.fullVisualizerSections()
+		content = strings.Join(sections, "\n")
+		m.recordMouseGeometry(content, sections, "")
 	default:
 		// Overlays render in the playlist region (renderMainBody), with their
 		// header/help supplied by renderPlaylistHeader / renderHelp. List-heavy
 		// tasks collapse to a compact now-playing summary so they can use the
 		// reclaimed rows for browsing.
 		body := m.renderBodyRegion()
-		content = strings.Join(m.mainSections(body, true, contentFirst), "\n")
+		sections := m.mainSections(body, true, contentFirst)
+		content = strings.Join(sections, "\n")
+		m.recordMouseGeometry(content, sections, body)
 	}
 
 	// Every screen now renders within the main frame, so frame and center
@@ -207,6 +211,9 @@ func (m Model) View() tea.View {
 	rendered = ui.FitRect(rendered, m.layout.frameWidth, max(1, m.height))
 
 	view := tea.NewView(rendered)
+	// Mouse cell-motion reporting delivers clicks, releases, the wheel, and
+	// drag motion; terminals without mouse support simply send nothing.
+	view.MouseMode = tea.MouseModeCellMotion
 	view.BackgroundColor = ui.ColorBackground
 	if ui.ColorBackground != nil {
 		view.ForegroundColor = ui.ColorText
@@ -369,6 +376,12 @@ func trackInfoName(track playlist.Track, streamTitle string) string {
 	}
 
 	name := trackViewName(track)
+	if track.Meta(provider.MetaPodcastFeed) != "" {
+		name = track.DisplayName()
+		if track.Meta(provider.MetaMixcloudExclusive) == "true" {
+			name = strings.TrimSpace(name) + restrictedViewSuffix
+		}
+	}
 	if name == "" {
 		name = "No track loaded"
 	}
@@ -568,10 +581,10 @@ func (m Model) renderSpectrum() string {
 	return m.vis.Render()
 }
 
-// renderFullVisualizer renders a full-screen view showing only the visualizer
-// with minimal track info and a seek bar.
-func (m Model) renderFullVisualizer() string {
-	sections := []string{
+// fullVisualizerSections builds the fullscreen visualizer screen: the
+// visualizer with minimal track info and a seek bar.
+func (m Model) fullVisualizerSections() []string {
+	return []string{
 		m.fullVisTopLine(),
 		m.renderTimeStatus(),
 		"",
@@ -580,8 +593,6 @@ func (m Model) renderFullVisualizer() string {
 		"",
 		helpKey("V", "Exit ") + helpKey("v", "Mode:"+m.vis.ModeName()+" ") + helpKey("Spc", "▶❚❚ ") + helpKey("<>", "Trk ") + helpKey("+-", "Vol ") + helpKey("t", "Title ") + helpKey("?", "Keys"),
 	}
-
-	return strings.Join(sections, "\n")
 }
 
 // fullVisTopLine names what is playing, or just the source when the track has

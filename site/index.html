@@ -473,6 +473,10 @@ footer a{color:var(--fg-2)}
         <div class="feat-k">GAPLESS &amp; STREAMS</div>
         <p>Preloads the next track for seamless transitions. Plays URLs, HLS (.m3u8) and internet radio with jitter buffering and live ICY metadata, and <b>cliamp://</b> links from a browser or chat.</p>
       </div>
+      <div class="feat">
+        <div class="feat-k">MOUSE &amp; CONTEXT MENU</div>
+        <p>Click or drag on the progress bar to seek. Right-click any track — playlist, queue, search results, artist pages, provider browsers — for a context menu: add to a playlist, start a song radio, queue it, jump to its album or artist, remove it, or view credits. Every item has a keyboard equivalent (<kbd>;</kbd> opens the menu), and terminals without mouse reporting work exactly as before.</p>
+      </div>
     </div>
   </section>
 
@@ -533,7 +537,7 @@ footer a{color:var(--fg-2)}
   <section id="keys" class="keys">
     <div>
       <h2>Keyboard first</h2>
-      <p class="sub">Everything is one keystroke away — no mouse, no menus. Vim-style <code>j</code>/<code>k</code> movement, <kbd>Tab</kbd> cycles the controls, and <kbd>?</kbd> or <kbd>Ctrl+K</kbd> shows the full keymap for the screen you are on. <a href="https://docs.cliamp.stream/docs/cliamp/keybindings">All keybindings ↗</a></p>
+      <p class="sub">Everything is one keystroke away — with an optional mouse for seek and right-click menus. Vim-style <code>j</code>/<code>k</code> movement, <kbd>Tab</kbd> cycles the controls, and <kbd>?</kbd> or <kbd>Ctrl+K</kbd> shows the full keymap for the screen you are on. <a href="https://docs.cliamp.stream/docs/cliamp/keybindings">All keybindings ↗</a></p>
     </div>
     <div id="keys-grid" class="keys-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;align-content:start"></div>
   </section>
@@ -570,7 +574,7 @@ p:<span class="k">on</span>(<span class="s">"track.change"</span>, <span class="
       <div class="api">
         <div class="api-i">
           <div class="sig">track.change · playback.state · queue.end</div>
-          <div class="d">Eleven events to subscribe to: track changes, scrobbles, seeks, volume, EQ, shuffle and repeat, queue edits, end of queue, start and quit. Track-change events fire after playback starts successfully, including YouTube, SoundCloud, and gapless transitions. Buffering, failed, or superseded starts do not emit a track change. End-of-queue events report the last track that started playing; a manual stop, a stream still buffering, or a failed start does not emit one. Ask <code>cliamp.track.is_live()</code> before treating a track as one that ends.</div>
+          <div class="d">Twelve events to subscribe to: track changes, scrobbles, seeks, volume, EQ, shuffle and repeat, queue edits, end of queue, explicit stops, start and quit. Track-change events fire after playback starts successfully, including YouTube, SoundCloud, and gapless transitions. Buffering, failed, or superseded starts do not emit a track change. End-of-queue events report the last track that started playing; a manual stop, a stream still buffering, or a failed start does not emit one. Ask <code>cliamp.track.is_live()</code> before treating a track as one that ends.</div>
         </div>
         <div class="api-i">
           <div class="sig">cliamp.queue.has_next()</div>
@@ -699,7 +703,7 @@ p:<span class="k">on</span>(<span class="s">"track.change"</span>, <span class="
       Stream from everywhere. Every provider runs through the same <em>playlist, EQ, visualizer, and lyrics pipeline</em> — your config follows you across services. Run <code>cliamp setup</code> for an interactive wizard that walks you through Navidrome, Plex, Jellyfin, Emby, Spotify, Qobuz, NetEase, and YouTube Music.
     </p>
     <div class="sources-grid reveal">
-      <div class="source" style="--src-color:#1db954"><div class="source-badge">OAuth · cached</div><div class="source-name">Spotify</div><div class="source-desc">Stream your Premium library: liked songs, top tracks, followed artists and playlists. Browse with <kbd>N</kbd> or the two-pane Home view (<kbd>H</kbd>: playlists, albums, followed artists, new-playlist creation), search with <kbd>Ctrl+F</kbd>, open artist pages (popular tracks, liked songs, full discography), like tracks, follow artists, and create, rename, or delete playlists in-app. Smart Shuffle (<kbd>Z</kbd>) mixes recommendations into the queue. Bring your own developer <code>client_id</code> for a private Web API quota; playback is authorized separately. On Windows the release is a single <code>cliamp.exe</code> — unzip and run, no DLLs — with Spotify credentials encrypted via DPAPI bound to your user account and sign-in listening on an ephemeral 127.0.0.1 port with a 19872 fallback.</div></div>
+      <div class="source" style="--src-color:#1db954"><div class="source-badge">OAuth · cached</div><div class="source-name">Spotify</div><div class="source-desc">Stream your Premium library: liked songs, top tracks, followed artists and playlists. Browse with <kbd>N</kbd> or the two-pane Home view (<kbd>H</kbd>: playlists, albums, followed artists, new-playlist creation), search with <kbd>Ctrl+F</kbd>, open artist pages (popular tracks, liked songs, full discography), like tracks, follow artists, and create, rename, or delete playlists in-app. Smart Shuffle (<kbd>Z</kbd>) mixes recommendations into the queue. Bring your own developer <code>client_id</code> for a private Web API quota; playback is authorized separately. With <code>connect_enabled</code>, cliamp also runs as a Spotify Connect receiver — discoverable by the official apps on the local network and remote-controllable (play, pause, seek, skip, volume, shuffle, repeat, transfer) like any Connect device. On Windows the release is a single <code>cliamp.exe</code> — unzip and run, no DLLs — with Spotify credentials encrypted via DPAPI bound to your user account and sign-in listening on an ephemeral 127.0.0.1 port with a 19872 fallback.</div></div>
       <div class="source" style="--src-color:#c3c9d4"><div class="source-badge">OAuth · lossless</div><div class="source-name">Qobuz</div><div class="source-desc">Opt-in: set <code>[qobuz] enabled = true</code>. Stream lossless FLAC up to 24-bit/192kHz from your subscription. Browse favorites &amp; playlists, search with <kbd>Ctrl+F</kbd>. Sign in once via OAuth in your browser.</div></div>
       <div class="source" style="--src-color:#ff0000"><div class="source-badge">yt-dlp</div><div class="source-name">YouTube</div><div class="source-desc">Search videos with <kbd>Ctrl+F</kbd>, then play, append, or queue from a results list.</div></div>
       <div class="source" style="--src-color:#ff4444"><div class="source-badge">OAuth · cached</div><div class="source-name">YT Music</div><div class="source-desc">Browse your playlists with auto music/non-music classification. Set <code>cookies_from</code> to play through your browser session and avoid YouTube bot blocks (keep <code>yt-dlp</code> current).</div></div>
@@ -759,6 +763,7 @@ user_id = "your-account-user-id"</code></pre>
       <div class="feature"><div class="feature-icon">↔</div><div class="feature-name">Responsive TUI</div><p>Full, compact, and minimal layouts keep playback usable in terminal splits and small SSH sessions.</p></div>
       <div class="feature"><div class="feature-icon">⟲</div><div class="feature-name">Undo Queue Edits</div><p>Restore the last playlist removal or queue clear with <kbd>Ctrl+Z</kbd>.</p></div>
       <div class="feature"><div class="feature-icon">⌨</div><div class="feature-name">Consistent Keyboard Input</div><p>Search, URLs, playlist names, and jump prompts support cursor movement, paste, word deletion, and clear-line editing.</p></div>
+      <div class="feature"><div class="feature-icon">☰</div><div class="feature-name">Mouse &amp; Context Menu</div><p>Click or drag on the progress bar to seek; right-click any track for a context menu (add to playlist, song radio, queue, album, artist, remove, credits) — every item has a keyboard equivalent.</p></div>
     </div>
   </div>
 </section>
@@ -918,7 +923,7 @@ var SOURCES=[
   {name:"SSH",kind:"local",note:"ssh:// paths, no mount needed"},
   {name:"Internet radio",kind:"radio",note:"~58,000 stations · Radio Browser"},
   {name:"cliamp radio",kind:"radio",note:"14 channels we run ourselves"},
-  {name:"Podcasts",kind:"podcast",note:"Apple charts + RSS · no account"}
+  {name:"Podcasts",kind:"podcast",note:"Apple charts + RSS · shorter episode titles · no account"}
 ];
 var KIND={streaming:"var(--accent)","self-hosted":"var(--warm)",local:"var(--blue)",radio:"var(--rose)",podcast:"var(--purple)"};
 
