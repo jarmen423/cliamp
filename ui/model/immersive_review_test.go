@@ -162,9 +162,10 @@ func TestImmersiveGoToAlbumOpensInCanvas(t *testing.T) {
 	}
 }
 
-// Quitting (and the too-small notice) must erase images, not leave them
-// drawn over the shell after the alt screen is gone.
-func TestImmersiveQuitErasesImages(t *testing.T) {
+// Quitting clears the layer, and the exit sequence (leave the alternate
+// screen, home, erase below) is not a frame: nothing is redrawn or erased
+// over the shell once the alternate screen is gone.
+func TestImmersiveQuitLeavesShellAlone(t *testing.T) {
 	m := immersiveModel(t)
 	layer := termimg.NewLayer()
 	m.SetImageLayer(layer)
@@ -179,11 +180,17 @@ func TestImmersiveQuitErasesImages(t *testing.T) {
 	m.quitting = true
 	m.View()
 	before, _ := os.ReadFile(f.Name())
-	_, _ = w.Write([]byte("\x1b[H\x1b[J"))
+	exit := "\x1b[?1049l\x1b[H\x1b[J"
+	_, _ = w.Write([]byte(exit))
 	after, _ := os.ReadFile(f.Name())
-	last := string(after[len(before):])
-	if !strings.Contains(last, "\x1b[6X") || strings.Contains(last, "<COVER>") {
-		t.Fatalf("quit frame should erase the cover, got %q", last)
+	if last := string(after[len(before):]); last != exit {
+		t.Fatalf("exit sequence altered: %q", last)
+	}
+	// The next real frame (if any) erases the cover instead of redrawing it.
+	_, _ = w.Write([]byte("text"))
+	final, _ := os.ReadFile(f.Name())
+	if tail := string(final[len(after):]); strings.Contains(tail, "<COVER>") || !strings.Contains(tail, "\x1b[6X") {
+		t.Fatalf("frame after quit should erase, not redraw, the cover: %q", tail)
 	}
 }
 
