@@ -46,12 +46,13 @@ const (
 // hash of the item name, so covers stay stable for a session.
 var immArtChars = []rune{'█', '▓', '▒', '░'}
 
-// Eighth-block fill runes for the progress bar: index is the number of
-// eighths filled inside the cell.
-var immEighths = []rune{' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'}
-
-// immTrackColor is the progress bar's unplayed track.
-var immTrackColor = lipgloss.ANSIColor(8)
+// Progress bar line glyphs: a heavy line for the played part, a light line
+// for the rest, and a heavy-left/light-right head for half-cell steps.
+const (
+	immBarPlayed = "━"
+	immBarHalf   = "╾"
+	immBarTrack  = "─"
+)
 
 // immRect is a cell-aligned rectangle in frame content coordinates (0,0 is
 // the top-left content cell). Step 2's image layer draws into these.
@@ -1050,9 +1051,8 @@ func (m Model) immVolBar() string {
 
 // — progress bar —
 
-// renderImmProgress draws `elapsed |eighth-block fill| total`: the fill uses
-// U+2588 block for full cells and U+258F..U+2589 eighths for the partial
-// head cell, so the bar moves in 1/8-cell steps.
+// renderImmProgress draws `elapsed ━━━━╾──── total` as a thin line that
+// moves in half-cell steps.
 func (m Model) renderImmProgress(w int) string {
 	pos := m.cachedPos
 	dur := m.cachedDur
@@ -1065,21 +1065,14 @@ func (m Model) renderImmProgress(w int) string {
 		posText = "0:00"
 	}
 	barW := max(4, w-lipgloss.Width(posText)-lipgloss.Width(durText)-2)
-	eighths := 0
+	halves := 0
 	if dur > 0 {
-		eighths = clampInt(int(float64(pos)/float64(dur)*float64(barW)*8), 0, barW*8)
+		halves = clampInt(int(float64(pos)/float64(dur)*float64(barW)*2), 0, barW*2)
 	}
-	full := eighths / 8
-	rem := eighths % 8
-	// The unplayed track is solid dark blocks so the bar reads as one shape;
-	// the head cell paints its eighth over the track color. ANSI 8 is dark
-	// gray in practically every palette, so it contrasts with any fill color.
+	full, half := halves/2, halves%2
 	var bar strings.Builder
-	bar.WriteString(seekFillStyle.Render(strings.Repeat("█", full)))
-	if rem > 0 {
-		bar.WriteString(seekFillStyle.Background(immTrackColor).Render(string(immEighths[rem])))
-	}
-	bar.WriteString(lipgloss.NewStyle().Foreground(immTrackColor).Render(strings.Repeat("█", barW-full-min(1, rem))))
+	bar.WriteString(seekFillStyle.Render(strings.Repeat(immBarPlayed, full) + strings.Repeat(immBarHalf, half)))
+	bar.WriteString(seekDimStyle.Render(strings.Repeat(immBarTrack, barW-full-half)))
 	return dimStyle.Render(posText) + " " + bar.String() + " " + dimStyle.Render(durText)
 }
 

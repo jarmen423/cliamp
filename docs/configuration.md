@@ -173,7 +173,7 @@ layout. Start one session with `cliamp --simplified`.
 
 `immersive = true` starts cliamp in the immersive layout (prototype):
 a visualizer band on top, nav pills, a Now Playing + Queue column beside a
-browseable canvas, transport controls, and an eighth-block seek bar. Toggle
+browseable canvas, transport controls, and a thin-line seek bar. Toggle
 anytime with `I`; terminals under 80x24 fall back to the classic layout.
 
 `nerd_font_glyphs = true` swaps the immersive transport controls for a Nerd

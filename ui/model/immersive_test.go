@@ -293,7 +293,7 @@ func TestImmersiveFrameShape(t *testing.T) {
 	if !strings.Contains(lines[g.navY], "╭") {
 		t.Fatal("nav row lacks pill borders")
 	}
-	if !strings.Contains(lines[g.seekY], "█") && !strings.Contains(lines[g.seekY], "0:00") {
+	if !strings.Contains(lines[g.seekY], immBarTrack) && !strings.Contains(lines[g.seekY], "0:00") {
 		t.Fatal("progress row missing")
 	}
 }
