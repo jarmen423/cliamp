@@ -225,3 +225,46 @@ func TestSixelEncoderReuseAcrossWidths(t *testing.T) {
 		t.Fatalf("reused encoder output differs:\n got %q\nwant %q", got, fresh)
 	}
 }
+
+func TestIsFrame(t *testing.T) {
+	tests := []struct {
+		name string
+		p    string
+		want bool
+	}{
+		{"device attributes query", "\x1b[c", false},
+		{"cell size query", "\x1b[16t", false},
+		{"mode switches", "\x1b[?1049h\x1b[?25l\x1b[?1002h", false},
+		{"window title", "\x1b]2;cliamp\x07", false},
+		{"synchronized frame", "\x1b[?2026h\x1b[1;1H\x1b[?2026l", true},
+		{"plain text frame", "\x1b[3;4Hhello", true},
+		{"blank run", "\x1b[3;4H   ", true},
+	}
+	for _, tt := range tests {
+		if got := isFrame([]byte(tt.p)); got != tt.want {
+			t.Errorf("%s: isFrame = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+// A terminal query written just before a frame must not draw images: the
+// frame's text would land on top of them and they would count as drawn.
+func TestWriterDefersImagesPastQueries(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	l := NewLayer()
+	l.Set([]Placement{{Key: "a", X: 1, Y: 1, W: 2, H: 1, Data: []byte("<A>")}})
+	w := NewWriter(f, l)
+	_, _ = w.Write([]byte("\x1b[c"))
+	if out, _ := os.ReadFile(f.Name()); string(out) != "\x1b[c" {
+		t.Fatalf("query write altered: %q", out)
+	}
+	_, _ = w.Write([]byte("\x1b[?2026hTEXT\x1b[?2026l"))
+	out, _ := os.ReadFile(f.Name())
+	if text, img := strings.Index(string(out), "TEXT"), strings.Index(string(out), "<A>"); img < text {
+		t.Fatalf("image must follow the frame text: %q", out)
+	}
+}

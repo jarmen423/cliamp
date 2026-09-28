@@ -250,10 +250,13 @@ var (
 )
 
 // Writer is the program output. It passes Bubbletea's bytes through and
-// wraps each write with the layer's image updates (Bubbletea writes a whole
-// frame per call), inside the frame's synchronized update when it has one,
-// saving and restoring the cursor around them. It embeds *os.File so
-// Bubbletea still sees a terminal.
+// wraps each frame (Bubbletea writes a whole frame per call) with the
+// layer's image updates, inside the frame's synchronized update when it has
+// one, saving and restoring the cursor around them. Writes that only carry
+// control sequences (terminal queries, mode switches) are not frames: they
+// go straight through, so images are never drawn just before a frame whose
+// text lands on top of them. It embeds *os.File so Bubbletea still sees a
+// terminal.
 type Writer struct {
 	*os.File
 	layer *Layer
@@ -285,6 +288,9 @@ func (w *Writer) pump() {
 func (w *Writer) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if !isFrame(p) {
+		return w.File.Write(p)
+	}
 	cleared := false
 	for _, s := range clearSeqs {
 		if bytes.Contains(p, s) {
@@ -314,6 +320,49 @@ func (w *Writer) Write(p []byte) (int, error) {
 		return 0, err
 	}
 	return len(p), nil
+}
+
+// isFrame reports whether p is a rendered frame: a synchronized update, or
+// anything that prints text. Pure control-sequence writes are not.
+func isFrame(p []byte) bool {
+	if bytes.HasPrefix(p, syncBegin) || bytes.HasSuffix(p, syncEnd) {
+		return true
+	}
+	for i := 0; i < len(p); i++ {
+		c := p[i]
+		switch {
+		case c == 0x1b && i+1 < len(p):
+			i = skipEscape(p, i)
+		case c >= 0x20 && c != 0x7f:
+			return true
+		}
+	}
+	return false
+}
+
+// skipEscape returns the index of the last byte of the escape sequence that
+// starts at p[i] (ESC): CSI, OSC/DCS/APC strings, or a two-byte escape.
+func skipEscape(p []byte, i int) int {
+	switch p[i+1] {
+	case '[': // CSI: parameters, then a final byte in 0x40-0x7e
+		for j := i + 2; j < len(p); j++ {
+			if p[j] >= 0x40 && p[j] <= 0x7e {
+				return j
+			}
+		}
+	case ']', 'P', '_', '^': // string: ends with BEL or ST (ESC \)
+		for j := i + 2; j < len(p); j++ {
+			if p[j] == 0x07 {
+				return j
+			}
+			if p[j] == 0x1b && j+1 < len(p) && p[j+1] == '\\' {
+				return j + 1
+			}
+		}
+	default:
+		return i + 1
+	}
+	return len(p) - 1
 }
 
 func wrap(b *bytes.Buffer, seq []byte) {
