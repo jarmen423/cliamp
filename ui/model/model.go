@@ -187,6 +187,7 @@ const (
 	screenLyrics
 	screenJump
 	screenFullVisualizer
+	screenImmersive
 	screenTrackMenu
 	screenCredits
 )
@@ -231,6 +232,8 @@ func (s topLevelScreen) label() string {
 		return "Jump to Time"
 	case screenFullVisualizer:
 		return "Visualizer"
+	case screenImmersive:
+		return "Immersive"
 	case screenTrackMenu:
 		return "Track Menu"
 	case screenCredits:
@@ -361,9 +364,11 @@ type Model struct {
 	home           homeState
 	fileBrowser    fileBrowserState
 	navBrowser     navBrowserState
+	immersive      immersiveState
 	trackMenu      trackMenuState
 	credits        creditsState
 	mouse          *mouseState
+	immMouse       *immMouseGeom
 	catalogBatch   catalogBatchState
 	ytdlBatch      ytdlBatchState
 	reconnect      reconnectState
@@ -568,6 +573,8 @@ func (m Model) activeScreen() topLevelScreen {
 		return screenCredits
 	case m.trackMenu.visible:
 		return screenTrackMenu
+	case m.immersive.active:
+		return screenImmersive
 	case m.keymap.visible:
 		return screenKeymap
 	case m.devicePicker.visible:
