@@ -92,6 +92,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status.Errorf(statusTTLDefault, "Artist lookup failed: %s", msg.err)
 			return m, nil
 		}
+		if m.immersiveOwns(msg.providerName) {
+			return m, m.openImmersiveItem(immItem{kind: immKindArtist, id: msg.artist.ID, title: msg.artist.Name, sub: "Artist", art: msg.artist.ImageURL})
+		}
+		if m.immersive.active {
+			m.status.Showf(statusTTLDefault, "That %s is on %s: leave immersive (I) to open it", "artist", msg.providerName)
+			return m, nil
+		}
 		return m, m.openArtistScreen(msg.providerName, msg.artist)
 
 	case menuAlbumMsg:
@@ -100,6 +107,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err != nil {
 			m.status.Errorf(statusTTLDefault, "Album lookup failed: %s", msg.err)
+			return m, nil
+		}
+		if m.immersiveOwns(msg.providerName) {
+			a := msg.album
+			return m, m.openImmersiveItem(immItem{kind: immKindAlbum, id: a.ID, title: a.Name, sub: firstNonEmpty(a.Artist, "Album"), art: a.ImageURL})
+		}
+		if m.immersive.active {
+			m.status.Showf(statusTTLDefault, "That %s is on %s: leave immersive (I) to open it", "album", msg.providerName)
 			return m, nil
 		}
 		return m, m.openResolvedAlbum(msg)
@@ -118,6 +133,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.recomputeLayout()
 		m.normalizeMainFocus()
 		m.clampActiveScrollState()
+		if m.art != nil && m.immersive.active {
+			// A font zoom arrives as a size change; re-ask the cell size so
+			// covers and the pixel visualizer are encoded for the new one.
+			return m, tea.Raw("\x1b[16t")
+		}
 		return m, nil
 
 	case seekTickMsg:

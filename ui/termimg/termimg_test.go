@@ -75,7 +75,7 @@ func TestWriterSplicesAroundFrameText(t *testing.T) {
 	}
 }
 
-func TestWriterPassesSmallWritesThrough(t *testing.T) {
+func TestWriterPassesUnchangedWritesThrough(t *testing.T) {
 	f, err := os.CreateTemp(t.TempDir(), "out")
 	if err != nil {
 		t.Fatal(err)
@@ -84,10 +84,24 @@ func TestWriterPassesSmallWritesThrough(t *testing.T) {
 	l := NewLayer()
 	l.Set([]Placement{{Key: "a", W: 1, H: 1, Data: []byte("<A>")}})
 	w := NewWriter(f, l)
-	_, _ = w.Write([]byte("\x1b[?25l")) // a mode toggle, not a frame
-	out, _ := os.ReadFile(f.Name())
-	if string(out) != "\x1b[?25l" {
-		t.Fatalf("non-frame write altered: %q", out)
+	_, _ = w.Write([]byte("x")) // first write draws the image
+	before, _ := os.ReadFile(f.Name())
+	_, _ = w.Write([]byte("\x1b[?25l")) // nothing changed since
+	after, _ := os.ReadFile(f.Name())
+	if !strings.Contains(string(before), "<A>") || string(after[len(before):]) != "\x1b[?25l" {
+		t.Fatalf("first write %q, second write %q", before, after[len(before):])
+	}
+}
+
+// Leaving a screen with images: Bubbletea's diff often ends with an
+// erase-below, which must not stop the layer from erasing what went away.
+func TestLayerErasesRemovedImagesEvenWhenFrameClears(t *testing.T) {
+	l := NewLayer()
+	l.Set([]Placement{{Key: "a", X: 2, Y: 3, W: 5, H: 1, Data: []byte("<A>")}})
+	l.render(false)
+	l.Set(nil)
+	if pre, _ := l.render(true); !bytes.Contains(pre, []byte("\x1b[4;3H\x1b[5X")) {
+		t.Fatalf("removed image not erased: %q", pre)
 	}
 }
 
@@ -136,23 +150,35 @@ func TestEncodeSixelFraming(t *testing.T) {
 	}
 }
 
-func TestLayerLiveFramesNeedAFrameFirst(t *testing.T) {
+func TestLayerLiveFrames(t *testing.T) {
 	l := NewLayer()
-	l.SetLive(&Placement{Key: "v1", X: 0, Y: 0, W: 10, H: 2, Data: []byte("<V1>")})
+	frame := func(key string) Placement {
+		return Placement{Key: key, X: 0, Y: 0, W: 10, H: 2, Data: []byte("<" + key + ">")}
+	}
+	l.SetLive(frame("early"))
+	if _, post := l.render(false); len(post) != 0 {
+		t.Fatalf("live frame accepted before its rect was armed: %q", post)
+	}
+	l.ArmLive(0, 0, 10, 2)
+	l.SetLive(frame("v1"))
 	if got := l.renderLive(); got != nil {
 		t.Fatalf("live frame drawn before a text frame blanked its cells: %q", got)
 	}
-	if _, post := l.render(false); !bytes.Contains(post, []byte("<V1>")) {
+	if _, post := l.render(false); !bytes.Contains(post, []byte("<v1>")) {
 		t.Fatalf("frame did not draw the live placement: %q", post)
 	}
-	l.SetLive(&Placement{Key: "v2", X: 0, Y: 0, W: 10, H: 2, Data: []byte("<V2>")})
-	if got := l.renderLive(); !bytes.Contains(got, []byte("<V2>")) {
+	l.SetLive(frame("v2"))
+	if got := l.renderLive(); !bytes.Contains(got, []byte("<v2>")) {
 		t.Fatalf("next live frame not drawn between frames: %q", got)
 	}
 	if pre, _ := l.render(false); len(pre) != 0 {
 		t.Fatalf("an animated rect must not be erased between its frames: %q", pre)
 	}
-	l.SetLive(nil)
+	l.ArmLive(0, 0, 0, 0)
+	l.SetLive(frame("late")) // a worker finishing after the UI moved on
+	if got := l.renderLive(); got != nil {
+		t.Fatalf("late live frame drawn after disarm: %q", got)
+	}
 	if pre, _ := l.render(false); !bytes.Contains(pre, []byte("\x1b[10X")) {
 		t.Fatalf("stopping the animation must erase its rect: %q", pre)
 	}
@@ -173,5 +199,29 @@ func TestLayerRedrawsImagesOnTouchedRows(t *testing.T) {
 	}
 	if _, post := l.render(false); len(post) != 0 {
 		t.Fatalf("touch marks must clear after a frame: %q", post)
+	}
+}
+
+// Reusing an encoder across widths must not leak color bits from a wider
+// earlier image into a narrower or later wider one.
+func TestSixelEncoderReuseAcrossWidths(t *testing.T) {
+	red, green := color.RGBA{255, 0, 0, 255}, color.RGBA{0, 255, 0, 255}
+	pal := []color.RGBA{{0, 0, 0, 255}, red, green}
+	e := NewSixelEncoder(pal, 0)
+	half := image.NewRGBA(image.Rect(0, 0, 100, 6))
+	for x := range 100 {
+		for y := range 6 {
+			c := red
+			if x >= 50 {
+				c = green
+			}
+			half.SetRGBA(x, y, c)
+		}
+	}
+	fresh := string(NewSixelEncoder(pal, 0).Encode(half))
+	e.Encode(solid(100, 6, green))
+	e.Encode(solid(10, 6, red))
+	if got := string(e.Encode(half)); got != fresh {
+		t.Fatalf("reused encoder output differs:\n got %q\nwant %q", got, fresh)
 	}
 }

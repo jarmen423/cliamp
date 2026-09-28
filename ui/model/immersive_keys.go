@@ -35,11 +35,9 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		return m.immersiveEscape()
 	case "backspace", "alt+left":
-		m.immersiveGoBack()
-		return nil
+		return m.immersiveGoBack()
 	case "alt+right":
-		m.immersiveGoForward()
-		return nil
+		return m.immersiveGoForward()
 	case "ctrl+k", "?":
 		m.openKeymap()
 		return nil
@@ -253,14 +251,15 @@ func (m *Model) openImmersiveSearch() tea.Cmd {
 	return nil
 }
 
-// immersiveEscape peels the innermost state: the settings tab, one
-// back-stack level, then the mode itself.
+// immersiveEscape peels the innermost state: the settings tab, an opened
+// collection (one history step back), then the mode itself. Pill-to-pill
+// history is Back's job, not Esc's.
 func (m *Model) immersiveEscape() tea.Cmd {
 	switch {
 	case m.immersive.view == immViewSettings:
 		m.immersive.view = m.immersive.settingsReturn
-	case len(m.immersive.back) > 0 || m.immersive.view != immViewBrowse && m.immersive.view != immViewSearch:
-		m.immersiveGoBack()
+	case m.immersive.view != immViewBrowse && m.immersive.view != immViewSearch:
+		return m.immersiveGoBack()
 	default:
 		m.exitImmersive()
 	}

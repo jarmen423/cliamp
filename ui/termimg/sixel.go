@@ -34,6 +34,7 @@ type bandWorker struct {
 	used    []bool
 	present []bool
 	out     bytes.Buffer
+	width   int // image width the bit rows were last used for
 }
 
 var bayer4 = [4][4]int{{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}}
@@ -84,10 +85,18 @@ func (e *SixelEncoder) worker(i, w int) *bandWorker {
 		e.workers = append(e.workers, &bandWorker{bits: make([][]byte, n), used: make([]bool, n), present: make([]bool, n)})
 	}
 	bw := e.workers[i]
-	for c := range bw.bits {
-		if len(bw.bits[c]) < w {
-			bw.bits[c] = make([]byte, w)
+	if w != bw.width {
+		// encodeBands only clears the first w bytes of the colors it used,
+		// so a width change must start from clean rows.
+		for c := range bw.bits {
+			if len(bw.bits[c]) < w {
+				bw.bits[c] = make([]byte, w)
+			} else {
+				clear(bw.bits[c])
+			}
 		}
+		clear(bw.used)
+		bw.width = w
 	}
 	clear(bw.present)
 	bw.out.Reset()

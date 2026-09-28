@@ -168,10 +168,12 @@ func playlistLabel(prefix string, p playlist.PlaylistInfo) string {
 // View renders the full TUI frame.
 func (m Model) View() tea.View {
 	if m.quitting {
+		m.clearImages()
 		return tea.NewView("")
 	}
 	m.recomputeLayout()
 	if m.layout.tooSmall() {
+		m.clearImages()
 		content := fmt.Sprintf("Terminal too small. Resize to at least 40x10 (current: %dx%d).", m.width, m.height)
 		view := tea.NewView(ui.FitRect(content, max(1, m.width), max(1, m.height)))
 		view.BackgroundColor = ui.ColorBackground
@@ -218,9 +220,7 @@ func (m Model) View() tea.View {
 		m.touchChangedRows(rendered)
 		m.feedPixelVis()
 	} else {
-		m.imgLayer.Set(nil)
-		m.imgLayer.SetLive(nil)
-		m.touchChangedRows("")
+		m.clearImages()
 		rendered = m.centerFrame(ui.FrameStyle.Render(content))
 		rendered = ui.FitRect(rendered, m.layout.frameWidth, max(1, m.height))
 	}

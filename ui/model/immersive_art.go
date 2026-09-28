@@ -54,8 +54,10 @@ const (
 	artMaxBytes     = 8 << 20 // covers larger than this are not decoded
 	artFetchTimeout = 15 * time.Second
 	artPollEvery    = 250 * time.Millisecond
-	artMaxImages    = 256 // decoded covers kept before the cache is reset
+	artMaxImages    = 128 // decoded covers kept before the cache is reset
+	artMaxEncodings = 512 // encoded covers kept before the cache is reset
 	artMaxInflight  = 6   // concurrent fetches
+	artMaxSide      = 640 // decoded covers are downscaled to this; boxes are far smaller
 )
 
 // artStore caches decoded covers by URL and their encodings by box size.
@@ -74,9 +76,11 @@ type artImage struct {
 }
 
 type artKey struct {
-	url  string
-	w, h int // cells
-	kind artKind
+	url   string
+	w, h  int // cells
+	cellW int // pixels per cell when encoded (Sixel sizes depend on it)
+	cellH int
+	kind  artKind
 }
 
 type artEncoding struct {
@@ -247,8 +251,11 @@ func (m *Model) immArtRequests() tea.Cmd {
 			a.inflight++
 			cmds = append(cmds, fetchArtCmd(s.url))
 		case im.img != nil:
-			key := artKey{url: s.url, w: s.rect.W, h: s.rect.H, kind: kind}
+			key := artKey{url: s.url, w: s.rect.W, h: s.rect.H, cellW: cw, cellH: ch, kind: kind}
 			if a.encs[key] == nil {
+				if len(a.encs) >= artMaxEncodings {
+					a.encs = map[artKey]*artEncoding{}
+				}
 				a.encs[key] = &artEncoding{loading: true}
 				cmds = append(cmds, encodeArtCmd(key, im.img, cw, ch))
 			}
@@ -296,7 +303,7 @@ func (m *Model) handleArtMsg(msg tea.Msg) (tea.Cmd, bool) {
 
 // startArtPolling begins the art loop once per immersive session.
 func (m *Model) startArtPolling() tea.Cmd {
-	if m.artPolling || m.art == nil {
+	if m.artPolling || m.art == nil || m.imgMode == imagesOff {
 		return nil
 	}
 	m.artPolling = true
@@ -353,6 +360,16 @@ func loadArt(u string) (image.Image, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decode cover: %w", err)
 	}
+	// Keep the cache small: podcast art is often 3000px square.
+	if b := img.Bounds(); max(b.Dx(), b.Dy()) > artMaxSide {
+		w, h := b.Dx(), b.Dy()
+		if w >= h {
+			h, w = max(1, h*artMaxSide/w), artMaxSide
+		} else {
+			w, h = max(1, w*artMaxSide/h), artMaxSide
+		}
+		return termimg.Fill(img, w, h), nil
+	}
 	return img, nil
 }
 
@@ -380,7 +397,8 @@ func (m Model) immArtCells(u string, w, h int) ([]string, bool) {
 		return nil, false
 	}
 	m.art.mu.Lock()
-	e := m.art.encs[artKey{url: u, w: w, h: h, kind: kind}]
+	cw, ch := m.cellPx()
+	e := m.art.encs[artKey{url: u, w: w, h: h, cellW: cw, cellH: ch, kind: kind}]
 	m.art.mu.Unlock()
 	switch {
 	case e == nil || e.loading:
@@ -395,6 +413,14 @@ func (m Model) immArtCells(u string, w, h int) ([]string, bool) {
 		return e.blocks, true
 	}
 	return nil, false
+}
+
+// clearImages removes every image (screens without art, quitting, the
+// too-small notice) and resets the row memo.
+func (m Model) clearImages() {
+	m.imgLayer.Set(nil)
+	m.imgLayer.ArmLive(0, 0, 0, 0)
+	m.touchChangedRows("")
 }
 
 // frameMemo keeps the last view's lines so View can tell the image layer
@@ -434,11 +460,12 @@ func (m Model) immArtPlacements() []termimg.Placement {
 		return nil
 	}
 	ox, oy := m.layout.paddingH, m.layout.paddingV
+	cw, ch := m.cellPx()
 	ps := make([]termimg.Placement, 0, len(slots))
 	m.art.mu.Lock()
 	defer m.art.mu.Unlock()
 	for _, s := range slots {
-		e := m.art.encs[artKey{url: s.url, w: s.rect.W, h: s.rect.H, kind: artSixel}]
+		e := m.art.encs[artKey{url: s.url, w: s.rect.W, h: s.rect.H, cellW: cw, cellH: ch, kind: artSixel}]
 		if e == nil || len(e.sixel) == 0 {
 			continue
 		}

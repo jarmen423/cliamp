@@ -161,11 +161,9 @@ func (m *Model) immClickNav(cx int, right bool) tea.Cmd {
 		if cx >= p.box.X && cx < p.box.X+p.box.W {
 			switch p.section {
 			case immNavBack:
-				m.immersiveGoBack()
-				return nil
+				return m.immersiveGoBack()
 			case immNavForward:
-				m.immersiveGoForward()
-				return nil
+				return m.immersiveGoForward()
 			}
 			if p.section == immSecSearch {
 				return m.openImmersiveSearch()

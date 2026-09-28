@@ -82,7 +82,7 @@ func (w *pixVisWorker) run() {
 		}
 		pv.Draw(img, job.bands, job.wave)
 		seq++
-		w.layer.SetLive(&termimg.Placement{
+		w.layer.SetLive(termimg.Placement{
 			Key: "vis#" + strconv.Itoa(seq),
 			X:   job.x, Y: job.y, W: job.w, H: job.h,
 			Data: enc.Encode(img),
@@ -102,11 +102,12 @@ func (m Model) immPixelVisOn() bool {
 // the band is not showing a Sixel visualizer.
 func (m Model) feedPixelVis() {
 	if !m.immPixelVisOn() {
-		m.imgLayer.SetLive(nil)
+		m.imgLayer.ArmLive(0, 0, 0, 0)
 		return
 	}
 	g := m.immGeom()
 	cw, ch := m.cellPx()
+	m.imgLayer.ArmLive(m.layout.paddingH, m.layout.paddingV, g.w, g.visH)
 	bands, wave := m.vis.PixelInput()
 	m.pixVis.submit(pixVisJob{
 		mode: m.vis.Mode, colors: ui.CurrentPixelColors(),
