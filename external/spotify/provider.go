@@ -1210,7 +1210,11 @@ func (p *SpotifyProvider) AlbumTracksContext(ctx context.Context, albumID string
 			if track.AlbumArtURL == "" {
 				track.AlbumArtURL = pickCoverImage(album.Images)
 			}
-			track.ProviderMeta = map[string]string{metaSpotifyID: item.ID}
+			if track.ProviderMeta == nil {
+				track.ProviderMeta = map[string]string{}
+			}
+			track.ProviderMeta[metaSpotifyID] = item.ID
+			track.ProviderMeta[playlist.MetaAlbumID] = album.ID
 			tracks = append(tracks, track)
 		}
 		if len(page) < spotifyTrackPageSize {

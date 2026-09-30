@@ -51,6 +51,11 @@ func (m Model) trackMenuItems() []trackMenuItem {
 			return m.startCollectionRadio(prov, immKindArtist, artist.ID, artist.Name)
 		}})
 	}
+	if prov, ok := m.albumRadioTarget(t); ok {
+		items = append(items, trackMenuItem{"b", "Go to album radio", func(m *Model) tea.Cmd {
+			return m.startCollectionRadio(prov, immKindAlbum, t.AlbumID(), t.Album)
+		}})
+	}
 	if tm.remove != menuRemoveQueue {
 		items = append(items, trackMenuItem{"a", "Add to queue", func(m *Model) tea.Cmd {
 			return m.menuQueueTrack()

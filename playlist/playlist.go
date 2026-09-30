@@ -335,7 +335,9 @@ const (
 	// MetaKindAlbum is the MetaKind value for an album placeholder: a search
 	// result standing for a whole album, expanded to its tracks when chosen.
 	MetaKindAlbum = "album"
-	// MetaAlbumID carries the provider-side album id of an album placeholder.
+	// MetaAlbumID carries a provider-side album id: on album placeholders the
+	// id of the album they stand for, on regular tracks the id of the album
+	// they belong to (when the provider recorded one).
 	MetaAlbumID = "albumID"
 )
 
@@ -346,12 +348,10 @@ func (t Track) IsAlbum() bool {
 	return t.ProviderMeta[MetaKind] == MetaKindAlbum
 }
 
-// AlbumID returns the provider-side album id of an album placeholder, or ""
-// when the track is not one.
+// AlbumID returns the provider-side album id recorded on the track, or ""
+// when it has none. Album placeholders carry it from their provider, and
+// regular tracks may carry it too (e.g. Spotify tracks).
 func (t Track) AlbumID() string {
-	if !t.IsAlbum() {
-		return ""
-	}
 	return t.ProviderMeta[MetaAlbumID]
 }
 
@@ -673,6 +673,18 @@ func (p *Playlist) Index() int {
 	return p.currentTrackIndex()
 }
 
+// IndexOfPath returns the first track index holding path, or -1.
+func (p *Playlist) IndexOfPath(path string) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i, t := range p.tracks {
+		if t.Path == path {
+			return i
+		}
+	}
+	return -1
+}
+
 func (p *Playlist) CurrentIsQueued() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -955,13 +967,19 @@ func (p *Playlist) QueueEntries() []QueueEntry {
 
 // Upcoming returns up to limit play-order entries after the current position
 // (shuffled order when shuffle is on), skipping unplayable tracks. The
-// play-next queue is not included; it plays first, see QueueEntries.
+// play-next queue is not included; it plays first, see QueueEntries. Tracks
+// already sitting in the queue are skipped too, so a queued track is not
+// listed again as upcoming.
 func (p *Playlist) Upcoming(limit int) []QueueEntry {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var out []QueueEntry
 	for i := p.pos + 1; i < len(p.order) && len(out) < limit; i++ {
-		if idx := p.order[i]; p.isPlayable(idx) {
+		idx := p.order[i]
+		if idx == p.queuedIdx || p.queuePositions[idx] != 0 {
+			continue
+		}
+		if p.isPlayable(idx) {
 			out = append(out, QueueEntry{TrackIndex: idx, Track: cloneTrack(p.tracks[idx])})
 		}
 	}

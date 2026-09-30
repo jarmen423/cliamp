@@ -1645,3 +1645,43 @@ func TestPlayRemoteTracks(t *testing.T) {
 		})
 	}
 }
+
+// Queueing a track already in the playlist queues that row instead of
+// appending a copy, and never starts playback on its own.
+func TestQueueTrackNextDedupesAndStaysSilent(t *testing.T) {
+	player := &playbackFakeEngine{}
+	pl := playlist.New()
+	pl.Add(playlist.Track{Path: "/a.mp3"}, playlist.Track{Path: "/b.mp3"})
+	m := Model{player: player, playlist: pl}
+
+	m.queueTrackNext(playlist.Track{Path: "/b.mp3"})
+
+	if pl.Len() != 2 {
+		t.Fatalf("playlist len = %d, want 2 (no copy appended)", pl.Len())
+	}
+	if entries := pl.QueueEntries(); len(entries) != 1 || entries[0].TrackIndex != 1 {
+		t.Fatalf("queue = %+v, want track 1 queued", entries)
+	}
+	if len(player.playCalls) != 0 {
+		t.Fatalf("playCalls = %v, want none", player.playCalls)
+	}
+}
+
+func TestQueueTrackNextAppendsForeignTrack(t *testing.T) {
+	player := &playbackFakeEngine{}
+	pl := playlist.New()
+	pl.Add(playlist.Track{Path: "/a.mp3"})
+	m := Model{player: player, playlist: pl}
+
+	m.queueTrackNext(playlist.Track{Path: "/other.mp3"})
+
+	if pl.Len() != 2 {
+		t.Fatalf("playlist len = %d, want 2", pl.Len())
+	}
+	if entries := pl.QueueEntries(); len(entries) != 1 || entries[0].TrackIndex != 1 {
+		t.Fatalf("queue = %+v, want the appended track queued", entries)
+	}
+	if len(player.playCalls) != 0 {
+		t.Fatalf("playCalls = %v, want none", player.playCalls)
+	}
+}

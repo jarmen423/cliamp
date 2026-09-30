@@ -88,6 +88,7 @@ type spotifyItem struct {
 	URI     string          `json:"uri"`  // canonical spotify:track:... / spotify:episode:...
 	Artists []spotifyArtist `json:"artists"`
 	Album   struct {
+		ID          string         `json:"id"`
 		Name        string         `json:"name"`
 		ReleaseDate string         `json:"release_date"`
 		Images      []spotifyImage `json:"images"`
@@ -223,6 +224,14 @@ func trackFromItem(t *spotifyItem) playlist.Track {
 		path = fmt.Sprintf("spotify:track:%s", t.ID) // fallback if uri is absent
 	}
 
+	meta := map[string]string{}
+	if t.Album.ID != "" {
+		meta[playlist.MetaAlbumID] = t.Album.ID
+	}
+	if ids := spotifyArtistIDs(t.Artists); ids != "" {
+		meta[metaSpotifyArtistIDs] = ids
+	}
+
 	return playlist.Track{
 		Path:         path,
 		Title:        t.Name,
@@ -234,7 +243,19 @@ func trackFromItem(t *spotifyItem) playlist.Track {
 		DurationSecs: t.DurationMs / 1000,
 		TrackNumber:  t.TrackNumber,
 		Unplayable:   (t.IsPlayable != nil && !*t.IsPlayable) || t.Restrictions.Reason != "",
+		ProviderMeta: meta,
 	}
+}
+
+// spotifyArtistIDs joins artist IDs with ", "-free commas for ProviderMeta.
+func spotifyArtistIDs(artists []spotifyArtist) string {
+	ids := make([]string, 0, len(artists))
+	for _, a := range artists {
+		if a.ID != "" {
+			ids = append(ids, a.ID)
+		}
+	}
+	return strings.Join(ids, ",")
 }
 
 // releaseYear parses the leading 4-digit year from a Spotify release_date

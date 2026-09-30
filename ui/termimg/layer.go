@@ -193,10 +193,18 @@ func (l *Layer) renderLive() []byte {
 }
 
 // render returns the bytes that bring the screen from drawn to want around
-// one Bubbletea frame. pre erases placements that went away or moved; it
-// runs before the frame's text so it cannot wipe text that now occupies
-// those cells. post draws new, changed, or touched images after the text,
-// or all of them when the frame cleared the screen (cleared).
+// one Bubbletea frame. pre erases placements that went away, moved, or are
+// replaced by a different image at the same spot; it runs before the frame's
+// text so it cannot wipe text that now occupies those cells. post draws new,
+// changed, or touched images after the text, or all of them when the frame
+// cleared the screen (cleared).
+//
+// Two terminal realities drive the details: a placement drawing over another
+// at the same rectangle does not replace it (Konsole stacks them, and the
+// stale image bleeds through later), so a replaced image is erased before
+// the new one draws; and an erase deletes any placement it even partially
+// overlaps, so a wanted image overlapping an erased rectangle is drawn
+// again even when its spot was already on screen.
 func (l *Layer) render(cleared bool) (pre, post []byte) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -204,27 +212,59 @@ func (l *Layer) render(cleared bool) (pre, post []byte) {
 	l.full = false
 	want := l.wanted()
 	var e, d bytes.Buffer
+	var erased []Placement
 	for _, old := range l.drawn {
-		if !containsRect(want, old) {
-			erase(&e, old) // nothing opaque will cover it
+		if keepsOnScreen(want, old) {
+			continue
 		}
+		erase(&e, old) // nothing opaque will cover it
+		erased = append(erased, old)
 	}
 	for _, p := range want {
-		if len(p.Data) == 0 || (!all && containsSpot(l.drawn, p) && !l.touched(p)) {
+		if len(p.Data) == 0 || (!all && containsSpot(l.drawn, p) && !l.touched(p) && !overlapsAny(erased, p)) {
 			continue
 		}
 		cup(&d, p.Y, p.X)
 		d.Write(p.Data)
 	}
-	l.drawn = append(l.drawn[:0], want...)
+	prev := l.drawn
+	l.drawn = l.drawn[:0]
+	for _, p := range want {
+		if len(p.Data) > 0 {
+			l.drawn = append(l.drawn, p)
+			continue
+		}
+		// A spot with no pixels published yet keeps whatever was drawn at it;
+		// recording the empty entry instead would hide that older image.
+		for _, old := range prev {
+			if old.sameRect(p) {
+				l.drawn = append(l.drawn, old)
+				break
+			}
+		}
+	}
 	clear(l.dirty)
 	l.syncEngagedLocked()
 	return e.Bytes(), d.Bytes()
 }
 
-func containsRect(ps []Placement, p Placement) bool {
+// keepsOnScreen reports whether a drawn placement still shows what want
+// carries at that spot: the same image stays, or a spot with no pixels yet
+// keeps whatever was drawn there.
+func keepsOnScreen(want []Placement, old Placement) bool {
+	for _, q := range want {
+		if q.sameRect(old) && (q.Key == old.Key || len(q.Data) == 0) {
+			return true
+		}
+	}
+	return false
+}
+
+// overlapsAny reports whether p's rectangle intersects any of ps — used to
+// redraw wanted images an earlier erase would have swept away.
+func overlapsAny(ps []Placement, p Placement) bool {
 	for _, q := range ps {
-		if q.sameRect(p) {
+		if p.X < q.X+q.W && q.X < p.X+p.W && p.Y < q.Y+q.H && q.Y < p.Y+p.H {
 			return true
 		}
 	}

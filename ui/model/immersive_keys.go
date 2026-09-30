@@ -479,10 +479,7 @@ func (m *Model) immersiveQueueAppend() tea.Cmd {
 	if track.Path == "" {
 		return nil
 	}
-	m.playlist.Add(track)
-	m.playlist.Queue(m.playlist.Len() - 1)
-	m.status.Showf(statusTTLShort, "Queued %s", trackViewName(track))
-	return m.rearmPreload()
+	return m.queueTrackNext(track)
 }
 
 // immersiveToggleLike hearts the focused track or, lacking a track context,

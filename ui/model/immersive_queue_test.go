@@ -43,7 +43,7 @@ func immQueuePageRows(m *Model) []string {
 func TestQueueViewSections(t *testing.T) {
 	m := immQueuePageModel(t)
 	got := strings.Join(immQueuePageRows(m), ",")
-	want := "# Now playing,A,# Next in queue,D,# Next up,B,C,D,E"
+	want := "# Now playing,A,# Next in queue,D,# Next up,B,C,E"
 	if got != want {
 		t.Fatalf("rows = %s\nwant   %s", got, want)
 	}

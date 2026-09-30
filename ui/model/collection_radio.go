@@ -195,3 +195,23 @@ func (m Model) artistRadioTarget(t playlist.Track) (playlist.Provider, provider.
 	}
 	return target.prov, target.artist, true
 }
+
+// albumRadioTarget resolves the track's album on a provider that can load
+// the album and recommend, for the track menu's album radio.
+func (m Model) albumRadioTarget(t playlist.Track) (playlist.Provider, bool) {
+	id := t.AlbumID()
+	if id == "" {
+		return nil, false
+	}
+	prov := m.providerForTrack(t.Path)
+	if prov == nil {
+		return nil, false
+	}
+	if _, ok := prov.(provider.Recommender); !ok {
+		return nil, false
+	}
+	if _, ok := prov.(provider.AlbumTrackLoader); !ok {
+		return nil, false
+	}
+	return prov, true
+}

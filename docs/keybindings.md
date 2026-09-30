@@ -174,6 +174,7 @@ and playlist-manager rows.
 | `w` | Add the track to a playlist (the same picker as `w` in the playlist) |
 | `r` | Go to song radio (recommendations seeded from this track) |
 | `R` | Go to artist radio: the artist's popular tracks mixed with recommendations (providers that can load the artist and recommend, e.g. Spotify) |
+| `b` | Go to album radio: album tracks mixed with recommendations (tracks whose provider recorded the album, e.g. Spotify) |
 | `a` | Add to queue — toggles the play-next slot for playlist rows, queues elsewhere |
 | `l` | Go to the track's album |
 | `t` | Go to the track's artist |

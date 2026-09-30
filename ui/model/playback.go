@@ -349,20 +349,20 @@ func (m *Model) cancelSpotRequest() {
 	}
 }
 
-// queueTrackNext adds a track to the playlist and queues it to play next.
+// queueTrackNext queues a track to play next: in place when it is already in
+// the playlist, appended otherwise. Queueing never starts playback on its
+// own; the queued track plays when the current one ends.
 func (m *Model) queueTrackNext(track playlist.Track) tea.Cmd {
-	m.playlist.Add(track)
-	m.loadedPlaylist = ""
-	m.addToHeaderState([]playlist.Track{track})
-	idx := m.playlist.Len() - 1
+	idx := m.playlist.IndexOfPath(track.Path)
+	if idx < 0 {
+		m.playlist.Add(track)
+		m.loadedPlaylist = ""
+		m.addToHeaderState([]playlist.Track{track})
+		idx = m.playlist.Len() - 1
+	}
 	m.playlist.Queue(idx)
 	m.normalizeQueueOverlay()
 	m.status.Showf(statusTTLMedium, "Queued: %s", track.DisplayName())
-	if !m.player.IsPlaying() {
-		cmd := m.nextTrack()
-		m.notifyPlayback()
-		return cmd
-	}
 	return m.rearmPreload()
 }
 

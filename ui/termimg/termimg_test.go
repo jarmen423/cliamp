@@ -327,3 +327,41 @@ func TestWriterDefersImagesPastQueries(t *testing.T) {
 		t.Fatalf("image must follow the frame text: %q", out)
 	}
 }
+
+// A different image at the same rectangle must erase the old one first:
+// terminals stack same-spot placements instead of replacing them, so the
+// previous image would bleed through once the new one moves or clears.
+func TestLayerErasesReplacedImageAtSameRect(t *testing.T) {
+	l := NewLayer()
+	rect := func(key string) Placement {
+		return Placement{Key: key, X: 1, Y: 2, W: 4, H: 2, Data: []byte("<" + key + ">")}
+	}
+	l.Set([]Placement{rect("a")})
+	l.render(false)
+	l.Set([]Placement{rect("b")})
+	pre, post := l.render(false)
+	if !bytes.Contains(pre, []byte("\x1b[4X")) || !bytes.Contains(post, []byte("<b>")) {
+		t.Fatalf("replaced image not erased and redrawn: pre %q post %q", pre, post)
+	}
+}
+
+// An erase deletes every placement it overlaps on terminals with
+// placement-style images (Konsole), including wanted ones that partly share
+// the erased rectangle: they must be drawn again even though their spot was
+// already on screen.
+func TestLayerRedrawsImageOverlappingAnErase(t *testing.T) {
+	l := NewLayer()
+	a := Placement{Key: "a", X: 0, Y: 0, W: 4, H: 2, Data: []byte("<a>")}
+	b := Placement{Key: "b", X: 3, Y: 1, W: 4, H: 2, Data: []byte("<b>")}
+	l.Set([]Placement{a, b})
+	l.render(false)
+	// a is removed; its erase rectangle overlaps b's first columns/row.
+	l.Set([]Placement{b})
+	pre, post := l.render(false)
+	if !bytes.Contains(pre, []byte("\x1b[4X")) {
+		t.Fatalf("removed image not erased: %q", pre)
+	}
+	if !bytes.Contains(post, []byte("<b>")) {
+		t.Fatalf("overlapped image not redrawn: %q", post)
+	}
+}

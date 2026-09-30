@@ -284,3 +284,16 @@ func TestUpcoming(t *testing.T) {
 		})
 	}
 }
+
+func TestUpcomingSkipsQueued(t *testing.T) {
+	p := makePlaylist(5, false)
+	p.SetIndex(0)
+	p.Queue(2)
+	if got := p.Upcoming(5); len(got) != 3 || got[0].TrackIndex != 1 || got[1].TrackIndex != 3 || got[2].TrackIndex != 4 {
+		t.Fatalf("Upcoming = %v, want 1, 3, 4 without the queued track", got)
+	}
+	p.Next() // play the queued track
+	if got := p.Upcoming(5); len(got) != 3 || got[0].TrackIndex != 1 || got[1].TrackIndex != 3 || got[2].TrackIndex != 4 {
+		t.Fatalf("Upcoming = %v, want 1, 3, 4 without the playing queued track", got)
+	}
+}
