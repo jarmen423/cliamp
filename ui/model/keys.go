@@ -41,12 +41,19 @@ func (m *Model) quit() tea.Cmd {
 		}
 	}
 
+	m.shutdown()
+	return tea.Quit
+}
+
+// shutdown flushes pending saves, stops playback, and deletes terminal
+// images before the program exits.
+func (m *Model) shutdown() {
 	m.flushPendingSpeedSave()
 	m.flushPendingEQSave()
 	m.player.Close()
 	m.clearPlaybackTrack()
+	m.releaseImages()
 	m.quitting = true
-	return tea.Quit
 }
 
 // scrobbleCurrent fires a scrobble for the currently playing track if

@@ -73,8 +73,9 @@ eq = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 # ClassicPeak uses smooth bars and floating peak caps, with sampling aligned
 # to audible playback and adaptive redraws for smooth motion.
 # Neighboring bands are averaged into each bar.
-# Aurora and Phosphor are pixel visualizers: real Sixel images in the immersive
-# band on terminals that support it, half-block text everywhere else.
+# Aurora and Phosphor are pixel visualizers: real images (kitty graphics or
+# Sixel) in the immersive band on terminals that support them, half-block text
+# everywhere else.
 visualizer = "Bars"
 
 # Visualizer volume linking (default: true)
@@ -183,11 +184,27 @@ Font glyph set; the default is plain Unicode. Only set it on terminals with a
 Nerd Font patched font.
 
 `images` controls cover art in the immersive layout (Now Playing and the
-rows/grid canvas thumbnails). `"auto"` (the default) draws real images with
-Sixel on terminals that report support (Windows Terminal, WezTerm, foot, xterm
-with Sixel enabled) and colored half-block text on the rest; `"sixel"` or
-`"blocks"` forces one, and `"off"` keeps the text placeholders. Covers come from
-the track's album art or the provider's playlist/album/artist image.
+rows/grid canvas thumbnails) and the Aurora/Phosphor visualizers there.
+`"auto"` (the default) picks, in order:
+
+- **kitty graphics** (Unicode placeholders) when the terminal answers the
+  kitty graphics query and is kitty or Ghostty;
+- **Sixel** when the terminal reports it (Windows Terminal, WezTerm, foot,
+  Konsole, xterm with Sixel enabled);
+- colored **half-block** text everywhere else.
+
+`"kitty"`, `"sixel"` or `"blocks"` forces one, and `"off"` keeps the text
+placeholders. Covers come from the track's album art or the provider's
+playlist/album/artist image.
+
+Tested: Ghostty 1.3.1 (kitty graphics, picked by auto), Konsole 25.12.3
+(Sixel, picked by auto; it also answers the kitty query but has no Unicode
+placeholders), and tmux 3.6 inside Ghostty with `images = "kitty"`. Inside
+tmux, auto sees tmux rather than the outer terminal, so set `images = "kitty"`
+and `set -g allow-passthrough on` in `tmux.conf`. kitty itself implements the
+same protocol but was not tested for this release. Run with
+`--log-level debug` and look for the `images: terminal attributes` line in
+`cliamp.log` to see what your terminal reported and which backend was used.
 
 `immersive_view` is the canvas view immersive opens in: `"list"` (default),
 `"rows"` or `"grid"`. Pressing `c` in immersive cycles the view and saves it
