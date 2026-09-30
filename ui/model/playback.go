@@ -71,7 +71,9 @@ func (m *Model) persistPlaybackContext(track playlist.Track, positionSec int, no
 	if index < 0 {
 		return
 	}
-	m.resumeSaver(m.sessionState(track, positionSec, context, index))
+	state := m.sessionState(track, positionSec, context, index)
+	m.lastSessionState = state
+	m.resumeSaver(state)
 	m.lastResumeSave = now
 }
 
@@ -626,6 +628,11 @@ func (m *Model) beginPlaybackTrack(track playlist.Track) (playlist.Track, tea.Cm
 	positionSec := 0
 	if m.resume.path == track.Path {
 		positionSec = m.resume.secs
+	} else {
+		// A different track playing makes the saved spot stale: the fresh
+		// checkpoint should win at quit, not the armed startup resume.
+		m.resume.path = ""
+		m.resume.secs = 0
 	}
 	m.persistPlaybackContext(track, positionSec, time.Now())
 	historyCmd := m.recordListenedTrack(track)

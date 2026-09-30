@@ -433,6 +433,8 @@ func (m *Model) exitImmersive() {
 	nextRequest(&m.requests.immersiveArtist)
 	nextRequest(&m.requests.immersiveSearch)
 	m.immersive = immersiveState{}
+	m.immRestore = nil
+	m.immRestorePos = nil
 	if m.immMouse != nil {
 		m.immMouse.valid = false
 	}

@@ -49,10 +49,22 @@ func (m *Model) captureExitSession() {
 			m.exitResume = m.sessionState(m.playbackContext[i], m.resume.secs, m.playbackContext, i)
 			return
 		}
-		m.exitResume = m.sessionState(playlist.Track{}, 0, nil, 0)
+		m.exitResume = m.tracklessSessionState()
 	default:
-		m.exitResume = m.sessionState(playlist.Track{}, 0, nil, 0)
+		m.exitResume = m.tracklessSessionState()
 	}
+}
+
+// tracklessSessionState records the queue and page at quit while keeping the
+// track and context the last checkpoint saved; without them the exit write
+// would erase the resume the checkpoint file already holds.
+func (m *Model) tracklessSessionState() resume.State {
+	state := m.sessionState(playlist.Track{}, 0, nil, 0)
+	state.Path = m.lastSessionState.Path
+	state.PositionSec = m.lastSessionState.PositionSec
+	state.Context = m.lastSessionState.Context
+	state.ContextIndex = m.lastSessionState.ContextIndex
+	return state
 }
 
 // ExitSession returns the session captured at quit. Called after the program

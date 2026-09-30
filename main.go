@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -109,17 +110,35 @@ func restoreResumeContext(state resume.State, restore func(playlist.Track) (play
 // sessionTrackRestorer refreshes saved Jellyfin stream URLs through the
 // provider (their auth token may have changed) and keeps every other track
 // as saved: local paths, radio URLs and provider URIs such as spotify:track
-// stay valid across launches.
-func sessionTrackRestorer(jellyProv *jellyfin.Provider) func(playlist.Track) (playlist.Track, bool) {
+// stay valid across launches. Emby shares the download-URL shape, so a URL
+// the configured Emby server owns is kept as saved instead of being dropped
+// when only Jellyfin can refresh.
+func sessionTrackRestorer(jellyProv *jellyfin.Provider, embyURL string) func(playlist.Track) (playlist.Track, bool) {
 	return func(t playlist.Track) (playlist.Track, bool) {
 		if !jellyfin.IsStreamURL(t.Path) {
 			return t, true
 		}
-		if jellyProv == nil {
-			return playlist.Track{}, false
+		if jellyProv != nil {
+			if restored, ok := jellyProv.RestoreTrack(t); ok {
+				return restored, true
+			}
 		}
-		return jellyProv.RestoreTrack(t)
+		if streamURLOwnedBy(t.Path, embyURL) {
+			return t, true
+		}
+		return playlist.Track{}, false
 	}
+}
+
+// streamURLOwnedBy reports whether a download URL points at the configured
+// server's scheme and host, the way embyapi.Client.StreamItemID scopes URLs.
+func streamURLOwnedBy(path, serverURL string) bool {
+	u, uerr := url.Parse(path)
+	b, berr := url.Parse(serverURL)
+	if uerr != nil || berr != nil || serverURL == "" {
+		return false
+	}
+	return strings.EqualFold(u.Scheme, b.Scheme) && strings.EqualFold(u.Host, b.Host)
 }
 
 // requeueSession re-queues the saved play-next entries: an entry already in
@@ -456,7 +475,7 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 	// immersive page. auto_play with the live channels keeps starting them,
 	// since a restored session stays silent.
 	restoreSession := !daemon && cfg.Playlist == "" && len(positional) == 0 && !(liveChannels && cfg.AutoPlay)
-	restoreTrack := sessionTrackRestorer(jellyProv)
+	restoreTrack := sessionTrackRestorer(jellyProv, cfg.Emby.URL)
 	var sessionTracks []playlist.Track
 	sessionIndex, restoredResumePath := 0, ""
 	restoredSession := false

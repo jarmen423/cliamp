@@ -468,6 +468,10 @@ type Model struct {
 	// ExitSession() can read it after the player is shut down.
 	exitResume resume.State
 
+	// lastSessionState is the most recent checkpoint persistPlaybackContext
+	// wrote; a quit that happens while stopped still exits onto that track.
+	lastSessionState resume.State
+
 	// immRestore is the immersive page to reopen once the provider has
 	// answered (see immersive_resume.go); immRestorePos is the cursor and
 	// scroll to put back when that page's list arrives. Both live outside

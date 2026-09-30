@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bjarneo/cliamp/internal/resume"
 	"github.com/bjarneo/cliamp/playlist"
 )
 
@@ -72,5 +73,47 @@ func TestQuitSavesLiveStationWithoutPosition(t *testing.T) {
 	m.quit()
 	if s := m.ExitSession(); s.Path != station.Path || s.PositionSec != 0 || len(s.Context) != 1 {
 		t.Fatalf("exit session = %+v, want the station at 0s", s)
+	}
+}
+
+// Playing a different track than the restored one retires the armed resume,
+// so a later quit exits onto the last checkpoint, not the stale startup spot.
+func TestOtherTrackDisplacesArmedResume(t *testing.T) {
+	context := []playlist.Track{{Path: "/music/a.mp3"}, {Path: "/music/b.mp3"}}
+	pl := playlist.New()
+	pl.Add(context...)
+	m := Model{player: &playbackFakeEngine{}, playlist: pl}
+	m.resumeSaver = func(resume.State) {}
+	m.SetInitialTrack(0)
+	m.SetResume("/music/a.mp3", 95)
+
+	m.beginPlaybackTrack(context[1])
+	m.persistPlaybackContext(context[1], 30, time.Now())
+	m.quit()
+	s := m.ExitSession()
+	if s.Path != "/music/b.mp3" || s.PositionSec != 30 {
+		t.Fatalf("exit session = %+v, want b.mp3 at 30s", s)
+	}
+}
+
+// Quitting while stopped keeps the last checkpoint's track and context on the
+// exit write instead of clobbering them with a trackless state.
+func TestQuitStoppedKeepsCheckpoint(t *testing.T) {
+	context := []playlist.Track{{Path: "/music/a.mp3"}, {Path: "/music/b.mp3"}}
+	pl := playlist.New()
+	pl.Add(context...)
+	m := Model{player: &playbackFakeEngine{}, playlist: pl}
+	m.resumeSaver = func(resume.State) {}
+	m.persistPlaybackContext(context[1], 30, time.Now())
+	pl.Add(playlist.Track{Path: "/music/c.mp3"})
+	pl.Queue(2)
+
+	m.quit()
+	s := m.ExitSession()
+	if s.Path != "/music/b.mp3" || s.PositionSec != 30 || len(s.Context) != 2 {
+		t.Fatalf("exit session = %+v, want b.mp3 at 30s in its list", s)
+	}
+	if len(s.Queue) != 1 || s.Queue[0].Path != "/music/c.mp3" {
+		t.Fatalf("queue = %+v, want the queued track", s.Queue)
 	}
 }
