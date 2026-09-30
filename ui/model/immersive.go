@@ -412,14 +412,16 @@ func (m *Model) startImmersive() tea.Cmd {
 	if _, ok := m.provider.(provider.ArtistBrowser); ok {
 		m.immersive.loadingArtists = true
 	}
+	var restoreCmd tea.Cmd
 	if len(m.providerLists) > 0 {
 		// Reuse the already-fetched list; browse-route pseudo rows are
 		// filtered out of the canvas.
 		m.immersive.lists = m.filterImmersivePlaylists(m.providerLists)
+		restoreCmd = m.immersiveRestoreListsLoaded(nil) // the provider already answered
 	} else {
 		m.immersive.loadingLists = true
 	}
-	return tea.Batch(artCmd, m.fetchImmersiveSidebar())
+	return tea.Batch(artCmd, m.fetchImmersiveSidebar(), restoreCmd)
 }
 
 // exitImmersive leaves the mode and supersedes every in-flight fetch.
@@ -765,6 +767,7 @@ func (m Model) immersiveSnap() immNavSnap {
 // which also discards the forward history. Settings is transient and never
 // recorded.
 func (m *Model) pushImmersiveBack() {
+	m.immRestorePos = nil // the user moved on before a restored list arrived
 	m.immersive.fwd = nil
 	if m.immersive.view == immViewSettings {
 		return
@@ -775,6 +778,7 @@ func (m *Model) pushImmersiveBack() {
 // immersiveGoBack steps back through the canvas history. With no history it
 // leaves a drill-down for the section root.
 func (m *Model) immersiveGoBack() tea.Cmd {
+	m.immRestorePos = nil
 	im := &m.immersive
 	if im.view == immViewSettings {
 		im.view = im.settingsReturn // Settings is a tab, not a history step
@@ -796,6 +800,7 @@ func (m *Model) immersiveGoBack() tea.Cmd {
 
 // immersiveGoForward re-applies the history Back undid.
 func (m *Model) immersiveGoForward() tea.Cmd {
+	m.immRestorePos = nil
 	im := &m.immersive
 	n := len(im.fwd)
 	if n == 0 {

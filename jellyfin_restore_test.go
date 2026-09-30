@@ -26,9 +26,9 @@ func TestRestoreJellyfinContextRestoresAlbumAndActiveTrack(t *testing.T) {
 		ContextIndex: 1,
 	}
 
-	tracks, index, activePath, ok := restoreJellyfinContext(state, prov)
+	tracks, index, activePath, ok := restoreResumeContext(state, prov.RestoreTrack)
 	if !ok {
-		t.Fatal("restoreJellyfinContext() did not restore saved album")
+		t.Fatal("restoreResumeContext() did not restore saved album")
 	}
 	if len(tracks) != 3 || index != 1 || tracks[index].Title != "Two" {
 		t.Fatalf("restored context = len:%d index:%d tracks:%+v", len(tracks), index, tracks)
@@ -52,8 +52,8 @@ func TestRestoreJellyfinContextRejectsSingularLegacyResume(t *testing.T) {
 		PositionSec: 95,
 	}
 
-	if tracks, _, _, ok := restoreJellyfinContext(state, prov); ok || len(tracks) != 0 {
-		t.Fatalf("restoreJellyfinContext() = (%+v, %v), want no singular restore", tracks, ok)
+	if tracks, _, _, ok := restoreResumeContext(state, prov.RestoreTrack); ok || len(tracks) != 0 {
+		t.Fatalf("restoreResumeContext() = (%+v, %v), want no singular restore", tracks, ok)
 	}
 }
 
@@ -68,7 +68,7 @@ func TestRestoreJellyfinContextPreservesMixedPlaylistAndDuplicate(t *testing.T) 
 		Path: path, ContextIndex: 2,
 		Context: []playlist.Track{{Path: path}, local, {Path: path}, foreign},
 	}
-	tracks, index, activePath, ok := restoreJellyfinContext(state, prov)
+	tracks, index, activePath, ok := restoreResumeContext(state, prov.RestoreTrack)
 	if !ok || len(tracks) != 4 || index != 2 {
 		t.Fatalf("restore = (%+v, %d, %v), want mixed playlist and second duplicate", tracks, index, ok)
 	}
@@ -98,7 +98,7 @@ func TestRestoreJellyfinContextValidatesActiveEntry(t *testing.T) {
 		{name: "foreign active server", state: resume.State{Path: "/music/local.mp3", Context: []playlist.Track{{Path: "/music/local.mp3"}, {Path: path}}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, _, _, ok := restoreJellyfinContext(tt.state, prov); ok != tt.want {
+			if _, _, _, ok := restoreResumeContext(tt.state, prov.RestoreTrack); ok != tt.want {
 				t.Fatalf("restored = %v, want %v", ok, tt.want)
 			}
 		})

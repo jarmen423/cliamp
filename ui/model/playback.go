@@ -71,7 +71,7 @@ func (m *Model) persistPlaybackContext(track playlist.Track, positionSec int, no
 	if index < 0 {
 		return
 	}
-	m.resumeSaver(track, positionSec, cloneTracks(context), index)
+	m.resumeSaver(m.sessionState(track, positionSec, context, index))
 	m.lastResumeSave = now
 }
 

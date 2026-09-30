@@ -8,6 +8,7 @@ import (
 	"github.com/bjarneo/cliamp/external/radio"
 	"github.com/bjarneo/cliamp/history"
 	"github.com/bjarneo/cliamp/internal/playback"
+	"github.com/bjarneo/cliamp/internal/resume"
 	"github.com/bjarneo/cliamp/luaplugin"
 	"github.com/bjarneo/cliamp/player"
 	"github.com/bjarneo/cliamp/playlist"
@@ -23,8 +24,9 @@ type ConfigSaver interface {
 	Save(key, value string) error
 }
 
-// ResumeSaver persists the active track, timeline position, and source context.
-type ResumeSaver func(track playlist.Track, positionSec int, context []playlist.Track, contextIndex int)
+// ResumeSaver persists the session checkpoint: the active track, timeline
+// position and source context, plus the queue and immersive page.
+type ResumeSaver func(state resume.State)
 
 // saveConfigKey persists a top-level config key, surfacing a write failure in
 // the status line. It is a no-op when no saver is wired, so headless callers
@@ -462,15 +464,16 @@ type Model struct {
 	// expose no follow-state query, so the first toggle assumes unfollowed.
 	followState map[string]bool
 
-	// exitResume holds the playback state captured just before player.Close()
-	// so ResumeState() can read it after the player is shut down.
-	exitResume struct {
-		path         string
-		secs         int
-		playlist     string
-		context      []playlist.Track
-		contextIndex int
-	}
+	// exitResume holds the session captured just before player.Close() so
+	// ExitSession() can read it after the player is shut down.
+	exitResume resume.State
+
+	// immRestore is the immersive page to reopen once the provider has
+	// answered (see immersive_resume.go); immRestorePos is the cursor and
+	// scroll to put back when that page's list arrives. Both live outside
+	// m.immersive because startImmersive resets it, including after sign-in.
+	immRestore    *resume.View
+	immRestorePos *immRestorePos
 
 	// preloading is true while a preloadStreamCmd goroutine is in-flight.
 	preloading bool

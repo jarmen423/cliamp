@@ -281,17 +281,6 @@ func (m *Model) ResumePlaylist(name string, tracks []playlist.Track) {
 	m.loadedPlaylist = name
 }
 
-// ResumeState returns the track path, playback position, and playlist name captured at exit.
-// Called after prog.Run() returns (player already closed).
-func (m Model) ResumeState() (path string, secs int, playlist string) {
-	return m.exitResume.path, m.exitResume.secs, m.exitResume.playlist
-}
-
-// ResumeContext returns the complete list the active track was selected from.
-func (m Model) ResumeContext() ([]playlist.Track, int) {
-	return cloneTracks(m.exitResume.context), m.exitResume.contextIndex
-}
-
 // ThemeName returns the current theme name.
 func (m Model) ThemeName() string {
 	if m.themeIdx < 0 || m.themeIdx >= len(m.themes) {

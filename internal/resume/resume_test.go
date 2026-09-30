@@ -1,6 +1,7 @@
 package resume
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -137,6 +138,90 @@ func TestSaveWriteFileIsReadable(t *testing.T) {
 	}
 	if len(data) == 0 {
 		t.Error("resume.json is empty")
+	}
+}
+
+func tracksN(n int) []playlist.Track {
+	out := make([]playlist.Track, n)
+	for i := range out {
+		out[i] = playlist.Track{Path: fmt.Sprintf("t%d", i)}
+	}
+	return out
+}
+
+func TestSaveStateSessionRoundTrip(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		state State
+	}{
+		{"track, queue and immersive page", State{
+			Path: "spotify:track:2", PositionSec: 61,
+			Context:      []playlist.Track{{Path: "spotify:track:1"}, {Path: "spotify:track:2", Title: "Two"}},
+			ContextIndex: 1,
+			Queue:        []playlist.Track{{Path: "spotify:track:9", Title: "Next"}},
+			Immersive: &View{
+				Provider: "Spotify", Section: "playlists", View: "playlist", Kind: "playlist",
+				ID: "pl1", Name: "Mix", Sub: "Playlist", Cursor: 7, Scroll: 3,
+			},
+		}},
+		{"immersive page without a track", State{
+			Immersive: &View{Provider: "Radio", Section: "search", View: "search", Query: "lofi"},
+		}},
+		{"queue without a track", State{Queue: []playlist.Track{{Path: "/a.mp3"}}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			withTempHome(t)
+			SaveState(tt.state)
+			if got := Load(); !reflect.DeepEqual(got, tt.state) {
+				t.Fatalf("Load() = %+v, want %+v", got, tt.state)
+			}
+		})
+	}
+}
+
+// Files written before the queue and immersive fields existed still load.
+func TestLoadLegacyFile(t *testing.T) {
+	home := withTempHome(t)
+	dir := filepath.Join(home, ".config", "cliamp")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `{"path":"/music/a.mp3","position_sec":42,"playlist":"main"}`
+	if err := os.WriteFile(filepath.Join(dir, "resume.json"), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := State{Path: "/music/a.mp3", PositionSec: 42, Playlist: "main"}
+	if got := Load(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Load() = %+v, want %+v", got, want)
+	}
+}
+
+func TestSaveStateCapsLists(t *testing.T) {
+	for _, tt := range []struct {
+		name               string
+		contextLen, index  int
+		wantFirst, wantIdx int // first kept track in the original list, and the saved index
+	}{
+		{"short list kept whole", 10, 4, 0, 4},
+		{"active near the start", MaxContextTracks * 3, 20, 0, 20},
+		{"active in the middle keeps the lookback", MaxContextTracks * 3, 700, 700 - contextLookback, contextLookback},
+		{"active near the end", MaxContextTracks * 3, MaxContextTracks*3 - 1, MaxContextTracks * 2, MaxContextTracks - 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			withTempHome(t)
+			all := tracksN(tt.contextLen)
+			SaveState(State{Path: all[tt.index].Path, PositionSec: 5, Context: all, ContextIndex: tt.index, Queue: tracksN(MaxQueueTracks + 50)})
+			got := Load()
+			if len(got.Context) != min(tt.contextLen, MaxContextTracks) || got.ContextIndex != tt.wantIdx {
+				t.Fatalf("context len %d index %d, want len %d index %d", len(got.Context), got.ContextIndex, min(tt.contextLen, MaxContextTracks), tt.wantIdx)
+			}
+			if got.Context[0].Path != all[tt.wantFirst].Path || got.Context[got.ContextIndex].Path != got.Path {
+				t.Fatalf("window starts at %q (want %q); active %q, want %q", got.Context[0].Path, all[tt.wantFirst].Path, got.Context[got.ContextIndex].Path, got.Path)
+			}
+			if len(got.Queue) != MaxQueueTracks {
+				t.Fatalf("queue len %d, want %d", len(got.Queue), MaxQueueTracks)
+			}
+		})
 	}
 }
 

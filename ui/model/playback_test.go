@@ -321,10 +321,10 @@ func TestQuitCapturesMixcloudResumePosition(t *testing.T) {
 	m := Model{player: player, playingTrack: track, playingTrackActive: true, playbackContext: context}
 
 	m.quit()
-	if m.exitResume.path != track.Path || m.exitResume.secs != 754 {
-		t.Fatalf("exit resume = (%q, %d), want (%q, 754)", m.exitResume.path, m.exitResume.secs, track.Path)
+	if m.exitResume.Path != track.Path || m.exitResume.PositionSec != 754 {
+		t.Fatalf("exit resume = (%q, %d), want (%q, 754)", m.exitResume.Path, m.exitResume.PositionSec, track.Path)
 	}
-	gotContext, gotIndex := m.ResumeContext()
+	gotContext, gotIndex := exitContext(m)
 	if len(gotContext) != 3 || gotIndex != 1 || gotContext[gotIndex].Path != track.Path {
 		t.Fatalf("exit context = len:%d index:%d tracks:%+v", len(gotContext), gotIndex, gotContext)
 	}
@@ -347,7 +347,7 @@ func TestNavTrackPlaybackKeepsCompleteAlbumContext(t *testing.T) {
 			cursor: 1,
 		},
 	}
-	m.SetResumeSaver(func(playlist.Track, int, []playlist.Track, int) {})
+	m.SetResumeSaver(trackSaver(func(playlist.Track, int, []playlist.Track, int) {}))
 
 	if cmd := m.handleNavTrackListKey(tea.KeyPressMsg{Code: tea.KeyEnter}); cmd == nil {
 		t.Fatal("handleNavTrackListKey(Enter) = nil, want playback command")
@@ -371,12 +371,12 @@ func TestBeginPlaybackPersistsActualTrackAndCompleteContextImmediately(t *testin
 	var savedTrack playlist.Track
 	var savedContext []playlist.Track
 	var savedIndex, savedPosition int
-	m.SetResumeSaver(func(track playlist.Track, positionSec int, context []playlist.Track, contextIndex int) {
+	m.SetResumeSaver(trackSaver(func(track playlist.Track, positionSec int, context []playlist.Track, contextIndex int) {
 		savedTrack = track
 		savedPosition = positionSec
 		savedContext = context
 		savedIndex = contextIndex
-	})
+	}))
 	album = playlist.WithPlaybackContext(album)
 	pl.Add(album[11])
 
@@ -397,9 +397,9 @@ func TestTickResumeSavePersistsPositionAndThrottlesWrites(t *testing.T) {
 	pl.Add(track)
 	m := Model{player: player, playlist: pl, playingTrack: track, playingTrackActive: true, playbackContext: []playlist.Track{track}}
 	var positions []int
-	m.SetResumeSaver(func(_ playlist.Track, positionSec int, _ []playlist.Track, _ int) {
+	m.SetResumeSaver(trackSaver(func(_ playlist.Track, positionSec int, _ []playlist.Track, _ int) {
 		positions = append(positions, positionSec)
-	})
+	}))
 	base := time.Now()
 	player.position = 42 * time.Second
 

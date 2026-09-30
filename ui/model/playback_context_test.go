@@ -50,7 +50,7 @@ func TestPlaybackContextOverlappingReplacement(t *testing.T) {
 			m := Model{player: engine, playlist: pl, provider: commandsTestProvider{name: "Test"}, vis: ui.NewVisualizer(44100)}
 			m.SetVisualizer("none")
 			var saved savedPlaybackContext
-			m.SetResumeSaver(saved.save)
+			m.SetResumeSaver(trackSaver(saved.save))
 			m.playCurrentTrack()
 			saved.check(t, old, 0)
 
@@ -66,7 +66,7 @@ func TestPlaybackContextOverlappingReplacement(t *testing.T) {
 			saved.check(t, old, 0)
 			detached := m
 			detached.quit()
-			if context, index := detached.ResumeContext(); index != 0 || !reflect.DeepEqual(context, old) {
+			if context, index := exitContext(detached); index != 0 || !reflect.DeepEqual(context, old) {
 				t.Fatalf("detached quit context = (%+v, %d), want old source", context, index)
 			}
 
@@ -94,7 +94,7 @@ func TestBrowserPlaybackContextSurvivesQueuedAlbum(t *testing.T) {
 			}
 			m.SetVisualizer("none")
 			var saved savedPlaybackContext
-			m.SetResumeSaver(saved.save)
+			m.SetResumeSaver(trackSaver(saved.save))
 			m.handleNavBrowserKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 			saved.check(t, album, 1)
 			if tracks := m.playlist.Tracks(); len(tracks) != 2 || tracks[0].Path != "b.mp3" || tracks[1].Path != "c.mp3" {
@@ -136,7 +136,7 @@ func TestNavPlaybackContextUsesDisplayedList(t *testing.T) {
 				navBrowser: navBrowserState{tracks: tracks, search: "filtered", searchIdx: []int{1, 2, 3}, cursor: 1},
 			}
 			var saved savedPlaybackContext
-			m.SetResumeSaver(saved.save)
+			m.SetResumeSaver(trackSaver(saved.save))
 			key := tea.KeyPressMsg{Text: tc.key}
 			if tc.key == "enter" {
 				key = tea.KeyPressMsg{Code: tea.KeyEnter}
@@ -160,7 +160,7 @@ func TestNavPlaybackContextPrecedesEnqueueLimit(t *testing.T) {
 		navBrowser: navBrowserState{tracks: tracks, cursor: 1},
 	}
 	var saved savedPlaybackContext
-	m.SetResumeSaver(saved.save)
+	m.SetResumeSaver(trackSaver(saved.save))
 	m.handleNavTrackListKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	saved.check(t, tracks, 1)
 	if got := m.playlist.Len(); got != 500 {
@@ -179,7 +179,7 @@ func TestDuplicatePlaybackContextPersistenceAndRestore(t *testing.T) {
 			if attached {
 				pl.Add(tracks...)
 			}
-			m.SetResumeSaver(saved.save)
+			m.SetResumeSaver(trackSaver(saved.save))
 			if !attached {
 				pl.Add(tracks...)
 			}
@@ -197,7 +197,7 @@ func TestDuplicatePlaybackContextPersistenceAndRestore(t *testing.T) {
 				t.Fatalf("periodic save position = %d, want 17", saved.position)
 			}
 			m.quit()
-			context, index := m.ResumeContext()
+			context, index := exitContext(m)
 			if index != 2 || !reflect.DeepEqual(context, tracks) {
 				t.Fatalf("quit context = (%+v, %d), want duplicate at index 2", context, index)
 			}
@@ -214,7 +214,7 @@ func TestDuplicatePlaybackContextPersistenceAndRestore(t *testing.T) {
 			pl.Add(restored...)
 			engine = &playbackFakeEngine{}
 			m = Model{player: engine, playlist: pl, vis: ui.NewVisualizer(44100)}
-			m.SetResumeSaver(saved.save)
+			m.SetResumeSaver(trackSaver(saved.save))
 			m.SetInitialTrack(index)
 			m.SetResume(tracks[index].Path, 17)
 			if pl.Index() != 2 || len(engine.playCalls) != 0 {
@@ -243,7 +243,7 @@ func TestSetResumeSaverPreservesPlaylistState(t *testing.T) {
 	want := playlist.New()
 	want.Restore(pl.Snapshot())
 	m := Model{playlist: pl}
-	m.SetResumeSaver(func(playlist.Track, int, []playlist.Track, int) {})
+	m.SetResumeSaver(trackSaver(func(playlist.Track, int, []playlist.Track, int) {}))
 	if pl.Index() != want.Index() || !pl.CurrentIsQueued() || !pl.Shuffled() || pl.Repeat() != playlist.RepeatAll || pl.QueueLen() != 1 {
 		t.Fatal("enabling context tracking changed playback state")
 	}
@@ -268,7 +268,7 @@ func TestPlaybackContextSelectionWithoutSaver(t *testing.T) {
 	pl.SetIndex(0)
 	m.playCurrentTrack()
 	m.quit()
-	if context, index := m.ResumeContext(); index != 0 || !reflect.DeepEqual(context, tracks) {
+	if context, index := exitContext(m); index != 0 || !reflect.DeepEqual(context, tracks) {
 		t.Fatalf("quit context = (%+v, %d), want active duplicate at index 0", context, index)
 	}
 }

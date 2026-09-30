@@ -30,9 +30,9 @@ func TestResumeCheckpointWaitsForConfirmedPlayback(t *testing.T) {
 				buffering: tt.buffering, seek: tt.seek, cachedPos: 600 * time.Second,
 			}
 			var positions []int
-			m.SetResumeSaver(func(_ playlist.Track, seconds int, _ []playlist.Track, _ int) {
+			m.SetResumeSaver(trackSaver(func(_ playlist.Track, seconds int, _ []playlist.Track, _ int) {
 				positions = append(positions, seconds)
-			})
+			}))
 			m.tickResumeSave(time.Now())
 			if len(positions) != 0 {
 				t.Fatalf("saved unconfirmed playback positions %v", positions)
@@ -57,7 +57,7 @@ func TestResumeCheckpointAfterFailedSeek(t *testing.T) {
 		seek: seekState{active: true, inFlight: true, targetPos: 600 * time.Second},
 	}
 	position := -1
-	m.SetResumeSaver(func(_ playlist.Track, seconds int, _ []playlist.Track, _ int) { position = seconds })
+	m.SetResumeSaver(trackSaver(func(_ playlist.Track, seconds int, _ []playlist.Track, _ int) { position = seconds }))
 	updated, _ := m.Update(seekTickMsg{target: 600 * time.Second, err: errors.New("seek failed")})
 	m = updated.(Model)
 	m.tickResumeSave(time.Now())
@@ -76,11 +76,11 @@ func TestResumeCheckpointReconcilesGaplessTrackFirst(t *testing.T) {
 	}
 	m.SetVisualizer("none")
 	var savedPositions []int
-	m.SetResumeSaver(func(track playlist.Track, seconds int, _ []playlist.Track, _ int) {
+	m.SetResumeSaver(trackSaver(func(track playlist.Track, seconds int, _ []playlist.Track, _ int) {
 		if track.Path == jellyfinTrack.Path {
 			savedPositions = append(savedPositions, seconds)
 		}
-	})
+	}))
 	updated, _ := m.Update(tickMsg(time.Now()))
 	if got := updated.(Model).playingTrack.Path; got != "local.mp3" {
 		t.Fatalf("gapless active path = %q, want local.mp3", got)
@@ -98,8 +98,8 @@ func TestQuitSkipsUnconfirmedTrackPosition(t *testing.T) {
 			playingTrack: track, playingTrackActive: true, buffering: buffering,
 		}
 		m.quit()
-		if path, seconds, _ := m.ResumeState(); path != "" || seconds != 0 {
-			t.Fatalf("buffering=%t: captured mismatched pipeline position (%q, %d)", buffering, path, seconds)
+		if s := m.ExitSession(); s.Path != "" || s.PositionSec != 0 {
+			t.Fatalf("buffering=%t: captured mismatched pipeline position (%q, %d)", buffering, s.Path, s.PositionSec)
 		}
 	}
 }
