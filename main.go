@@ -483,6 +483,10 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 	pl.Add(resolved.Tracks...)
 	if restoredSession {
 		pl.Add(sessionTracks...)
+	}
+	if restoreSession {
+		// The saved queue restores even when the context did not (the active
+		// track could not be restored, or nothing was playing at exit).
 		requeueSession(pl, resumeState.Queue, restoreTrack)
 	}
 

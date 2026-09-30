@@ -119,8 +119,11 @@ func (m *Model) applyImmersiveRestore() tea.Cmd {
 	}
 	m.immersive.section = sec
 	m.immersiveResetRoot()
+	vi, ok := indexOfName(immViewNames, r.View)
+	if !ok {
+		return nil // unknown or newer view name: stay at the section root
+	}
 	pos := &immRestorePos{cursor: max(0, r.Cursor), scroll: max(0, r.Scroll)}
-	vi, _ := indexOfName(immViewNames, r.View)
 	switch view := immersiveView(vi); {
 	case view == immViewSearch:
 		if r.Query == "" {

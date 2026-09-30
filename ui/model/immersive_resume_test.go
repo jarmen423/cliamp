@@ -74,6 +74,7 @@ func TestImmersiveRestoreReopensPage(t *testing.T) {
 		{"search re-runs its query", resume.View{Provider: "stub", Section: "search", View: "search", Query: "kanye"}, immViewSearch, "", 0},
 		{"other provider falls back to the root", resume.View{Provider: "Spotify", Section: "albums", View: "album", Kind: "album", ID: "al9"}, immViewBrowse, "", 0},
 		{"unknown section falls back to the root", resume.View{Provider: "stub", Section: "moods", View: "browse", Cursor: 2}, immViewBrowse, "", 0},
+		{"unknown view falls back to the root", resume.View{Provider: "stub", Section: "playlists", View: "queue", Cursor: 3, Scroll: 3}, immViewBrowse, "", 0},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			m, _ := relaunch(t, &tt.view)
