@@ -90,6 +90,7 @@ type immGeom struct {
 	canvasX            int // canvas outer box
 	canvasW            int
 	canvasIW, canvasIH int
+	leftH              int // left column height: the body plus the controls rows
 	npH                int // Now Playing panel height
 	npArt              immRect
 	queueY             int // Queue panel top
@@ -142,19 +143,22 @@ func (m Model) immGeom() immGeom {
 	g.canvasW = w - g.canvasX
 	g.canvasIW = g.canvasW - 2
 	g.canvasIH = bodyH - 2
+	// The controls sit under the canvas only, so the left column runs on
+	// beside them down to the progress bar.
+	g.leftH = bodyH + 1 + immCtrlRows
 
 	// Now Playing panel: border + square-ish art + title/artist/album +
 	// border. The art box shrinks before the Queue panel does: the queue
 	// keeps at least 5 rows (borders, header, two entries).
 	inner := g.leftW - 2
 	artH := inner / 2
-	if maxArt := bodyH - 10; artH > maxArt {
+	if maxArt := g.leftH - 10; artH > maxArt {
 		artH = max(0, maxArt)
 	}
 	npH := artH + 5
 	g.npH = npH
 	g.queueY = npH
-	g.queueH = bodyH - npH
+	g.queueH = g.leftH - npH
 	// Cells are about twice as tall as wide, so a square cover is 2h cells
 	// wide; center it when the height cap made it narrower than the panel.
 	artW := min(inner, 2*artH)
@@ -191,17 +195,36 @@ func padPane(lines []string, w, rows int) []string {
 	return out
 }
 
+// immPadFrame wraps the immersive content, which renderImmersive already
+// cut to exactly panel width x frame rows, in the frame's padding: the cheap
+// equivalent of centerFrame(FrameStyle.Render(content)) for content that
+// needs no measuring.
+func (m Model) immPadFrame(content string) string {
+	padH := strings.Repeat(" ", m.layout.paddingH)
+	blank := strings.Repeat(" ", m.layout.frameWidth)
+	lines := make([]string, 0, m.height)
+	for range m.layout.paddingV {
+		lines = append(lines, blank)
+	}
+	for l := range strings.SplitSeq(content, "\n") {
+		lines = append(lines, padH+l+padH)
+	}
+	for range m.layout.paddingV {
+		lines = append(lines, blank)
+	}
+	return strings.Join(lines, "\n")
+}
+
 // renderImmersive lays out the full frame.
 func (m Model) renderImmersive() string {
 	g := m.immGeom()
 	lines := make([]string, 0, g.h)
+	blank := strings.Repeat(" ", g.w)
 	lines = append(lines, m.renderImmVis(g.w, g.visH)...)
-	lines = append(lines, "")
+	lines = append(lines, blank)
 	lines = append(lines, m.renderImmNav(g.w)...)
-	lines = append(lines, "")
-	lines = append(lines, m.renderImmBody(g)...)
-	lines = append(lines, "")
-	lines = append(lines, m.renderImmControls(g)...)
+	lines = append(lines, blank)
+	lines = append(lines, m.renderImmBody(g)...) // includes the controls rows
 	lines = append(lines, m.renderImmProgress(g.w))
 	lines = append(lines, m.renderImmStatusLine(g.w))
 	return strings.Join(lines, "\n")
@@ -210,6 +233,9 @@ func (m Model) renderImmersive() string {
 // — visualizer band —
 
 func (m Model) renderImmVis(w, rows int) []string {
+	if m.immPixelVisOn() {
+		return padPane(nil, w, rows) // blank cells under the Sixel frames
+	}
 	if m.vis == nil || m.vis.Mode == ui.VisNone || m.visualizerDisabled() {
 		lines := padPane(nil, w, rows)
 		lines[rows/2] = fitCell(dimStyle.Render("  ♪ visualizer off"), w)
@@ -232,8 +258,13 @@ type immPillGeom struct {
 // highlighted Search pill centered, Albums and Podcasts on the right.
 func (m Model) immNavGeom(w int) []immPillGeom {
 	navY := immVisRowsFor(m.immFrameRows()) + 1
-	labelW := func(s immSection) int { return len(immSectionLabels[s]) + 4 }
-	left := []immSection{immSecPlaylists, immSecArtists}
+	labelW := func(s immSection) int {
+		if s < 0 {
+			return 5 // history button: │ ◀ │
+		}
+		return len(immSectionLabels[s]) + 4
+	}
+	left := []immSection{immNavBack, immNavForward, immSecPlaylists, immSecArtists}
 	right := []immSection{immSecAlbums, immSecPodcasts}
 	searchW := max(20, w/3)
 
@@ -268,6 +299,12 @@ func (m Model) immNavGeom(w int) []immPillGeom {
 // immPillLabel is the pill's inner text — the section name, or the live
 // query while the search input is open.
 func (m Model) immPillLabel(s immSection) string {
+	switch s {
+	case immNavBack:
+		return "◀"
+	case immNavForward:
+		return "▶"
+	}
 	if s == immSecSearch {
 		if m.immersive.searching {
 			return "⌕ " + m.immersive.searchQuery + "▌"
@@ -278,6 +315,15 @@ func (m Model) immPillLabel(s immSection) string {
 		return "⌕ Search"
 	}
 	return immSectionLabels[s]
+}
+
+// immHistoryAvailable reports whether a history button has anywhere to go.
+func (m Model) immHistoryAvailable(button immSection) bool {
+	im := m.immersive
+	if button == immNavForward {
+		return len(im.fwd) > 0
+	}
+	return len(im.back) > 0 || im.view != immRootView(im.section) || im.ctxName != ""
 }
 
 // renderImmNav draws the pill row: three rows of rounded box-drawing pills.
@@ -310,6 +356,9 @@ func (m Model) renderImmNav(w int) []string {
 			if m.immersive.focus == immPaneNav && p.section == m.immersive.section {
 				border = helpKeyStyle
 			}
+			if p.section < 0 && !m.immHistoryAvailable(p.section) {
+				text = dimStyle // nothing to go back/forward to
+			}
 			label := m.immPillLabel(p.section)
 			pw := p.box.W
 			switch r {
@@ -330,12 +379,18 @@ func (m Model) renderImmNav(w int) []string {
 // — body —
 
 func (m Model) renderImmBody(g immGeom) []string {
-	left := padPane(m.renderImmLeft(g), g.leftW, g.bodyH)
-	canvas := padPane(m.renderImmCanvas(g), g.canvasW, g.bodyH)
-	sep := strings.Repeat(" ", 1)
-	var columns []string
-	columns = append(columns, strings.Join(left, "\n"), sep, strings.Join(canvas, "\n"))
-	return strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, columns...), "\n")
+	left := padPane(m.renderImmLeft(g), g.leftW, g.leftH)
+	right := padPane(m.renderImmCanvas(g), g.canvasW, g.bodyH)
+	right = append(right, strings.Repeat(" ", g.canvasW))
+	for _, row := range m.renderImmControls(g) {
+		right = append(right, fitCell(ansi.Cut(row, g.canvasX, g.w), g.canvasW))
+	}
+	// padPane fixed both columns' widths, so rows join without measuring.
+	out := make([]string, g.leftH)
+	for i := range out {
+		out[i] = left[i] + " " + right[i]
+	}
+	return out
 }
 
 // — left column: Now Playing + Queue —
@@ -388,7 +443,7 @@ func (m Model) renderImmNowPlaying(g immGeom) []string {
 	if name == "" {
 		name = trackViewName(track)
 	}
-	art := immArtBlock(firstNonEmpty(name, "cliamp"), g.npArt.W, g.npArt.H, name != "")
+	art := m.immArtOr(track.AlbumArtURL, firstNonEmpty(name, "cliamp"), g.npArt.W, g.npArt.H, name != "")
 	side := boxSide(false)
 	indent := strings.Repeat(" ", g.npArt.X-1)
 	for i := 0; i < g.npArt.H; i++ {
@@ -563,6 +618,20 @@ func (m Model) renderImmCanvasInner(w, rows int) []string {
 		return m.renderImmSettings(w, rows)
 	}
 	lines := make([]string, rows)
+	if im.needsAuth && im.view == immViewBrowse {
+		name := "your account"
+		if im.prov != nil {
+			name = im.prov.Name()
+		}
+		lines[0] = playlistActiveStyle.Render("  Sign in to " + name)
+		if rows > 1 {
+			lines[1] = dimStyle.Render("  Enter or click here opens the sign-in page in your browser.")
+		}
+		if m.provAuthURL != "" && rows > 3 {
+			lines[3] = dimStyle.Render("  If it did not open: " + m.provAuthURL)
+		}
+		return lines
+	}
 	if im.tracksLoading && im.view.isTrackView() {
 		lines[0] = "  " + m.immSpin() + " loading " + firstNonEmpty(im.ctxName, "tracks") + "…"
 		return lines
@@ -619,13 +688,17 @@ func (m Model) renderImmCanvasInner(w, rows int) []string {
 		}
 		for _, bandY := range bandYs {
 			y := bandY - oy
-			for li := 0; li < bands[bandY][0].box.H && y+li < rows; li++ {
+			band := bands[bandY]
+			tiles := make([][]string, len(band)) // render each tile once
+			for i, g := range band {
+				sel := g.idx == im.cursor && im.focus == immPaneCanvas
+				tiles[i] = m.immItemTileLines(items[g.idx], g.box.W, g.box.H, sel)
+			}
+			for li := 0; li < band[0].box.H && y+li < rows; li++ {
 				var b strings.Builder
 				cx := 0
-				for _, g := range bands[bandY] {
-					item := items[g.idx]
-					sel := g.idx == im.cursor && im.focus == immPaneCanvas
-					tl := m.immItemTileLines(item, g.box.W, g.box.H, sel)
+				for i, g := range band {
+					tl := tiles[i]
 					if li >= len(tl) {
 						continue
 					}
@@ -697,7 +770,7 @@ func (m Model) immItemListLine(item immItem, idx, w int, sel bool, playingPath s
 // immItemRowLines draws a rows-mode item: a 3-row art box on the left, then
 // title / artist / album (+duration) text filling the rest of the row.
 func (m Model) immItemRowLines(item immItem, w int, sel bool, playingPath string) []string {
-	art := immArtBlock(item.title, immRowsArtW, immRowsItemH, sel)
+	art := m.immArtOr(item.art, item.title, immRowsArtW, immRowsItemH, sel)
 	textW := max(1, w-immRowsArtW-2)
 	titleStyle := playlistItemStyle
 	subStyle := dimStyle
@@ -730,7 +803,7 @@ func (m Model) immItemTileLines(item immItem, w, h int, sel bool) []string {
 	if artH < 1 {
 		artH = h
 	}
-	art := immArtBlock(item.title, w, artH, sel)
+	art := m.immArtOr(item.art, item.title, w, artH, sel)
 	lines := make([]string, 0, h)
 	for _, r := range art {
 		lines = append(lines, fitCell(r, w))
@@ -964,8 +1037,9 @@ func (m Model) immControlsGeom(w int) ([]immCtrlGeom, immRect) {
 	for _, bw := range widths {
 		total += bw + 1
 	}
-	x := max(0, (w-total)/2)
-	y := m.immGeom().ctrlY
+	g := m.immGeom()
+	x := g.canvasX + max(0, (g.canvasW-total)/2) // centered under the canvas
+	y := g.ctrlY
 	btns := make([]immCtrlGeom, 0, len(keys))
 	for i, k := range keys {
 		btns = append(btns, immCtrlGeom{key: k, box: immRect{X: x, Y: y, W: widths[i], H: immCtrlRows}})
@@ -987,6 +1061,9 @@ func (m Model) renderImmControls(g immGeom) []string {
 	glyphs := []string{gl.shuffle, gl.prev, gl.play, gl.next, gl.repeat}
 	if m.isPlaying() {
 		glyphs[2] = gl.pause
+	}
+	if m.playlist != nil && m.playlist.Smart() {
+		glyphs[0] = gl.shuffle + "✦" // Smart Shuffle: the third shuffle state
 	}
 	if m.playlist != nil && m.playlist.Repeat() == playlist.RepeatOne {
 		glyphs[4] = gl.repeatOne
@@ -1095,7 +1172,7 @@ func (m Model) renderImmStatusLine(w int) string {
 	if line := m.renderTransient(); line != "" {
 		return fitCell(line, w)
 	}
-	hints := "I exit · tab focus · hjkl move · 1-5 pills · / search · v view · t sort · f filter · e EQ · q queue · V vis · click open/play · drag seek"
+	hints := "? keys · I exit · 1-5 pills · / search · c view · v visualizer · ; menu · Bksp back · e EQ · f filter · tab focus · V full vis"
 	return fitCell(dimStyle.Render(hints), w)
 }
 
@@ -1115,6 +1192,15 @@ func (m Model) playingContextName() string {
 }
 
 // immArtBlock draws a deterministic shade-glyph mosaic stand-in for cover art.
+// immArtOr is the art box content: the cover when it is ready (see
+// immersive_art.go), otherwise the text placeholder.
+func (m Model) immArtOr(url, name string, w, h int, bright bool) []string {
+	if lines, ok := m.immArtCells(url, w, h); ok {
+		return lines
+	}
+	return immArtBlock(name, w, h, bright)
+}
+
 func immArtBlock(name string, w, h int, bright bool) []string {
 	if w < 1 || h < 1 {
 		return nil

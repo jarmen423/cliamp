@@ -8,6 +8,7 @@ package model
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"unicode/utf8"
 
@@ -33,9 +34,15 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	case "esc":
 		return m.immersiveEscape()
-	case "backspace":
-		m.immersiveGoBack()
+	case "backspace", "alt+left":
+		return m.immersiveGoBack()
+	case "alt+right":
+		return m.immersiveGoForward()
+	case "ctrl+k", "?":
+		m.openKeymap()
 		return nil
+	case ";":
+		return m.immersiveOpenTrackMenu()
 	case "tab":
 		m.immersive.focus = immersivePane((int(m.immersive.focus) + 1) % int(immPaneCount))
 		return nil
@@ -51,7 +58,9 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "<", ",":
 		return m.immPrev()
 	case "z":
-		return m.immToggleShuffle()
+		return m.immCycleShuffle()
+	case "Z":
+		return m.toggleSmartShuffle()
 	case "r":
 		return m.immCycleRepeat()
 	case "+", "=":
@@ -95,8 +104,13 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	// — canvas —
 	case "v":
+		m.immCycleVisualizer()
+		return nil
+	case "c":
 		m.immersive.mode = immCanvasMode((int(m.immersive.mode) + 1) % int(immCanvasModeCount))
 		m.immersive.scroll = 0
+		m.immCanvasPref = m.immersive.mode
+		m.saveConfigKey("immersive_view", fmt.Sprintf("%q", immCanvasModeNames[m.immersive.mode]))
 		return nil
 	case "e":
 		if m.immersive.view == immViewSettings {
@@ -187,10 +201,35 @@ func (m *Model) immPrev() tea.Cmd {
 	return tea.Batch(refresh, cmd)
 }
 
-func (m *Model) immToggleShuffle() tea.Cmd {
+// immCycleShuffle steps the shuffle button off -> shuffle -> Smart Shuffle
+// -> off. Smart Shuffle needs a recommending provider; without one the
+// second step turns shuffle off instead.
+func (m *Model) immCycleShuffle() tea.Cmd {
+	switch {
+	case !m.playlist.Shuffled():
+		m.playlist.ToggleShuffle()
+		m.saveConfigKey("shuffle", boolString(m.playlist.Shuffled()))
+		return m.rearmPreload()
+	case !m.playlist.Smart():
+		if rec, _ := m.recommenderForQueue(); rec != nil {
+			return m.toggleSmartShuffle()
+		}
+	default:
+		m.toggleSmartShuffle() // off; its preload is superseded below
+	}
 	m.playlist.ToggleShuffle()
 	m.saveConfigKey("shuffle", boolString(m.playlist.Shuffled()))
 	return m.rearmPreload()
+}
+
+// immCycleVisualizer is the classic `v`: next visualizer mode, persisted.
+func (m *Model) immCycleVisualizer() {
+	if m.vis == nil || m.simplified {
+		return
+	}
+	m.vis.CycleMode()
+	m.vis.RequestRefresh()
+	m.saveConfigKey("visualizer", fmt.Sprintf("%q", m.vis.ModeName()))
 }
 
 func (m *Model) immCycleRepeat() tea.Cmd {
@@ -212,14 +251,15 @@ func (m *Model) openImmersiveSearch() tea.Cmd {
 	return nil
 }
 
-// immersiveEscape peels the innermost state: the settings tab, one
-// back-stack level, then the mode itself.
+// immersiveEscape peels the innermost state: the settings tab, an opened
+// collection (one history step back), then the mode itself. Pill-to-pill
+// history is Back's job, not Esc's.
 func (m *Model) immersiveEscape() tea.Cmd {
 	switch {
 	case m.immersive.view == immViewSettings:
 		m.immersive.view = m.immersive.settingsReturn
-	case len(m.immersive.back) > 0 || m.immersive.view != immViewBrowse && m.immersive.view != immViewSearch:
-		m.immersiveGoBack()
+	case m.immersive.view != immViewBrowse && m.immersive.view != immViewSearch:
+		return m.immersiveGoBack()
 	default:
 		m.exitImmersive()
 	}
@@ -321,6 +361,9 @@ func (m *Model) immersiveActivate() tea.Cmd {
 		return m.immersiveQueueJump()
 	default:
 		im := &m.immersive
+		if im.needsAuth && im.view == immViewBrowse {
+			return m.immersiveSignIn()
+		}
 		if im.view == immViewSettings {
 			m.immersiveAdjustSetting(im.settingsCursor, 1)
 			return nil
@@ -528,4 +571,42 @@ func boolString(b bool) string {
 
 func repeatLabel(mode playlist.RepeatMode) string {
 	return "\"" + mode.String() + "\""
+}
+
+// immersiveOpenTrackMenu opens the track context menu (the `;` / right-click
+// menu) for the focused track: a queue row, a canvas track, or the playing
+// track when the canvas lists collections.
+func (m *Model) immersiveOpenTrackMenu() tea.Cmd {
+	t, remove, idx, ok := m.immersiveFocusedTrack()
+	if !ok {
+		return nil
+	}
+	m.openTrackMenu(t, remove, idx)
+	return nil
+}
+
+// immersiveFocusedTrack resolves the track the menu acts on and how its
+// Remove item applies (queued rows can leave the queue).
+func (m Model) immersiveFocusedTrack() (playlist.Track, menuRemoveKind, int, bool) {
+	if m.immersive.focus == immPaneQueue {
+		rows := m.immQueueRows()
+		c := m.immersive.queueCursor
+		switch {
+		case c < 0 || c >= len(rows):
+			return playlist.Track{}, menuRemoveNone, 0, false
+		case c < m.playlist.QueueLen():
+			return rows[c].Track, menuRemoveQueue, c, true
+		}
+		return rows[c].Track, menuRemoveNone, 0, true
+	}
+	if m.immersive.view.isTrackView() {
+		tracks := m.sortedTracks()
+		c := m.immersive.cursor
+		if c < 0 || c >= len(tracks) || tracks[c].IsAlbum() {
+			return playlist.Track{}, menuRemoveNone, 0, false
+		}
+		return tracks[c], menuRemoveNone, 0, true
+	}
+	t, _ := m.currentPlaybackTrack()
+	return t, menuRemoveNone, 0, t.Path != ""
 }

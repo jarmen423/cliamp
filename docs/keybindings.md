@@ -152,7 +152,9 @@ and playlist-manager rows.
 | `l` | Go to the track's album |
 | `t` | Go to the track's artist |
 | `x` | Remove from this playlist (or queue) — playlist/queue/manager rows only |
+| `s` | Like / unlike on the owning provider (e.g. Spotify Liked Songs) — providers with likes only |
 | `i` | View credits — composer/producer/label metadata where the provider exposes it, plus the track's standard metadata; reports when no credits are exposed (Spotify has no credits endpoint) |
+| `y` | Copy a share link to the clipboard: the open.spotify.com link for Spotify tracks, or a `cliamp://play` link for web streams |
 | `Enter` | Run the highlighted item |
 | `j` `k` / `Up` `Down` | Move between items (wraps) |
 | `;` `q` `Esc` | Close |
@@ -401,8 +403,9 @@ query to their search API. Their services control matching rules.
 
 `I` opens the immersive layout (or start in it with `immersive = true` in the
 config). It falls back to the classic layout when the terminal is under
-80x24. Transport keys keep their normal bindings (`Space`, `>`/`<`, `z`, `r`,
-`+`/`-`, `Shift+Left`/`Shift+Right`); the immersive-only keys:
+80x24. Transport keys keep their normal bindings (`Space`, `>`/`<`, `r`, `Z`,
+`+`/`-`, `Shift+Left`/`Shift+Right`, `v` to cycle visualizers); `Ctrl+K` or
+`?` lists everything below. The immersive-only keys:
 
 | Key | Action |
 |---|---|
@@ -412,9 +415,13 @@ config). It falls back to the classic layout when the terminal is under
 | `j`/`k` or `Up`/`Down` | Move cursor vertically (one row or tile row per step) |
 | `PgUp` / `PgDn` | Page the canvas |
 | `Enter` | Open the focused collection, play the focused track, or adjust a setting |
-| `Backspace` | Back one level in the canvas; `Esc` unwinds then exits |
+| `Backspace` or `Alt+Left` | Back through the canvas history (the ◀ button) |
+| `Alt+Right` | Forward again (the ▶ button) |
+| `Esc` | Leave the settings tab or an opened collection; exits at the root |
 | `g` or `Home` | Jump back to the canvas root |
-| `v` | Cycle the canvas view: list, rows, grid |
+| `c` | Cycle the canvas view: list, rows, grid |
+| `z` | Shuffle button: off, shuffle, Smart Shuffle (✦), off |
+| `;` | Track menu for the focused track (also right-click) |
 | `e` | Toggle the settings tab in the canvas (EQ preset/bands, volume, speed, visualizer) |
 | `t` | Cycle track sort: order, title, album, duration |
 | `s` | Toggle browse sort: recents vs alphabetical |
@@ -427,6 +434,8 @@ config). It falls back to the classic layout when the terminal is under
 | `V` | Full-screen visualizer |
 | `I` or `Esc` | Exit immersive mode |
 
-Mouse: click pills to switch, click canvas items to open/play (right-click
-queues a track), click the transport buttons, drag the seek bar, and wheel
-over the canvas or queue to snap-scroll.
+Mouse: click pills to switch, click canvas items to open/play, right-click a
+track, queue row, or Now Playing for the track menu (add to playlist, song
+radio, queue, go to album/artist, like, credits, copy share link), click the
+transport buttons, drag the seek bar, and wheel over the canvas or queue to
+snap-scroll. Search results open albums on Enter and play tracks.

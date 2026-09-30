@@ -16,6 +16,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,6 +47,12 @@ const (
 	immSecAlbums
 	immSecPodcasts
 	immSecCount
+)
+
+// The history buttons share the pill row but are not sections.
+const (
+	immNavBack immSection = -1 - iota
+	immNavForward
 )
 
 // immSectionOrder is the visual pill order: two pills left of the wide
@@ -138,6 +145,7 @@ type immItem struct {
 	sub2  string // album (tracks only)
 	dur   int    // seconds; tracks only
 	path  string // tracks only: used to mark the playing row
+	art   string // cover image URL, "" when none
 }
 
 // Minimum terminal size for the immersive frame; below it the classic
@@ -149,6 +157,7 @@ const (
 
 // immNavSnap is one entry on the canvas back stack.
 type immNavSnap struct {
+	section   immSection
 	view      immersiveView
 	ctxID     string
 	ctxName   string
@@ -195,7 +204,9 @@ type immersiveState struct {
 	tracks        []playlist.Track
 	tracksLoading bool
 	trackSort     immersiveTrackSort
-	back          []immNavSnap
+	needsAuth     bool         // the provider wants a sign-in before it lists anything
+	back          []immNavSnap // history behind the current canvas (Back)
+	fwd           []immNavSnap // history undone by Back (Forward)
 
 	settingsReturn immersiveView // view `e` returns to
 	settingsCursor int           // row inside the settings tab
@@ -380,13 +391,14 @@ func (m *Model) startImmersive() tea.Cmd {
 		focus:          immPaneCanvas,
 		section:        immSecPlaylists,
 		view:           immViewBrowse,
-		mode:           immCanvasList,
+		mode:           m.immCanvasPref,
 		sort:           immBrowseSortRecents,
 		settingsReturn: immViewBrowse,
 	}
 	m.recomputeLayout() // the visualizer takes the band's height
+	artCmd := m.startArtPolling()
 	if m.provider == nil {
-		return nil
+		return artCmd
 	}
 	if _, ok := m.provider.(provider.AlbumBrowser); ok {
 		m.immersive.loadingAlbums = true
@@ -401,7 +413,7 @@ func (m *Model) startImmersive() tea.Cmd {
 	} else {
 		m.immersive.loadingLists = true
 	}
-	return m.fetchImmersiveSidebar()
+	return tea.Batch(artCmd, m.fetchImmersiveSidebar())
 }
 
 // exitImmersive leaves the mode and supersedes every in-flight fetch.
@@ -482,21 +494,21 @@ func (m Model) browseItems() []immItem {
 		for _, l := range im.lists {
 			items = append(items, immItem{
 				kind: immKindPlaylist, id: l.ID, title: l.Name,
-				sub: playlistRowSub(l),
+				sub: playlistRowSub(l), art: l.ImageURL,
 			})
 		}
 	case immSecArtists:
 		for _, a := range im.artists {
 			items = append(items, immItem{
 				kind: immKindArtist, id: a.ID, title: a.Name,
-				sub: "Artist",
+				sub: "Artist", art: a.ImageURL,
 			})
 		}
 	case immSecAlbums:
 		for _, a := range im.albums {
 			items = append(items, immItem{
 				kind: immKindAlbum, id: a.ID, title: a.Name,
-				sub: firstNonEmpty(a.Artist, "Album"),
+				sub: firstNonEmpty(a.Artist, "Album"), art: a.ImageURL,
 			})
 		}
 	case immSecPodcasts:
@@ -533,6 +545,15 @@ func (m Model) browseItems() []immItem {
 func trackItems(tracks []playlist.Track) []immItem {
 	items := make([]immItem, 0, len(tracks))
 	for i, t := range tracks {
+		if t.IsAlbum() {
+			// Search results lead with album hits; they open the album
+			// rather than play (they are placeholders, not tracks).
+			items = append(items, immItem{
+				kind: immKindAlbum, id: t.AlbumID(), title: t.Title,
+				sub: "Album · " + firstNonEmpty(t.Artist, "Various"), art: t.AlbumArtURL,
+			})
+			continue
+		}
 		title := t.Title
 		if title == "" {
 			title = trackViewName(t)
@@ -545,6 +566,7 @@ func trackItems(tracks []playlist.Track) []immItem {
 			sub2:  t.Album,
 			dur:   t.DurationSecs,
 			path:  t.Path,
+			art:   t.AlbumArtURL,
 		})
 	}
 	return items
@@ -598,24 +620,58 @@ func immRootView(s immSection) immersiveView {
 	return immViewBrowse
 }
 
-// immersiveSetSection switches the canvas to a nav-pill section, resetting
-// drill-down state.
+// immersiveSetSection switches the canvas to a nav-pill section as one
+// history step, so Back returns to where the pill was clicked.
 func (m *Model) immersiveSetSection(s immSection) {
-	m.immersive.section = s
-	m.immersive.filter = ""
-	m.immersiveHome()
+	im := &m.immersive
+	if s == im.section && im.view == immRootView(s) && im.ctxName == "" {
+		im.cursor, im.scroll = 0, 0
+		return
+	}
+	m.pushImmersiveBack()
+	im.section = s
+	im.filter = ""
+	m.immersiveResetRoot()
 }
 
-// immersiveHome returns the canvas to the section's root view, dropping the
-// opened context so no earlier list shows under the new view.
+// immersiveHome returns the canvas to the section's root view as one
+// history step.
 func (m *Model) immersiveHome() {
+	m.immersiveSetSection(m.immersive.section)
+}
+
+// immersiveResetRoot lands on the section's root view, dropping the opened
+// context so no earlier list shows under the new view. History is untouched.
+func (m *Model) immersiveResetRoot() {
 	m.dropImmersiveFetches()
 	im := &m.immersive
-	im.back = nil
 	im.cursor, im.scroll = 0, 0
 	im.view = immRootView(im.section)
 	im.ctxID, im.ctxName, im.ctxSub = "", "", ""
 	im.tracks = nil
+}
+
+// noteImmersiveLoadErr records a failed section fetch: a sign-in request
+// turns the canvas into the sign-in prompt, anything else is reported.
+func (m *Model) noteImmersiveLoadErr(what string, err error) {
+	switch {
+	case err == nil:
+	case errors.Is(err, playlist.ErrNeedsAuth):
+		m.immersive.needsAuth = true
+	default:
+		m.status.Errorf(statusTTLDefault, "%s failed to load: %s", what, err)
+	}
+}
+
+// immersiveSignIn starts the provider's interactive sign-in (it opens the
+// browser); the result arrives as provAuthDoneMsg.
+func (m *Model) immersiveSignIn() tea.Cmd {
+	auth, ok := m.immersive.prov.(playlist.Authenticator)
+	if !ok || m.provider == nil {
+		return nil
+	}
+	m.provLoading = true // lets ProvAuthURLMsg through for the prompt
+	return authenticateProviderCmd(auth, m.provider.Name(), nextRequest(&m.requests.auth))
 }
 
 // dropImmersiveFetches invalidates in-flight track fetches (collection,
@@ -639,6 +695,17 @@ func (m *Model) openImmersiveItem(item immItem) tea.Cmd {
 		return nil
 	}
 	m.pushImmersiveBack()
+	return m.loadImmersiveItem(item)
+}
+
+// loadImmersiveItem shows item's track view and fetches its tracks, without
+// touching history (openImmersiveItem records it; a history step whose list
+// never finished loading reloads through here).
+func (m *Model) loadImmersiveItem(item immItem) tea.Cmd {
+	prov := m.immersive.prov
+	if prov == nil {
+		return nil
+	}
 	m.dropImmersiveFetches()
 	providerName := prov.Name()
 	gen := nextRequest(&m.requests.immersiveContent)
@@ -674,44 +741,94 @@ func (m *Model) openImmersiveItem(item immItem) tea.Cmd {
 	return nil
 }
 
-// pushImmersiveBack snapshots the current canvas context onto the back
-// stack. Settings is transient and never pushed.
+// immersiveSnap captures the current canvas context for the history stacks.
+func (m Model) immersiveSnap() immNavSnap {
+	im := m.immersive
+	return immNavSnap{
+		section:   im.section,
+		view:      im.view,
+		ctxID:     im.ctxID,
+		ctxName:   im.ctxName,
+		ctxSub:    im.ctxSub,
+		ctxKind:   im.ctxKind,
+		tracks:    im.tracks,
+		trackSort: im.trackSort,
+		cursor:    im.cursor,
+		scroll:    im.scroll,
+	}
+}
+
+// pushImmersiveBack records the current canvas before a new navigation,
+// which also discards the forward history. Settings is transient and never
+// recorded.
 func (m *Model) pushImmersiveBack() {
+	m.immersive.fwd = nil
 	if m.immersive.view == immViewSettings {
 		return
 	}
-	m.immersive.back = append(m.immersive.back, immNavSnap{
-		view:      m.immersive.view,
-		ctxID:     m.immersive.ctxID,
-		ctxName:   m.immersive.ctxName,
-		ctxSub:    m.immersive.ctxSub,
-		ctxKind:   m.immersive.ctxKind,
-		tracks:    m.immersive.tracks,
-		trackSort: m.immersive.trackSort,
-		cursor:    m.immersive.cursor,
-		scroll:    m.immersive.scroll,
-	})
+	m.immersive.back = append(m.immersive.back, m.immersiveSnap())
 }
 
-// immersiveGoBack restores the last canvas context, or lands on the
-// section root.
-func (m *Model) immersiveGoBack() {
-	m.dropImmersiveFetches()
-	n := len(m.immersive.back)
-	if n == 0 {
-		m.immersiveHome()
-		return
+// immersiveGoBack steps back through the canvas history. With no history it
+// leaves a drill-down for the section root.
+func (m *Model) immersiveGoBack() tea.Cmd {
+	im := &m.immersive
+	if im.view == immViewSettings {
+		im.view = im.settingsReturn // Settings is a tab, not a history step
+		return nil
 	}
-	snap := m.immersive.back[n-1]
-	m.immersive.back = m.immersive.back[:n-1]
-	m.immersive.view = snap.view
-	m.immersive.ctxID, m.immersive.ctxName, m.immersive.ctxSub = snap.ctxID, snap.ctxName, snap.ctxSub
-	m.immersive.ctxKind = snap.ctxKind
-	m.immersive.tracks = snap.tracks
-	m.immersive.tracksLoading = false
-	m.immersive.trackSort = snap.trackSort
-	m.immersive.cursor = snap.cursor
-	m.immersive.scroll = snap.scroll
+	n := len(im.back)
+	if n == 0 {
+		if im.view != immRootView(im.section) || im.ctxName != "" {
+			im.fwd = append(im.fwd, m.immersiveSnap())
+			m.immersiveResetRoot()
+		}
+		return nil
+	}
+	snap := im.back[n-1]
+	im.back = im.back[:n-1]
+	im.fwd = append(im.fwd, m.immersiveSnap())
+	return m.immersiveRestore(snap)
+}
+
+// immersiveGoForward re-applies the history Back undid.
+func (m *Model) immersiveGoForward() tea.Cmd {
+	im := &m.immersive
+	n := len(im.fwd)
+	if n == 0 {
+		return nil
+	}
+	snap := im.fwd[n-1]
+	im.fwd = im.fwd[:n-1]
+	if im.view != immViewSettings {
+		im.back = append(im.back, m.immersiveSnap())
+	}
+	return m.immersiveRestore(snap)
+}
+
+// immersiveRestore puts a recorded canvas context back on screen; a
+// collection whose tracks never arrived (it was left while loading) loads
+// again.
+func (m *Model) immersiveRestore(snap immNavSnap) tea.Cmd {
+	m.dropImmersiveFetches()
+	im := &m.immersive
+	if snap.section != im.section {
+		im.filter = ""
+	}
+	im.section = snap.section
+	im.view = snap.view
+	im.ctxID, im.ctxName, im.ctxSub = snap.ctxID, snap.ctxName, snap.ctxSub
+	im.ctxKind = snap.ctxKind
+	im.tracks = snap.tracks
+	im.trackSort = snap.trackSort
+	im.cursor = snap.cursor
+	im.scroll = snap.scroll
+	if snap.tracks == nil && snap.view.isTrackView() && snap.view != immViewSearch && snap.ctxID != "" {
+		cmd := m.loadImmersiveItem(immItem{kind: snap.ctxKind, id: snap.ctxID, title: snap.ctxName, sub: snap.ctxSub})
+		im.cursor, im.scroll, im.trackSort = snap.cursor, snap.scroll, snap.trackSort
+		return cmd
+	}
+	return nil
 }
 
 // sortedTracks returns the open context's tracks in the active list order.
@@ -743,7 +860,7 @@ func (m Model) sortedTracks() []playlist.Track {
 // plays from index startIdx (in sorted order). Context is remembered so the
 // queue panel can name what is playing next.
 func (m *Model) playImmersiveContext(startIdx int) tea.Cmd {
-	tracks := m.sortedTracks()
+	tracks, startIdx := playableFrom(m.sortedTracks(), startIdx)
 	if len(tracks) == 0 {
 		return nil
 	}
@@ -762,12 +879,30 @@ func (m *Model) playImmersiveContext(startIdx int) tea.Cmd {
 	return cmd
 }
 
+// playableFrom drops album placeholders (search results lead with them) so
+// they never enter the play queue, remapping index into the kept tracks.
+func playableFrom(tracks []playlist.Track, index int) ([]playlist.Track, int) {
+	kept := make([]playlist.Track, 0, len(tracks))
+	at := 0
+	for i, t := range tracks {
+		if t.IsAlbum() {
+			continue
+		}
+		if i <= index {
+			at = len(kept)
+		}
+		kept = append(kept, t)
+	}
+	return kept, at
+}
+
 // playImmersiveTrack plays the track at index in the open context.
 func (m *Model) playImmersiveTrack(index int) tea.Cmd {
-	tracks := m.sortedTracks()
-	if index < 0 || index >= len(tracks) {
+	all := m.sortedTracks()
+	if index < 0 || index >= len(all) || all[index].IsAlbum() {
 		return nil
 	}
+	tracks, index := playableFrom(all, index)
 	m.replacePlayerPlaylist(tracks)
 	m.plCursor = index
 	m.playlist.SetIndex(index)

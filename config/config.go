@@ -378,6 +378,8 @@ type Config struct {
 	Simplified       bool                         // simplified playback view: track summary and time strip
 	Immersive        bool                         // start in the immersive layout (toggle with I)
 	NerdFontGlyphs   bool                         // Nerd Font transport glyphs in the immersive controls row
+	Images           string                       // cover art rendering: auto, sixel, blocks, off
+	ImmersiveView    string                       // immersive canvas view: list, rows, grid
 	HideHelpBar      bool                         // hide the key-binding hint bar above the status line
 	HideSettingsPane bool                         // close the settings pane beside the playlist
 	ShowMetadata     bool                         // expand highlighted-track metadata below settings (default false)
@@ -781,6 +783,10 @@ func Load() (Config, error) {
 				cfg.Immersive = val == "true"
 			case "nerd_font_glyphs":
 				cfg.NerdFontGlyphs = val == "true"
+			case "images":
+				cfg.Images = strings.ToLower(strings.Trim(val, `"'`))
+			case "immersive_view":
+				cfg.ImmersiveView = strings.ToLower(strings.Trim(val, `"'`))
 			case "hide_help_bar":
 				cfg.HideHelpBar = val == "true"
 			case "hide_settings_pane":

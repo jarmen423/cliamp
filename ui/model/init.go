@@ -139,6 +139,16 @@ func (m *Model) SetImmersive(v bool) {
 // (the "nerd_font_glyphs" config key).
 func (m *Model) SetNerdFontGlyphs(v bool) { m.nerdFontGlyphs = v }
 
+// SetImmersiveView sets the canvas view immersive opens in (the
+// "immersive_view" config key: list, rows or grid). `c` saves it back.
+func (m *Model) SetImmersiveView(name string) {
+	for i, n := range immCanvasModeNames {
+		if strings.EqualFold(strings.TrimSpace(name), n) {
+			m.immCanvasPref = immCanvasMode(i)
+		}
+	}
+}
+
 // SetHideHelpBar hides the key-binding hint bar and gives the row back to the
 // body. The full keymap stays reachable with "?".
 func (m *Model) SetHideHelpBar(v bool) {

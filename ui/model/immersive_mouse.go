@@ -13,10 +13,10 @@ package model
 // (motion + release) works unchanged.
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-
-	"github.com/bjarneo/cliamp/ui"
 )
 
 // immMouseGeom is the per-frame hit geometry of the immersive frame, all in
@@ -60,11 +60,13 @@ func (m *Model) recordImmersiveMouseGeometry(content string) {
 	if m.fullVis || !m.immersiveShown() {
 		return
 	}
-	frame := ui.FrameStyle.Render(content)
-	padTop := max(0, (m.height-lipgloss.Height(frame))/2)
-	padLeft := max(0, (m.width-lipgloss.Width(frame))/2)
-	im.frameX = padLeft + ui.PaddingH
-	im.topRow = padTop + ui.VerticalPadding()
+	// The frame is FrameStyle around content: layout padding on each side and
+	// the full frame width, so its size is known without rendering it again.
+	frameH := strings.Count(content, "\n") + 1 + 2*m.layout.paddingV
+	padTop := max(0, (m.height-frameH)/2)
+	padLeft := max(0, (m.width-m.layout.frameWidth)/2)
+	im.frameX = padLeft + m.layout.paddingH
+	im.topRow = padTop + m.layout.paddingV
 
 	g := m.immGeom()
 	im.geom = g
@@ -137,17 +139,14 @@ func (m *Model) handleImmersiveClick(msg tea.MouseClickMsg) tea.Cmd {
 		}
 		m.mouse.dragging = true
 		return m.seekToBarCell(msg.X - m.mouse.seekX)
+	case cx < g.leftW && cy >= g.bodyY && cy < g.bodyY+g.leftH:
+		return m.immClickLeft(cx, cy, right)
 	case cy >= g.ctrlY && cy < g.ctrlY+immCtrlRows:
 		return m.immClickControls(cx, cy)
 	case cy >= g.navY && cy < g.navY+immNavRows:
 		return m.immClickNav(cx, right)
-	case cy >= g.bodyY && cy < g.bodyY+g.bodyH:
-		switch {
-		case cx < g.leftW:
-			return m.immClickLeft(cx, cy, right)
-		case cx >= g.canvasX:
-			return m.immClickCanvas(cx, cy, right)
-		}
+	case cy >= g.bodyY && cy < g.bodyY+g.bodyH && cx >= g.canvasX:
+		return m.immClickCanvas(cx, cy, right)
 	}
 	return nil
 }
@@ -160,6 +159,12 @@ func (m *Model) immClickNav(cx int, right bool) tea.Cmd {
 	}
 	for _, p := range m.immMouse.pills {
 		if cx >= p.box.X && cx < p.box.X+p.box.W {
+			switch p.section {
+			case immNavBack:
+				return m.immersiveGoBack()
+			case immNavForward:
+				return m.immersiveGoForward()
+			}
 			if p.section == immSecSearch {
 				return m.openImmersiveSearch()
 			}
@@ -182,7 +187,7 @@ func (m *Model) immersiveControl(key string) tea.Cmd {
 	case "<":
 		return m.immPrev()
 	case "z":
-		return m.immToggleShuffle()
+		return m.immCycleShuffle()
 	case "r":
 		return m.immCycleRepeat()
 	}
@@ -209,6 +214,14 @@ func (m *Model) immClickControls(cx, cy int) tea.Cmd {
 // (left click jumps the queue there).
 func (m *Model) immClickLeft(cx, cy int, right bool) tea.Cmd {
 	im := m.immMouse
+	if right && cy < im.geom.bodyY+im.geom.npH {
+		// Now Playing panel: the menu acts on the playing track.
+		m.immersive.focus = immPaneCanvas
+		if t, _ := m.currentPlaybackTrack(); t.Path != "" {
+			m.openTrackMenu(t, menuRemoveNone, 0)
+		}
+		return nil
+	}
 	if cy < im.queueY0 || cy >= im.queueY0+im.queueN {
 		return nil
 	}
@@ -216,13 +229,13 @@ func (m *Model) immClickLeft(cx, cy int, right bool) tea.Cmd {
 	m.immersive.focus = immPaneQueue
 	m.immersive.queueCursor = idx
 	if right {
-		return nil
+		return m.immersiveOpenTrackMenu()
 	}
 	return m.immersiveQueueJump()
 }
 
 // immClickCanvas hits a drawn canvas item: collections open, tracks play,
-// right click queues a track. In the settings tab a click selects (and
+// right click opens the track menu. In the settings tab a click selects (and
 // adjusts) the row.
 func (m *Model) immClickCanvas(cx, cy int, right bool) tea.Cmd {
 	im := m.immMouse
@@ -231,6 +244,9 @@ func (m *Model) immClickCanvas(cx, cy int, right bool) tea.Cmd {
 		return nil
 	}
 	m.immersive.focus = immPaneCanvas
+	if m.immersive.needsAuth && m.immersive.view == immViewBrowse && !right {
+		return m.immersiveSignIn()
+	}
 	if m.immersive.view == immViewSettings {
 		row := immSettingsStart(m.immersive.settingsCursor, g.canvasIH) + cy - (g.bodyY + 1)
 		if row >= immSetCount {
@@ -247,10 +263,14 @@ func (m *Model) immClickCanvas(cx, cy int, right bool) tea.Cmd {
 		if inside(it.box, cx, cy) {
 			m.immersive.cursor = it.idx
 			m.clampCanvasScroll()
+			item := m.canvasItems()[it.idx]
 			if right {
-				return m.immersiveQueueAppend()
+				if item.kind != immKindTrack {
+					return nil // collections have no track menu; the click selects
+				}
+				return m.immersiveOpenTrackMenu()
 			}
-			return m.activateItem(m.canvasItems()[it.idx])
+			return m.activateItem(item)
 		}
 	}
 	return nil
@@ -270,16 +290,15 @@ func (m *Model) immersiveWheel(msg tea.MouseWheelMsg) tea.Cmd {
 	}
 	cx, cy := msg.X-im.frameX, msg.Y-im.topRow
 	g := im.geom
-	if cy < g.bodyY || cy >= g.bodyY+g.bodyH {
-		return nil
-	}
 	switch {
+	case cy < g.bodyY || cy >= g.bodyY+g.leftH:
+		return nil
 	case cx < g.leftW:
 		total := len(m.immQueueRows())
 		m.immersive.focus = immPaneQueue
 		m.immersive.queueCursor = clampInt(m.immersive.queueCursor+dy, 0, max(0, total-1))
 		m.immersive.queueScroll = clampedScroll(m.immersive.queueScroll, m.immersive.queueCursor, total, max(1, g.queueH-3))
-	case cx >= g.canvasX:
+	case cx >= g.canvasX && cy < g.bodyY+g.bodyH:
 		if m.immersive.view == immViewSettings {
 			m.immersive.settingsCursor = clampInt(m.immersive.settingsCursor+dy, 0, immSetCount-1)
 			return nil
