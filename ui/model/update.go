@@ -1306,6 +1306,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.immersive.ctxSub = msg.detail.Info.Name
 		return m, nil
 
+	case immSuggestTickMsg, immSuggestMsg:
+		cmd, _ := m.handleImmersiveSuggestMsg(msg)
+		return m, cmd
+
 	case immersiveSearchMsg:
 		if !m.isCurrentImmersiveRequest(msg.gen, msg.providerName, m.requests.immersiveSearch) {
 			return m, nil

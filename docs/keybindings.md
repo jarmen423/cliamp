@@ -196,6 +196,7 @@ On terminals with mouse reporting enabled:
 | Left click on the progress bar | Seek to that position |
 | Left drag on the progress bar | Scrub — the seek lands where the button is released |
 | Left click on a track row | Move that surface's cursor to the row |
+| Double click on a track row | Act on the row as `Enter` does on that surface (play it in the playlist) |
 | Right click on a track row | Open the track context menu (above) for the row |
 | Wheel | Scroll the active list |
 
@@ -457,7 +458,7 @@ config). It falls back to the classic layout when the terminal is under
 | `t` | Cycle track sort: order, title, album, duration |
 | `s` | Toggle browse sort: recents vs alphabetical |
 | `f` | Filter the current browse list |
-| `/` or `Ctrl+F` | Search tracks into the canvas |
+| `/` or `Ctrl+F` | Search into the canvas. Suggestions drop down as you type: `Up`/`Down` pick one and `Enter` opens it; `Enter` with none picked lists every result. Artists whose name matches come first |
 | `p` | Play the open collection from the cursor |
 | `a` | Queue the focused track |
 | `n` | Toggle favorite on the focused track |
@@ -465,8 +466,11 @@ config). It falls back to the classic layout when the terminal is under
 | `V` | Full-screen visualizer |
 | `I` or `Esc` | Exit immersive mode |
 
-Mouse: click pills to switch, click canvas items to open/play, right-click a
-track, queue row, or Now Playing for the track menu (add to playlist, song
-radio, queue, go to album/artist, like, credits, copy share link), click the
-transport buttons, drag the seek bar, and wheel over the canvas or queue to
-snap-scroll. Search results open albums on Enter and play tracks.
+Mouse: click pills to switch, click a playlist, album or artist to open it,
+double-click a track to play it, double-click a queue row to jump there,
+double-click the visualizer for full screen, click a search suggestion to open
+it, right-click a track, queue row, or Now Playing for the track menu (add to
+playlist, song radio, queue, go to album/artist, like, credits, copy share
+link), click the transport buttons, drag the seek bar, and wheel over the
+canvas or queue to snap-scroll. Search results open albums on Enter and play
+tracks.

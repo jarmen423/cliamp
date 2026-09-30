@@ -132,6 +132,9 @@ func runArt(t *testing.T, m *Model) {
 			for _, c := range msg {
 				run(c)
 			}
+		case artFetchedMsg:
+			c, _ := m.handleArtMsg(msg)
+			run(c)
 		case artEncodedMsg:
 			c, _ := m.handleArtMsg(msg)
 			run(c)
@@ -147,8 +150,8 @@ func TestImmersiveKittyFrameKeepsLayout(t *testing.T) {
 	m, out := kittyGridModel(t, "kitty")
 	runArt(t, m)
 	slots := m.immArtSlots()
-	if len(slots) != len(m.immersive.lists) {
-		t.Fatalf("%d art slots, want one per playlist", len(slots))
+	if len(slots) != len(m.immersive.lists)+1 {
+		t.Fatalf("%d art slots, want one per playlist plus Now Playing", len(slots))
 	}
 	if n := strings.Count(out.String(), "a=T,U=1"); n != len(slots) {
 		t.Fatalf("%d transmissions, want %d", n, len(slots))

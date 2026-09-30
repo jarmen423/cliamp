@@ -1,10 +1,12 @@
 package model
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/bjarneo/cliamp/playlist"
 )
@@ -112,8 +114,49 @@ func TestImmersiveCanvasClickPlaysTrack(t *testing.T) {
 	fake := m.player.(*playbackFakeEngine)
 	it := m.immMouse.items[1]
 	immClickAt(m, it.box.X+1, it.box.Y, tea.MouseLeft)
+	if len(fake.playCalls) != 0 || m.immersive.cursor != 1 {
+		t.Fatalf("single click: playCalls = %v cursor = %d, want selection only", fake.playCalls, m.immersive.cursor)
+	}
+	immClickAt(m, it.box.X+1, it.box.Y, tea.MouseLeft)
 	if len(fake.playCalls) != 1 || fake.playCalls[0] != "/2" {
-		t.Fatalf("playCalls = %v, want [/2]", fake.playCalls)
+		t.Fatalf("double click: playCalls = %v, want [/2]", fake.playCalls)
+	}
+}
+
+// Two clicks further apart than the double-click window are two single
+// clicks: the track stays selected and nothing plays.
+func TestImmersiveSlowSecondClickDoesNotPlay(t *testing.T) {
+	m := immersiveMouseModel(t)
+	m.immersive.view = immViewPlaylist
+	m.immersive.ctxKind = immKindTrack
+	m.immersive.tracks = []playlist.Track{{Title: "one", Path: "/1"}}
+	m.View()
+	now := time.Unix(1000, 0)
+	old := clickNow
+	clickNow = func() time.Time { return now }
+	t.Cleanup(func() { clickNow = old })
+
+	it := m.immMouse.items[0]
+	immClickAt(m, it.box.X+1, it.box.Y, tea.MouseLeft)
+	now = now.Add(doubleClickWindow + time.Millisecond)
+	immClickAt(m, it.box.X+1, it.box.Y, tea.MouseLeft)
+	if fake := m.player.(*playbackFakeEngine); len(fake.playCalls) != 0 {
+		t.Fatalf("playCalls = %v, want none for two slow clicks", fake.playCalls)
+	}
+}
+
+func TestImmersiveVisualizerNeedsDoubleClick(t *testing.T) {
+	m := immersiveMouseModel(t)
+	if m.immMouse.geom.visH == 0 {
+		t.Skip("no visualizer band at this size")
+	}
+	immClickAt(m, 2, 0, tea.MouseLeft)
+	if m.fullVis {
+		t.Fatal("single click opened the full-screen visualizer")
+	}
+	immClickAt(m, 2, 0, tea.MouseLeft)
+	if !m.fullVis {
+		t.Fatal("double click did not open the full-screen visualizer")
 	}
 }
 
@@ -156,6 +199,36 @@ func TestImmersiveControlsClick(t *testing.T) {
 	}
 }
 
+// The player reports IsPlaying while paused, so the button must also check
+// IsPaused: a paused track shows the play glyph.
+func TestImmersivePlayButtonGlyphFollowsPause(t *testing.T) {
+	m := immersiveMouseModel(t)
+	fake := m.player.(*playbackFakeEngine)
+	gl := m.immGlyphs()
+	btns, _ := m.immControlsGeom(m.immGeom().w)
+	var play immRect
+	for _, b := range btns {
+		if b.key == " " {
+			play = b.box
+		}
+	}
+	for _, tt := range []struct {
+		playing, paused bool
+		want            string
+	}{
+		{true, false, gl.pause},
+		{true, true, gl.play},
+		{false, false, gl.play},
+	} {
+		fake.playing, fake.paused = tt.playing, tt.paused
+		mid := []rune(ansi.Strip(m.renderImmControls(m.immGeom())[1]))
+		got := strings.TrimSpace(string(mid[play.X+1 : play.X+play.W-1]))
+		if got != tt.want {
+			t.Errorf("playing=%v paused=%v: play button shows %q, want %q", tt.playing, tt.paused, got, tt.want)
+		}
+	}
+}
+
 func TestImmersiveQueueClickJumps(t *testing.T) {
 	m := immersiveMouseModel(t)
 	tracks := []playlist.Track{
@@ -171,10 +244,14 @@ func TestImmersiveQueueClickJumps(t *testing.T) {
 	if im.queueN < 2 {
 		t.Fatalf("queue rows drawn = %d, want >= 2", im.queueN)
 	}
-	immClickAt(m, 2, im.queueY0+1, tea.MouseLeft)
 	fake := m.player.(*playbackFakeEngine)
+	immClickAt(m, 2, im.queueY0+1, tea.MouseLeft)
+	if len(fake.playCalls) != 0 || m.immersive.queueCursor != 1 {
+		t.Fatalf("single click: playCalls = %v queueCursor = %d, want selection only", fake.playCalls, m.immersive.queueCursor)
+	}
+	immClickAt(m, 2, im.queueY0+1, tea.MouseLeft)
 	if len(fake.playCalls) == 0 {
-		t.Fatal("queue click did not play")
+		t.Fatal("queue double click did not play")
 	}
 	if fake.playCalls[len(fake.playCalls)-1] != "/2" {
 		t.Fatalf("played %q, want /2", fake.playCalls[len(fake.playCalls)-1])
