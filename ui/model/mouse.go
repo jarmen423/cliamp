@@ -11,6 +11,7 @@ package model
 // keyboard-only environment.
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -36,6 +37,32 @@ type mouseState struct {
 	bodyW    int // track-list column width in cells
 
 	dragging bool // left button held since a seek-bar click
+
+	// The last left click, for double-click detection (see doubleClick).
+	lastTarget string
+	lastAt     time.Time
+}
+
+// doubleClickWindow is the longest gap between two left clicks on the same
+// target that still counts as a double click.
+const doubleClickWindow = 400 * time.Millisecond
+
+// clickNow is time.Now, swapped in tests.
+var clickNow = time.Now
+
+// doubleClick records a left click on target and reports whether it
+// completes a double click: the same target clicked again within
+// doubleClickWindow. Terminals report single clicks only, so the pairing is
+// done here. A completed pair resets the record, so a third click starts a
+// new pair; an empty target only resets it.
+func (ms *mouseState) doubleClick(target string) bool {
+	now := clickNow()
+	if target != "" && target == ms.lastTarget && now.Sub(ms.lastAt) <= doubleClickWindow {
+		ms.lastTarget = ""
+		return true
+	}
+	ms.lastTarget, ms.lastAt = target, now
+	return false
 }
 
 // recordMouseGeometry maps this frame's content to absolute screen
@@ -103,11 +130,21 @@ func (m *Model) handleMouseClick(msg tea.MouseClickMsg) tea.Cmd {
 		row, col := y-ms.bodyRow, x-ms.bodyX
 		switch msg.Button {
 		case tea.MouseRight:
+			ms.doubleClick("")
 			return m.openTrackMenuAt(row, col)
 		case tea.MouseLeft:
-			m.selectTrackRow(row, col)
+			// A single click selects; a double click on the same row
+			// activates it the way Enter does on the current screen.
+			if hit := m.hitTrack(row, col); hit.cursor >= 0 {
+				m.selectTrackRow(row, col)
+				if ms.doubleClick(fmt.Sprintf("row:%d:%d", m.activeScreen(), hit.cursor)) {
+					return m.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+				}
+				return nil
+			}
 		}
 	}
+	ms.doubleClick("")
 	return nil
 }
 

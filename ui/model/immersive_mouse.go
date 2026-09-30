@@ -13,6 +13,7 @@ package model
 // (motion + release) works unchanged.
 
 import (
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -110,8 +111,11 @@ func (m *Model) recordImmersiveMouseGeometry(content string) {
 }
 
 // handleImmersiveClick dispatches a button-down event inside immersive mode.
-// Left clicks act (open/play/seek); right clicks select without acting, and
-// queue the focused canvas track.
+// Buttons, pills, seeking and opening a collection act on a single click.
+// Anything that starts playback or takes over the screen (playing a track,
+// jumping the queue, the full-screen visualizer, changing a setting) selects
+// on the first click and acts on a double click. Right clicks open the
+// track menu.
 func (m *Model) handleImmersiveClick(msg tea.MouseClickMsg) tea.Cmd {
 	im := m.immMouse
 	if im == nil || !im.valid {
@@ -126,28 +130,42 @@ func (m *Model) handleImmersiveClick(msg tea.MouseClickMsg) tea.Cmd {
 		return nil
 	}
 	right := msg.Button == tea.MouseRight
-	switch {
-	case cy < g.visH: // visualizer band → full-screen visualizer
-		if right {
-			return nil
+	if right {
+		m.mouse.doubleClick("")
+	}
+	// The search dropdown sits over everything below the pills.
+	if r, ok := m.immSuggestGeom(); ok && inside(r, cx, cy) {
+		m.mouse.doubleClick("")
+		if row := cy - r.Y - 1; !right && row >= 0 && row < len(m.immersive.suggest) {
+			return m.openImmersiveSuggestion(row)
 		}
-		m.fullVis = true
+		return nil
+	}
+	switch {
+	case cy < g.visH: // visualizer band → full-screen visualizer on a double click
+		if !right && m.mouse.doubleClick("vis") {
+			m.fullVis = true
+		}
 		return nil
 	case cy == g.seekY:
 		if right {
 			return nil
 		}
+		m.mouse.doubleClick("")
 		m.mouse.dragging = true
 		return m.seekToBarCell(msg.X - m.mouse.seekX)
 	case cx < g.leftW && cy >= g.bodyY && cy < g.bodyY+g.leftH:
 		return m.immClickLeft(cx, cy, right)
 	case cy >= g.ctrlY && cy < g.ctrlY+immCtrlRows:
+		m.mouse.doubleClick("")
 		return m.immClickControls(cx, cy)
 	case cy >= g.navY && cy < g.navY+immNavRows:
+		m.mouse.doubleClick("")
 		return m.immClickNav(cx, right)
 	case cy >= g.bodyY && cy < g.bodyY+g.bodyH && cx >= g.canvasX:
 		return m.immClickCanvas(cx, cy, right)
 	}
+	m.mouse.doubleClick("")
 	return nil
 }
 
@@ -211,7 +229,7 @@ func (m *Model) immClickControls(cx, cy int) tea.Cmd {
 }
 
 // immClickLeft hits the Now Playing panel (selects nothing) or a queue row
-// (left click jumps the queue there).
+// (a click selects it, a double click jumps the queue there).
 func (m *Model) immClickLeft(cx, cy int, right bool) tea.Cmd {
 	im := m.immMouse
 	if right && cy < im.geom.bodyY+im.geom.npH {
@@ -223,6 +241,7 @@ func (m *Model) immClickLeft(cx, cy int, right bool) tea.Cmd {
 		return nil
 	}
 	if cy < im.queueY0 || cy >= im.queueY0+im.queueN {
+		m.mouse.doubleClick("")
 		return nil
 	}
 	idx := im.queueScroll + cy - im.queueY0
@@ -231,12 +250,16 @@ func (m *Model) immClickLeft(cx, cy int, right bool) tea.Cmd {
 	if right {
 		return m.immersiveOpenTrackMenu()
 	}
+	if !m.mouse.doubleClick(fmt.Sprintf("queue:%d", idx)) {
+		return nil
+	}
 	return m.immersiveQueueJump()
 }
 
-// immClickCanvas hits a drawn canvas item: collections open, tracks play,
-// right click opens the track menu. In the settings tab a click selects (and
-// adjusts) the row.
+// immClickCanvas hits a drawn canvas item: a click opens a collection or
+// selects a track, a double click plays the track, and a right click opens
+// the track menu. In the settings tab a click selects the row and a double
+// click adjusts it.
 func (m *Model) immClickCanvas(cx, cy int, right bool) tea.Cmd {
 	im := m.immMouse
 	g := im.geom
@@ -245,6 +268,7 @@ func (m *Model) immClickCanvas(cx, cy int, right bool) tea.Cmd {
 	}
 	m.immersive.focus = immPaneCanvas
 	if m.immersive.needsAuth && m.immersive.view == immViewBrowse && !right {
+		m.mouse.doubleClick("")
 		return m.immersiveSignIn()
 	}
 	if m.immersive.view == immViewSettings {
@@ -253,7 +277,7 @@ func (m *Model) immClickCanvas(cx, cy int, right bool) tea.Cmd {
 			return nil // blank space below the last setting
 		}
 		m.immersive.settingsCursor = row
-		if right {
+		if right || !m.mouse.doubleClick(fmt.Sprintf("setting:%d", row)) {
 			return nil
 		}
 		m.immersiveAdjustSetting(m.immersive.settingsCursor, 1)
@@ -270,9 +294,19 @@ func (m *Model) immClickCanvas(cx, cy int, right bool) tea.Cmd {
 				}
 				return m.immersiveOpenTrackMenu()
 			}
+			if item.kind != immKindTrack {
+				m.mouse.doubleClick("")
+				return m.activateItem(item) // opening a collection is navigation
+			}
+			// The key names the canvas too, so a click on the same row of a
+			// different list never pairs with one made before the switch.
+			if !m.mouse.doubleClick(fmt.Sprintf("track:%d:%s:%d", m.immersive.view, m.immersive.ctxID, it.idx)) {
+				return nil
+			}
 			return m.activateItem(item)
 		}
 	}
+	m.mouse.doubleClick("")
 	return nil
 }
 

@@ -227,7 +227,7 @@ func (m Model) renderImmersive() string {
 	lines = append(lines, m.renderImmBody(g)...) // includes the controls rows
 	lines = append(lines, m.renderImmProgress(g.w))
 	lines = append(lines, m.renderImmStatusLine(g.w))
-	return strings.Join(lines, "\n")
+	return strings.Join(m.overlayImmSuggest(lines), "\n")
 }
 
 // — visualizer band —
@@ -439,11 +439,8 @@ func (m Model) renderImmNowPlaying(g immGeom) []string {
 	inner := w - 2
 
 	track, _ := m.currentPlaybackTrack()
-	name := track.Title
-	if name == "" {
-		name = trackViewName(track)
-	}
-	art := m.immArtOr(track.AlbumArtURL, firstNonEmpty(name, "cliamp"), g.npArt.W, g.npArt.H, name != "")
+	artURL, name := m.immNowPlayingArt()
+	art := m.immArtOr(artURL, firstNonEmpty(name, "cliamp"), g.npArt.W, g.npArt.H, name != "")
 	side := boxSide(false)
 	indent := strings.Repeat(" ", g.npArt.X-1)
 	for i := 0; i < g.npArt.H; i++ {
@@ -1059,7 +1056,7 @@ func (m Model) renderImmControls(g immGeom) []string {
 	btns, _ := m.immControlsGeom(g.w)
 	gl := m.immGlyphs()
 	glyphs := []string{gl.shuffle, gl.prev, gl.play, gl.next, gl.repeat}
-	if m.isPlaying() {
+	if m.isPlaying() && !m.isPaused() { // IsPlaying stays true while paused
 		glyphs[2] = gl.pause
 	}
 	if m.playlist != nil && m.playlist.Smart() {
@@ -1191,15 +1188,17 @@ func (m Model) playingContextName() string {
 	return ""
 }
 
-// immArtBlock draws a deterministic shade-glyph mosaic stand-in for cover art.
 // immArtOr is the art box content: the cover when it is ready (see
-// immersive_art.go), otherwise the text placeholder.
+// immersive_art.go), a generated placeholder tile for items without one,
+// and the text placeholder while either loads or when images are off.
 func (m Model) immArtOr(url, name string, w, h int, bright bool) []string {
-	if lines, ok := m.immArtCells(url, w, h); ok {
+	if lines, ok := m.immArtCells(artURLFor(url, name), w, h); ok {
 		return lines
 	}
 	return immArtBlock(name, w, h, bright)
 }
+
+// immArtBlock draws a deterministic shade-glyph mosaic stand-in for cover art.
 
 func immArtBlock(name string, w, h int, bright bool) []string {
 	if w < 1 || h < 1 {

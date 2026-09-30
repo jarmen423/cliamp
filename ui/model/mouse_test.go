@@ -141,6 +141,22 @@ func TestMouseLeftClickMovesCursor(t *testing.T) {
 	}
 }
 
+// A double click on a playlist row plays it, the same as Enter; a single
+// click only moved the cursor (above).
+func TestMouseDoubleClickPlaysRow(t *testing.T) {
+	m := mouseTestModel(4)
+	fake := m.player.(*playbackFakeEngine)
+	click := tea.MouseClickMsg{X: m.mouse.bodyX + 1, Y: m.mouse.bodyRow + 2, Button: tea.MouseLeft}
+	m.handleMouseClick(click)
+	if len(fake.playCalls) != 0 {
+		t.Fatalf("single click played %v", fake.playCalls)
+	}
+	m.handleMouseClick(click)
+	if len(fake.playCalls) != 1 || fake.playCalls[0] != "/tc.mp3" {
+		t.Fatalf("playCalls = %v, want [/tc.mp3]", fake.playCalls)
+	}
+}
+
 func TestMouseClickOnEmptyRowNoop(t *testing.T) {
 	m := mouseTestModel(1)
 	m.handleMouseClick(tea.MouseClickMsg{X: m.mouse.bodyX + 1, Y: m.mouse.bodyRow + 9, Button: tea.MouseRight})

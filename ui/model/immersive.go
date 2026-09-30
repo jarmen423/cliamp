@@ -219,6 +219,12 @@ type immersiveState struct {
 	searching   bool
 	searchQuery string
 
+	// Search-as-you-type dropdown (immersive_suggest.go); suggestCursor is
+	// -1 when no row is picked.
+	suggest        []playlist.Track
+	suggestCursor  int
+	suggestLoading bool
+
 	searchLoading bool
 
 	// spin advances on every tick while any immersive fetch is in flight,
@@ -545,13 +551,10 @@ func (m Model) browseItems() []immItem {
 func trackItems(tracks []playlist.Track) []immItem {
 	items := make([]immItem, 0, len(tracks))
 	for i, t := range tracks {
-		if t.IsAlbum() {
-			// Search results lead with album hits; they open the album
-			// rather than play (they are placeholders, not tracks).
-			items = append(items, immItem{
-				kind: immKindAlbum, id: t.AlbumID(), title: t.Title,
-				sub: "Album · " + firstNonEmpty(t.Artist, "Various"), art: t.AlbumArtURL,
-			})
+		if isSearchPlaceholder(t) {
+			// Search results carry album, artist and playlist hits; they
+			// open rather than play (see immersive_search.go).
+			items = append(items, placeholderItem(t))
 			continue
 		}
 		title := t.Title
@@ -879,13 +882,13 @@ func (m *Model) playImmersiveContext(startIdx int) tea.Cmd {
 	return cmd
 }
 
-// playableFrom drops album placeholders (search results lead with them) so
+// playableFrom drops search placeholders (albums, artists, playlists) so
 // they never enter the play queue, remapping index into the kept tracks.
 func playableFrom(tracks []playlist.Track, index int) ([]playlist.Track, int) {
 	kept := make([]playlist.Track, 0, len(tracks))
 	at := 0
 	for i, t := range tracks {
-		if t.IsAlbum() {
+		if isSearchPlaceholder(t) {
 			continue
 		}
 		if i <= index {
@@ -899,7 +902,7 @@ func playableFrom(tracks []playlist.Track, index int) ([]playlist.Track, int) {
 // playImmersiveTrack plays the track at index in the open context.
 func (m *Model) playImmersiveTrack(index int) tea.Cmd {
 	all := m.sortedTracks()
-	if index < 0 || index >= len(all) || all[index].IsAlbum() {
+	if index < 0 || index >= len(all) || isSearchPlaceholder(all[index]) {
 		return nil
 	}
 	tracks, index := playableFrom(all, index)

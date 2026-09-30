@@ -336,6 +336,7 @@ type requestState struct {
 	immersiveContent uint64 // center playlist/album track loads
 	immersiveArtist  uint64 // artist-detail fetches (view + right rail)
 	immersiveSearch  uint64 // top-bar track searches
+	immersiveSuggest uint64 // search-as-you-type dropdown
 }
 
 func nextRequest(gen *uint64) uint64 {
