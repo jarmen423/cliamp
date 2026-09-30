@@ -162,6 +162,19 @@ func TestImmersiveGoToAlbumOpensInCanvas(t *testing.T) {
 	}
 }
 
+// Below the immersive minimum size the classic layout is the one on screen,
+// so go to album takes the classic path instead of opening in the hidden
+// canvas or asking the user to leave immersive.
+func TestImmersiveGoToAlbumTooSmallUsesClassic(t *testing.T) {
+	m := immersiveModel(t)
+	m.width, m.height = immMinWidth-1, immMinHeight-1
+	updated, _ := m.Update(menuAlbumMsg{album: provider.AlbumInfo{ID: "al7", Name: "Kamikaze"}, providerName: "stub", gen: m.requests.trackMenu})
+	got := updated.(Model)
+	if got.immersive.view == immViewAlbum || strings.Contains(got.status.text, "leave immersive") {
+		t.Fatalf("view=%d status=%q, want the classic album path", got.immersive.view, got.status.text)
+	}
+}
+
 // Quitting clears the layer, and the exit sequence (leave the alternate
 // screen, home, erase below) is not a frame: nothing is redrawn or erased
 // over the shell once the alternate screen is gone.

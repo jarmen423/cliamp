@@ -2,9 +2,11 @@ package termimg
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 )
 
 // Placement is one image pinned to a cell rectangle. X and Y are 0-based
@@ -46,6 +48,11 @@ type Layer struct {
 	full  bool         // redraw everything on the next frame
 	dirty map[int]bool // screen rows whose text changed since the last frame
 	kick  chan struct{}
+
+	// engaged is set while any image is wanted, armed, or on screen. The
+	// Writer passes bytes straight through while it is clear, so sessions
+	// that never draw an image pay nothing for the layer.
+	engaged atomic.Bool
 }
 
 // NewLayer returns an empty layer.
@@ -59,6 +66,7 @@ func (l *Layer) Set(ps []Placement) {
 	}
 	l.mu.Lock()
 	l.want = append(l.want[:0], ps...)
+	l.syncEngagedLocked()
 	l.mu.Unlock()
 }
 
@@ -102,6 +110,7 @@ func (l *Layer) ArmLive(x, y, w, h int) {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	defer l.syncEngagedLocked()
 	if w <= 0 || h <= 0 {
 		l.armed, l.live = nil, nil
 		return
@@ -132,6 +141,15 @@ func (l *Layer) SetLive(p Placement) {
 		}
 	}
 }
+
+// syncEngagedLocked recomputes engaged. It stays set until the frame that
+// erases the last drawn image. Caller holds mu.
+func (l *Layer) syncEngagedLocked() {
+	l.engaged.Store(len(l.want) > 0 || l.armed != nil || l.live != nil || len(l.drawn) > 0)
+}
+
+// active reports whether the Writer must process frames for this layer.
+func (l *Layer) active() bool { return l != nil && l.engaged.Load() }
 
 // wanted is every placement that should be on screen. Caller holds mu.
 func (l *Layer) wanted() []Placement {
@@ -200,6 +218,7 @@ func (l *Layer) render(cleared bool) (pre, post []byte) {
 	}
 	l.drawn = append(l.drawn[:0], want...)
 	clear(l.dirty)
+	l.syncEngagedLocked()
 	return e.Bytes(), d.Bytes()
 }
 
@@ -259,16 +278,15 @@ var (
 // terminal.
 type Writer struct {
 	*os.File
-	layer *Layer
-	mu    sync.Mutex
+	layer    *Layer
+	mu       sync.Mutex
+	pumpOnce sync.Once
 }
 
-// NewWriter wraps f (normally os.Stdout) for layer and starts the pump that
-// draws live frames between Bubbletea frames.
+// NewWriter wraps f (normally os.Stdout) for layer. The pump that draws live
+// frames between Bubbletea frames starts with the first image frame.
 func NewWriter(f *os.File, layer *Layer) *Writer {
-	w := &Writer{File: f, layer: layer}
-	go w.pump()
-	return w
+	return &Writer{File: f, layer: layer}
 }
 
 func (w *Writer) pump() {
@@ -288,9 +306,10 @@ func (w *Writer) pump() {
 func (w *Writer) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if !isFrame(p) {
+	if !w.layer.active() || !isFrame(p) {
 		return w.File.Write(p)
 	}
+	w.pumpOnce.Do(func() { go w.pump() })
 	cleared := false
 	for _, s := range clearSeqs {
 		if bytes.Contains(p, s) {
@@ -320,6 +339,15 @@ func (w *Writer) Write(p []byte) (int, error) {
 		return 0, err
 	}
 	return len(p), nil
+}
+
+// WriteString and ReadFrom keep io.WriteString and io.Copy callers (such as
+// Bubbletea's print-above path) on Write's lock; the embedded *os.File would
+// otherwise take them straight to the terminal.
+func (w *Writer) WriteString(s string) (int, error) { return w.Write([]byte(s)) }
+
+func (w *Writer) ReadFrom(r io.Reader) (int64, error) {
+	return io.Copy(struct{ io.Writer }{w}, r)
 }
 
 // isFrame reports whether p is a rendered frame: a synchronized update, or

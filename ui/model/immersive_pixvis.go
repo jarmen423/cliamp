@@ -12,6 +12,7 @@ import (
 	"image/color"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/bjarneo/cliamp/ui"
@@ -33,18 +34,19 @@ type pixVisJob struct {
 
 // pixVisWorker renders the pixel visualizer frames. Requests arriving while
 // it is busy are dropped: the next frame supersedes them.
+// Its goroutine starts with the first request.
 type pixVisWorker struct {
 	jobs  chan pixVisJob
 	layer *termimg.Layer
+	once  sync.Once
 }
 
 func newPixVisWorker(layer *termimg.Layer) *pixVisWorker {
-	w := &pixVisWorker{jobs: make(chan pixVisJob, 1), layer: layer}
-	go w.run()
-	return w
+	return &pixVisWorker{jobs: make(chan pixVisJob, 1), layer: layer}
 }
 
 func (w *pixVisWorker) submit(job pixVisJob) {
+	w.once.Do(func() { go w.run() })
 	select {
 	case w.jobs <- job:
 	default:

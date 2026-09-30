@@ -120,7 +120,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.immersiveOwns(msg.providerName) {
 			return m, m.openImmersiveItem(immItem{kind: immKindArtist, id: msg.artist.ID, title: msg.artist.Name, sub: "Artist", art: msg.artist.ImageURL})
 		}
-		if m.immersive.active {
+		if m.immersiveShown() {
 			m.status.Showf(statusTTLDefault, "That %s is on %s: leave immersive (I) to open it", "artist", msg.providerName)
 			return m, nil
 		}
@@ -138,7 +138,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a := msg.album
 			return m, m.openImmersiveItem(immItem{kind: immKindAlbum, id: a.ID, title: a.Name, sub: firstNonEmpty(a.Artist, "Album"), art: a.ImageURL})
 		}
-		if m.immersive.active {
+		if m.immersiveShown() {
 			m.status.Showf(statusTTLDefault, "That %s is on %s: leave immersive (I) to open it", "album", msg.providerName)
 			return m, nil
 		}

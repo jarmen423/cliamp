@@ -93,6 +93,65 @@ func TestWriterPassesUnchangedWritesThrough(t *testing.T) {
 	}
 }
 
+// With no image wanted, armed, or drawn, frames go out byte for byte and
+// the layer's frame bookkeeping never runs.
+func TestWriterIdleLayerPassesFramesThrough(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	l := NewLayer()
+	l.Invalidate() // a resize while idle must not make the layer draw
+	w := NewWriter(f, l)
+	frame := "\x1b[?2026h\x1b[2JTEXT\x1b[?2026l"
+	if _, err := w.Write([]byte(frame)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.WriteString("more"); err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := os.ReadFile(f.Name()); string(out) != frame+"more" {
+		t.Fatalf("idle output altered: %q", out)
+	}
+	if l.active() {
+		t.Fatal("idle layer reports active")
+	}
+}
+
+// The layer stays engaged after the last image is removed until the frame
+// that erases it, then drops back to pass-through.
+func TestLayerDisengagesAfterErasingLastImage(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	l := NewLayer()
+	w := NewWriter(f, l)
+	l.Set([]Placement{{Key: "a", X: 0, Y: 0, W: 3, H: 1, Data: []byte("<A>")}})
+	_, _ = w.Write([]byte("x"))
+	l.Set(nil)
+	if !l.active() {
+		t.Fatal("layer disengaged before erasing the drawn image")
+	}
+	_, _ = w.Write([]byte("y"))
+	if l.active() {
+		t.Fatal("layer still engaged after erasing the last image")
+	}
+	if out, _ := os.ReadFile(f.Name()); !strings.Contains(string(out), "\x1b[3X") {
+		t.Fatalf("removed image not erased: %q", out)
+	}
+	l.ArmLive(0, 0, 4, 2)
+	if !l.active() {
+		t.Fatal("armed live rectangle must engage the layer")
+	}
+	l.ArmLive(0, 0, 0, 0)
+	if l.active() {
+		t.Fatal("disarming with nothing drawn must disengage the layer")
+	}
+}
+
 // Leaving a screen with images: Bubbletea's diff often ends with an
 // erase-below, which must not stop the layer from erasing what went away.
 func TestLayerErasesRemovedImagesEvenWhenFrameClears(t *testing.T) {

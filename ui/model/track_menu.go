@@ -377,7 +377,7 @@ func (m *Model) goToTrackArtist(t playlist.Track) tea.Cmd {
 			return m.openImmersiveItem(immItem{kind: immKindArtist, id: a.ID, title: a.Name, sub: "Artist", art: a.ImageURL})
 		}
 	}
-	if target, ok := m.trackArtistTarget(t); ok && !m.immersive.active {
+	if target, ok := m.trackArtistTarget(t); ok && !m.immersiveShown() {
 		if _, ok := target.prov.(provider.ArtistDetailLoader); ok {
 			return m.openArtistScreen(target.prov.Name(), target.artist)
 		}
@@ -401,11 +401,12 @@ func (m *Model) goToTrackArtist(t playlist.Track) tea.Cmd {
 	return nil
 }
 
-// immersiveOwns reports whether immersive is up on the named provider, so a
-// go-to result opens in its canvas instead of a classic screen that would
-// sit hidden under it.
+// immersiveOwns reports whether immersive is on screen for the named
+// provider, so a go-to result opens in its canvas instead of a classic
+// screen that would sit hidden under it. While the terminal is too small
+// for immersive, the classic screens are the ones showing.
 func (m Model) immersiveOwns(providerName string) bool {
-	return m.immersive.active && m.immersive.prov != nil && m.immersive.prov.Name() == providerName
+	return m.immersiveShown() && m.immersive.prov != nil && m.immersive.prov.Name() == providerName
 }
 
 // menuArtistMsg carries a resolved artist from the MultiSearcher fallback.
@@ -440,12 +441,12 @@ func searchArtistCmd(s provider.MultiSearcher, providerName, query string, gen u
 // the track knows its album ID, otherwise the artist's album list, and
 // otherwise a provider-side search for the album title.
 func (m *Model) goToTrackAlbum(t playlist.Track) tea.Cmd {
-	if id := t.AlbumID(); id != "" && m.immersive.active {
+	if id := t.AlbumID(); id != "" && m.immersiveShown() {
 		if prov := m.providerForTrack(t.Path); prov != nil && m.immersiveOwns(prov.Name()) {
 			return m.openImmersiveItem(immItem{kind: immKindAlbum, id: id, title: t.Album, sub: firstNonEmpty(t.Artist, "Album"), art: t.AlbumArtURL})
 		}
 	}
-	if id := t.AlbumID(); id != "" && !m.immersive.active {
+	if id := t.AlbumID(); id != "" && !m.immersiveShown() {
 		if prov := m.providerForTrack(t.Path); prov != nil {
 			if l, ok := prov.(provider.AlbumTrackLoader); ok {
 				m.openNavBrowserWith(prov)
@@ -458,7 +459,7 @@ func (m *Model) goToTrackAlbum(t playlist.Track) tea.Cmd {
 			}
 		}
 	}
-	if target, ok := m.trackArtistTarget(t); ok && !m.immersive.active {
+	if target, ok := m.trackArtistTarget(t); ok && !m.immersiveShown() {
 		m.openNavBrowserWith(target.prov)
 		m.navBrowser.mode = navBrowseModeByArtistAlbum
 		m.navBrowser.screen = navBrowseScreenAlbums
