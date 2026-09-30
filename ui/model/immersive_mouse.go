@@ -242,6 +242,10 @@ func (m *Model) immClickLeft(cx, cy int, right bool) tea.Cmd {
 	}
 	if cy < im.queueY0 || cy >= im.queueY0+im.queueN {
 		m.mouse.doubleClick("")
+		// The Queue panel's border and "Next from" line open the queue page.
+		if top := im.geom.bodyY + im.geom.queueY; !right && cy >= top && cy < im.queueY0 {
+			return m.openImmersiveQueueView()
+		}
 		return nil
 	}
 	idx := im.queueScroll + cy - im.queueY0
@@ -285,6 +289,10 @@ func (m *Model) immClickCanvas(cx, cy int, right bool) tea.Cmd {
 	}
 	for _, it := range im.items {
 		if inside(it.box, cx, cy) {
+			if m.canvasItems()[it.idx].kind == immKindHeader {
+				m.mouse.doubleClick("")
+				return nil // section labels are not selectable
+			}
 			m.immersive.cursor = it.idx
 			m.clampCanvasScroll()
 			item := m.canvasItems()[it.idx]
@@ -338,7 +346,7 @@ func (m *Model) immersiveWheel(msg tea.MouseWheelMsg) tea.Cmd {
 			return nil
 		}
 		step := dy
-		if m.immersive.mode == immCanvasGrid {
+		if m.immersive.canvasMode() == immCanvasGrid {
 			step = dy * m.immGridCols(g.canvasIW)
 		}
 		n := len(m.canvasItems())

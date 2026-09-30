@@ -248,7 +248,7 @@ func (m Model) immArtSlots() []artSlot {
 	if u, _ := m.immNowPlayingArt(); g.npArt.W > 0 && g.npArt.H > 0 && !m.immSuggestCovers(g.npArt) {
 		slots = append(slots, artSlot{url: u, rect: g.npArt})
 	}
-	if m.immersive.mode == immCanvasList || m.immersive.view == immViewSettings {
+	if m.immersive.canvasMode() == immCanvasList || m.immersive.view == immViewSettings {
 		return slots
 	}
 	items := m.canvasItems()

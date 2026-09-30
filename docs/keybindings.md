@@ -173,6 +173,7 @@ and playlist-manager rows.
 |---|---|
 | `w` | Add the track to a playlist (the same picker as `w` in the playlist) |
 | `r` | Go to song radio (recommendations seeded from this track) |
+| `R` | Go to artist radio: the artist's popular tracks mixed with recommendations (providers that can load the artist and recommend, e.g. Spotify) |
 | `a` | Add to queue — toggles the play-next slot for playlist rows, queues elsewhere |
 | `l` | Go to the track's album |
 | `t` | Go to the track's artist |
@@ -463,14 +464,16 @@ config). It falls back to the classic layout when the terminal is under
 | `a` | Queue the focused track |
 | `n` | Toggle favorite on the focused track |
 | `q` | Focus the Queue panel (queue clicks jump the live queue there) |
+| `Q` | Queue page in the canvas: Now playing, Next in queue, and Next up from the playing context (in shuffled order when shuffle is on). `Enter` jumps there, `x` removes a queued track, `Shift+Up`/`Shift+Down` move it, `;` opens the track menu, `Q` or `Esc` goes back |
+| `R` | Radio: in an open playlist, album or artist, radio for that collection; in a list, radio for the focused artist, album or playlist, or song radio for a focused track. Collection radio mixes a spread of the collection's tracks with recommendations (providers with recommendations, e.g. Spotify) |
 | `V` | Full-screen visualizer |
 | `I` or `Esc` | Exit immersive mode |
 
 Mouse: click pills to switch, click a playlist, album or artist to open it,
-double-click a track to play it, double-click a queue row to jump there,
-double-click the visualizer for full screen, click a search suggestion to open
-it, right-click a track, queue row, or Now Playing for the track menu (add to
-playlist, song radio, queue, go to album/artist, like, credits, copy share
-link), click the transport buttons, drag the seek bar, and wheel over the
-canvas or queue to snap-scroll. Search results open albums on Enter and play
-tracks.
+double-click a track to play it, double-click a queue row to jump there, click
+the Queue panel's title to open the queue page, double-click the visualizer
+for full screen, click a search suggestion to open it, right-click a track,
+queue row, or Now Playing for the track menu (add to playlist, song radio,
+queue, go to album/artist, like, credits, copy share link), click the
+transport buttons, drag the seek bar, and wheel over the canvas or queue to
+snap-scroll. Search results open albums on Enter and play tracks.

@@ -46,6 +46,11 @@ func (m Model) trackMenuItems() []trackMenuItem {
 			return m.startTrackRadio(t)
 		}})
 	}
+	if prov, artist, ok := m.artistRadioTarget(t); ok {
+		items = append(items, trackMenuItem{"R", "Go to artist radio", func(m *Model) tea.Cmd {
+			return m.startCollectionRadio(prov, immKindArtist, artist.ID, artist.Name)
+		}})
+	}
 	if tm.remove != menuRemoveQueue {
 		items = append(items, trackMenuItem{"a", "Add to queue", func(m *Model) tea.Cmd {
 			return m.menuQueueTrack()
@@ -236,11 +241,7 @@ func (m *Model) menuRemoveTrack() tea.Cmd {
 		}
 		m.removeSelectedFromPlaylist()
 	case menuRemoveQueue:
-		m.playlistUndo = playlistUndo{active: true, snapshot: m.playlist.Snapshot()}
-		m.playlist.RemoveQueueAt(m.trackMenu.removeIdx)
-		m.normalizeQueueOverlay()
-		m.status.Show("Removed queued track (Ctrl+Z to undo)", statusTTLDefault)
-		return m.rearmPreload()
+		return m.removeQueuedAt(m.trackMenu.removeIdx)
 	case menuRemovePlMgr:
 		// Removing through the menu is a single-track action, so the mark
 		// set is cleared first: it must not extend the deletion to rows the
@@ -250,6 +251,16 @@ func (m *Model) menuRemoveTrack() tea.Cmd {
 		m.plMgrRemoveSelectedTracks()
 	}
 	return nil
+}
+
+// removeQueuedAt drops queue position pos from the play-next queue, with
+// Ctrl+Z undo.
+func (m *Model) removeQueuedAt(pos int) tea.Cmd {
+	m.playlistUndo = playlistUndo{active: true, snapshot: m.playlist.Snapshot()}
+	m.playlist.RemoveQueueAt(pos)
+	m.normalizeQueueOverlay()
+	m.status.Show("Removed queued track (Ctrl+Z to undo)", statusTTLDefault)
+	return m.rearmPreload()
 }
 
 // — song radio —
@@ -329,9 +340,15 @@ func (m *Model) handleTrackRadio(msg trackRadioMsg) tea.Cmd {
 		m.status.Show("No recommendations found", statusTTLDefault)
 		return nil
 	}
+	return m.playRadio("Song radio", tracks)
+}
+
+// playRadio replaces the playlist with a radio batch and plays its first
+// track.
+func (m *Model) playRadio(label string, tracks []playlist.Track) tea.Cmd {
 	m.retireTracksPaging()
 	m.replacePlayerPlaylist(tracks)
-	m.status.Successf(statusTTLDefault, "Song radio: %d tracks", len(tracks))
+	m.status.Successf(statusTTLDefault, "%s: %d tracks", label, len(tracks))
 	m.notifyAll()
 	return m.playCurrentTrack()
 }
