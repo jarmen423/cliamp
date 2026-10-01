@@ -1647,9 +1647,9 @@ func TestPlayRemoteTracks(t *testing.T) {
 }
 
 // Queueing a track already in the playlist queues that row instead of
-// appending a copy, and never starts playback on its own.
-func TestQueueTrackNextDedupesAndStaysSilent(t *testing.T) {
-	player := &playbackFakeEngine{}
+// appending a copy; with a track playing, playback is left alone.
+func TestQueueTrackNextDedupesWhilePlaying(t *testing.T) {
+	player := &playbackFakeEngine{playing: true}
 	pl := playlist.New()
 	pl.Add(playlist.Track{Path: "/a.mp3"}, playlist.Track{Path: "/b.mp3"})
 	m := Model{player: player, playlist: pl}
@@ -1668,7 +1668,7 @@ func TestQueueTrackNextDedupesAndStaysSilent(t *testing.T) {
 }
 
 func TestQueueTrackNextAppendsForeignTrack(t *testing.T) {
-	player := &playbackFakeEngine{}
+	player := &playbackFakeEngine{playing: true}
 	pl := playlist.New()
 	pl.Add(playlist.Track{Path: "/a.mp3"})
 	m := Model{player: player, playlist: pl}
@@ -1683,5 +1683,20 @@ func TestQueueTrackNextAppendsForeignTrack(t *testing.T) {
 	}
 	if len(player.playCalls) != 0 {
 		t.Fatalf("playCalls = %v, want none", player.playCalls)
+	}
+}
+
+// With nothing playing, queueing starts the queued track: search `q`, IPC
+// queue and Spotify Connect's add-to-queue all document that.
+func TestQueueTrackNextStartsWhenIdle(t *testing.T) {
+	player := &playbackFakeEngine{}
+	pl := playlist.New()
+	pl.Add(playlist.Track{Path: "/a.mp3"}, playlist.Track{Path: "/b.mp3"})
+	m := Model{player: player, playlist: pl}
+
+	m.queueTrackNext(playlist.Track{Path: "/b.mp3"})
+
+	if pl.Len() != 2 || len(player.playCalls) != 1 || player.playCalls[0] != "/b.mp3" {
+		t.Fatalf("len = %d playCalls = %v, want the queued /b.mp3 started in place", pl.Len(), player.playCalls)
 	}
 }

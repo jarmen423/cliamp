@@ -967,19 +967,15 @@ func (p *Playlist) QueueEntries() []QueueEntry {
 
 // Upcoming returns up to limit play-order entries after the current position
 // (shuffled order when shuffle is on), skipping unplayable tracks. The
-// play-next queue is not included; it plays first, see QueueEntries. Tracks
-// already sitting in the queue are skipped too, so a queued track is not
-// listed again as upcoming.
+// play-next queue is not included; it plays first, see QueueEntries. A
+// queued track still appears at its own spot: the queue does not move the
+// play position, so the track plays there again.
 func (p *Playlist) Upcoming(limit int) []QueueEntry {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var out []QueueEntry
 	for i := p.pos + 1; i < len(p.order) && len(out) < limit; i++ {
-		idx := p.order[i]
-		if idx == p.queuedIdx || p.queuePositions[idx] != 0 {
-			continue
-		}
-		if p.isPlayable(idx) {
+		if idx := p.order[i]; p.isPlayable(idx) {
 			out = append(out, QueueEntry{TrackIndex: idx, Track: cloneTrack(p.tracks[idx])})
 		}
 	}

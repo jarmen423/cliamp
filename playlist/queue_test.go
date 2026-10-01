@@ -285,15 +285,18 @@ func TestUpcoming(t *testing.T) {
 	}
 }
 
-func TestUpcomingSkipsQueued(t *testing.T) {
+// The queue does not move the play position, so a queued track that sits
+// later in the list plays again when playback reaches it: Upcoming keeps it.
+func TestUpcomingKeepsQueuedTrackAtItsSpot(t *testing.T) {
 	p := makePlaylist(5, false)
 	p.SetIndex(0)
 	p.Queue(2)
-	if got := p.Upcoming(5); len(got) != 3 || got[0].TrackIndex != 1 || got[1].TrackIndex != 3 || got[2].TrackIndex != 4 {
-		t.Fatalf("Upcoming = %v, want 1, 3, 4 without the queued track", got)
+	if got := p.Upcoming(5); len(got) != 4 || got[1].TrackIndex != 2 {
+		t.Fatalf("Upcoming = %v, want 1, 2, 3, 4", got)
 	}
-	p.Next() // play the queued track
-	if got := p.Upcoming(5); len(got) != 3 || got[0].TrackIndex != 1 || got[1].TrackIndex != 3 || got[2].TrackIndex != 4 {
-		t.Fatalf("Upcoming = %v, want 1, 3, 4 without the playing queued track", got)
+	p.Next() // plays track 2 from the queue
+	p.Next() // back to play order: track 1
+	if t1, _ := p.Next(); t1.Path != p.Tracks()[2].Path {
+		t.Fatalf("after the queue drained, play order gave %q, want track 2 again", t1.Path)
 	}
 }

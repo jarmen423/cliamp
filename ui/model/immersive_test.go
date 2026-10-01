@@ -441,9 +441,9 @@ func TestImmersiveQueuePanelShowsUpcoming(t *testing.T) {
 	for _, r := range rows {
 		got = append(got, r.Track.Title)
 	}
-	want := []string{"Four", "Two", "Three"}
+	want := []string{"Four", "Two", "Three", "Four"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Fatalf("queue rows = %v, want %v (queued first, then play order minus the queued track)", got, want)
+		t.Fatalf("queue rows = %v, want %v (queued first, then play order)", got, want)
 	}
 	m.player = &playbackFakeEngine{}
 	m.vis = ui.NewVisualizer(44100)

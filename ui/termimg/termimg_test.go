@@ -365,3 +365,23 @@ func TestLayerRedrawsImageOverlappingAnErase(t *testing.T) {
 		t.Fatalf("overlapped image not redrawn: %q", post)
 	}
 }
+
+// A spot whose new image has no pixels yet keeps the old image drawn there,
+// even when another placement draws in the same frame: that old image must
+// stay recorded so it is erased when the spot goes away.
+func TestLayerKeepsPendingSpotBesideNewImage(t *testing.T) {
+	l := NewLayer()
+	old := Placement{Key: "old", X: 10, Y: 0, W: 4, H: 2, Data: []byte("<OLD>")}
+	l.Set([]Placement{old})
+	l.render(false)
+	l.Set([]Placement{
+		{Key: "new", X: 0, Y: 0, W: 4, H: 2, Data: []byte("<NEW>")},
+		{Key: "pending", X: 10, Y: 0, W: 4, H: 2}, // no pixels yet
+	})
+	l.render(false)
+	l.Set(nil)
+	pre, _ := l.render(false)
+	if !bytes.Contains(pre, []byte("\x1b[1;11H\x1b[4X")) {
+		t.Fatalf("old image at the pending spot was forgotten, never erased: %q", pre)
+	}
+}

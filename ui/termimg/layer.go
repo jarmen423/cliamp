@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -227,7 +228,9 @@ func (l *Layer) render(cleared bool) (pre, post []byte) {
 		cup(&d, p.Y, p.X)
 		d.Write(p.Data)
 	}
-	prev := l.drawn
+	// Copy first: rebuilding drawn in place would overwrite entries of prev
+	// that the loop below still reads.
+	prev := slices.Clone(l.drawn)
 	l.drawn = l.drawn[:0]
 	for _, p := range want {
 		if len(p.Data) > 0 {
