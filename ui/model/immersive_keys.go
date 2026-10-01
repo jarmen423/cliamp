@@ -612,6 +612,9 @@ func (m *Model) immersiveCursorHome() {
 	default:
 		m.immersive.cursor, m.immersive.scroll = 0, 0
 		m.immersive.settingsCursor = 0
+		if m.immersive.view == immViewQueue {
+			m.immQueueViewSkipHeader(1)
+		}
 	}
 }
 

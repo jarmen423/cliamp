@@ -341,18 +341,8 @@ func (m *Model) immersiveWheel(msg tea.MouseWheelMsg) tea.Cmd {
 		m.immersive.queueCursor = clampInt(m.immersive.queueCursor+dy, 0, max(0, total-1))
 		m.immersive.queueScroll = clampedScroll(m.immersive.queueScroll, m.immersive.queueCursor, total, max(1, g.queueH-3))
 	case cx >= g.canvasX && cy < g.bodyY+g.bodyH:
-		if m.immersive.view == immViewSettings {
-			m.immersive.settingsCursor = clampInt(m.immersive.settingsCursor+dy, 0, immSetCount-1)
-			return nil
-		}
-		step := dy
-		if m.immersive.canvasMode() == immCanvasGrid {
-			step = dy * m.immGridCols(g.canvasIW)
-		}
-		n := len(m.canvasItems())
 		m.immersive.focus = immPaneCanvas
-		m.immersive.cursor = clampInt(m.immersive.cursor+step, 0, max(0, n-1))
-		m.clampCanvasScroll()
+		m.immersiveMoveCanvas(dy, 0)
 	}
 	return nil
 }

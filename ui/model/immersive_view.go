@@ -665,7 +665,7 @@ func (m Model) renderImmCanvasInner(w, rows int) []string {
 		case im.view == immViewBrowse:
 			lines[0] = dimStyle.Render("  (empty)")
 		case im.view == immViewQueue:
-			lines[0] = dimStyle.Render("  Nothing playing and nothing queued. Play a track, or press a to queue one.")
+			lines[0] = dimStyle.Render("  Nothing playing and nothing queued. Press Q to go back and choose a track.")
 		default:
 			lines[0] = dimStyle.Render("  (empty)")
 		}

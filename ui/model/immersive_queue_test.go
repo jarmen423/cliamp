@@ -69,6 +69,33 @@ func TestQueueViewCursorSkipsHeaders(t *testing.T) {
 	}
 }
 
+func TestQueueViewHomeAndWheelSkipHeaders(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		cursor, want int
+		button       tea.MouseButton
+	}{
+		{"home", 5, 1, tea.MouseNone},
+		{"wheel down", 1, 3, tea.MouseWheelDown},
+		{"wheel up", 3, 1, tea.MouseWheelUp},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := immQueuePageModel(t)
+			m.immersive.cursor = tt.cursor
+			if tt.name == "home" {
+				m.immersiveCursorHome()
+			} else {
+				g := m.immMouse.geom
+				x, y := immAt(m, g.canvasX+2, g.bodyY+1)
+				m.handleMouseWheel(tea.MouseWheelMsg{X: x, Y: y, Button: tt.button})
+			}
+			if m.immersive.cursor != tt.want {
+				t.Fatalf("cursor = %d, want %d", m.immersive.cursor, tt.want)
+			}
+		})
+	}
+}
+
 func TestQueueViewEnterJumpsAndDequeues(t *testing.T) {
 	m := immQueuePageModel(t)
 	m.immersive.cursor = 3 // D in Next in queue
