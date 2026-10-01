@@ -13,8 +13,11 @@ import (
 	"github.com/bjarneo/cliamp/provider"
 )
 
-// Compile-time interface check.
-var _ provider.ArtistDetailLoader = (*SpotifyProvider)(nil)
+// Compile-time interface checks.
+var (
+	_ provider.ArtistDetailLoader  = (*SpotifyProvider)(nil)
+	_ provider.TrackArtistResolver = (*SpotifyProvider)(nil)
+)
 
 // Artist-detail flow bounds. artistDetailTimeout wraps the whole multi-call
 // flow; the page sizes respect the per-endpoint maximums (10 for artist
@@ -364,4 +367,25 @@ func (p *SpotifyProvider) markPoolLiked(ctx context.Context, tracks []playlist.T
 		}
 		uris = uris[size:]
 	}
+}
+
+// ArtistForTrack resolves a Spotify track back to its first artist, using the
+// artist IDs trackFromItem recorded in ProviderMeta, so the UI can jump from
+// any Spotify track straight to that artist's page.
+func (p *SpotifyProvider) ArtistForTrack(track playlist.Track) (provider.ArtistInfo, bool) {
+	var id string
+	for _, part := range strings.Split(track.ProviderMeta[metaSpotifyArtistIDs], ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			id = part
+			break
+		}
+	}
+	if id == "" {
+		return provider.ArtistInfo{}, false
+	}
+	name := strings.TrimSpace(strings.Split(track.Artist, ", ")[0])
+	if name == "" {
+		name = id
+	}
+	return provider.ArtistInfo{ID: id, Name: name}, true
 }

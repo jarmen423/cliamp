@@ -1,6 +1,10 @@
 package spotify
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/bjarneo/cliamp/playlist"
+)
 
 // TestSpotifyTrackPageSizeRespectsAPILimit asserts spotifyTrackPageSize stays
 // within the Spotify Web API's silent 50-item cap; see the constant's comment
@@ -98,4 +102,31 @@ func TestTrackFromItem(t *testing.T) {
 			t.Error("Unplayable = false, want true")
 		}
 	})
+}
+
+// Tracks carry their album id and artist ids in ProviderMeta so the UI can
+// open the album/artist page and build collection radio directly off a
+// track, the way album placeholders already can.
+func TestTrackFromItemCarriesProviderIDs(t *testing.T) {
+	item := &spotifyItem{
+		ID: "t1", Name: "Song", Type: "track", URI: "spotify:track:t1",
+		Artists: []spotifyArtist{{ID: "ar1", Name: "First"}, {ID: "ar2", Name: "Second"}},
+	}
+	item.Album.ID, item.Album.Name = "al9", "The Album"
+
+	got := trackFromItem(item)
+	if got.AlbumID() != "al9" {
+		t.Fatalf("AlbumID = %q, want al9", got.AlbumID())
+	}
+	if ids := got.ProviderMeta[metaSpotifyArtistIDs]; ids != "ar1,ar2" {
+		t.Fatalf("artist ids = %q, want ar1,ar2", ids)
+	}
+
+	info, ok := (&SpotifyProvider{}).ArtistForTrack(got)
+	if !ok || info.ID != "ar1" || info.Name != "First" {
+		t.Fatalf("ArtistForTrack = %+v, %v, want ar1/First", info, ok)
+	}
+	if _, ok := (&SpotifyProvider{}).ArtistForTrack(playlist.Track{Path: "x"}); ok {
+		t.Fatal("ArtistForTrack accepted a track with no ids")
+	}
 }
