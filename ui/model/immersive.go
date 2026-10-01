@@ -77,7 +77,7 @@ const (
 	immViewSearch                        // search results
 	immViewSettings                      // settings/EQ tab (key-only, no pill)
 	immViewQueue                         // queue page (immersive_queue.go)
-	immViewRadio                         // started radio's tracks (collection_radio.go)
+	immViewRadio                         // opened radio's tracks (collection_radio.go)
 )
 
 // isTrackView reports whether the canvas shows a track list (detail or

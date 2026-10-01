@@ -19,8 +19,8 @@ import (
 )
 
 // trackRadioLimit is how many recommendations a song-radio open asks for.
-// The seed itself is kept at the head so the queue starts where the user
-// pointed, then plays like any replaced queue.
+// The seed itself is kept at the head so the radio starts where the user
+// pointed.
 const trackRadioLimit = 30
 
 // trackMenuItem is one menu row. The accelerator is a live key inside the
@@ -328,7 +328,7 @@ func (m *Model) startTrackRadio(t playlist.Track) tea.Cmd {
 	}
 }
 
-// handleTrackRadio applies the radio batch: the seed first, then the
+// handleTrackRadio opens the radio batch: the seed first, then the
 // station or recommendations (minus the seed if the provider echoed it back).
 func (m *Model) handleTrackRadio(msg trackRadioMsg) tea.Cmd {
 	if msg.gen != m.requests.trackMenu {
@@ -351,22 +351,26 @@ func (m *Model) handleTrackRadio(msg trackRadioMsg) tea.Cmd {
 		m.status.Show("No recommendations found", statusTTLDefault)
 		return nil
 	}
-	return m.playRadio("Song radio", firstNonEmpty(seed.Title, seed.DisplayName()), tracks)
+	m.openRadio("Song radio", firstNonEmpty(seed.Title, seed.DisplayName()), tracks)
+	return nil
 }
 
-// playRadio makes a radio batch the playing playlist, named after its seed:
-// it replaces the queue, opens in the immersive canvas, and plays its first
-// track.
-func (m *Model) playRadio(label, seedName string, tracks []playlist.Track) tea.Cmd {
+// openRadio opens a radio batch as a playlist named after its seed, for the
+// listener to play: a page in the immersive canvas, which leaves the queue
+// alone until a row is played, or the queue itself in the classic layout,
+// which has no pages. Whatever is playing keeps playing.
+func (m *Model) openRadio(label, seedName string, tracks []playlist.Track) {
 	name := seedName + " Radio"
+	m.status.Successf(statusTTLDefault, "%s: %d tracks, Enter plays", label, len(tracks))
+	if m.immersiveShown() {
+		m.showImmersiveRadio(name, tracks)
+		return
+	}
 	m.retireTracksPaging()
 	m.replacePlayerPlaylist(tracks)
 	m.resetProviderQueueMirror()
 	m.playingContext = name
-	m.showImmersiveRadio(name, tracks)
-	m.status.Successf(statusTTLDefault, "%s: %d tracks", label, len(tracks))
 	m.notifyAll()
-	return m.playCurrentTrack()
 }
 
 // — go to artist / album —

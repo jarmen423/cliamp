@@ -197,6 +197,15 @@ func runRadio(t *testing.T, m *Model, cmd tea.Cmd) {
 	m.handleCollectionRadio(msg)
 }
 
+// canvasPaths lists the track paths the canvas shows.
+func canvasPaths(m *Model) string {
+	var out []string
+	for _, it := range m.canvasItems() {
+		out = append(out, it.path)
+	}
+	return strings.Join(out, ",")
+}
+
 func playlistPaths(p *playlist.Playlist) string {
 	var out []string
 	for _, t := range p.Tracks() {
@@ -211,14 +220,11 @@ func TestImmersiveRadioForOpenArtist(t *testing.T) {
 	m.immersive.prov = stub
 	m.immersive.view, m.immersive.ctxKind, m.immersive.ctxID, m.immersive.ctxName = immViewArtist, immKindArtist, "ar1", "Lizzo"
 	runRadio(t, m, m.handleImmersiveKey(keyMsg("R")))
-	if got := playlistPaths(m.playlist); got != "/p1,/r1,/p2,/r2" {
-		t.Fatalf("radio queue = %s, want the artist's tracks mixed with recommendations", got)
+	if got := canvasPaths(m); got != "/p1,/r1,/p2,/r2" {
+		t.Fatalf("radio page = %s, want the artist's tracks mixed with recommendations", got)
 	}
 	if len(stub.seeds) != 1 || len(stub.seeds[0]) != 2 {
 		t.Fatalf("seeds = %v, want the artist's two popular tracks", stub.seeds)
-	}
-	if fake := m.player.(*playbackFakeEngine); len(fake.playCalls) == 0 || fake.playCalls[len(fake.playCalls)-1] != "/p1" {
-		t.Fatalf("playCalls = %v, want the radio to start on /p1", fake.playCalls)
 	}
 	if !strings.Contains(m.status.text, "Artist radio") {
 		t.Fatalf("status = %q, want it to name the artist radio", m.status.text)
@@ -230,8 +236,8 @@ func TestImmersiveRadioForFocusedPlaylist(t *testing.T) {
 	m.immersive.prov = &radioStub{}
 	m.immersive.cursor = 0 // pl1 in the Playlists browse
 	runRadio(t, m, m.immersiveRadio())
-	if got := playlistPaths(m.playlist); got != "/a,/r1,/b,/r2" {
-		t.Fatalf("radio queue = %s, want the playlist's tracks mixed with recommendations", got)
+	if got := canvasPaths(m); got != "/a,/r1,/b,/r2" {
+		t.Fatalf("radio page = %s, want the playlist's tracks mixed with recommendations", got)
 	}
 }
 
@@ -245,7 +251,7 @@ func TestImmersiveRadioNeedsRecommender(t *testing.T) {
 	}
 }
 
-// A radio started before a newer one must not replace the queue.
+// A radio started before a newer one must not open.
 func TestCollectionRadioStaleResultDropped(t *testing.T) {
 	m := immersiveMouseModel(t)
 	m.immersive.prov = &radioStub{}
@@ -253,8 +259,8 @@ func TestCollectionRadioStaleResultDropped(t *testing.T) {
 	stale := m.immersiveRadio()
 	m.immersiveRadio()
 	runRadio(t, m, stale)
-	if m.playlist.Len() != 0 {
-		t.Fatalf("stale radio replaced the playlist with %s", playlistPaths(m.playlist))
+	if m.immersive.view == immViewRadio {
+		t.Fatalf("stale radio opened a page listing %s", canvasPaths(m))
 	}
 }
 
@@ -320,47 +326,63 @@ func (s *stationStub) ArtistDetail(id string) (provider.ArtistDetail, error) {
 	return s.radioStub.ArtistDetail(id)
 }
 
-// A started radio is a playlist of its own: it opens in the canvas, the
-// queue panel names it, and Back returns to where it was started.
+// Go to radio opens the radio in the canvas as a playlist of its own and
+// leaves the queue alone; playing from the page makes it the queue, named in
+// the queue panel, and Back returns to where the radio was started.
 func TestRadioOpensAsPlaylistInCanvas(t *testing.T) {
 	m := immersiveMouseModel(t)
 	m.immersive.prov = &radioStub{}
 	m.immersive.view, m.immersive.ctxKind, m.immersive.ctxID, m.immersive.ctxName = immViewArtist, immKindArtist, "ar1", "Lizzo"
-	m.activeProviderPlaylistID = "pl1" // the playlist that was playing before
-	m.immersive.queueCursor = 7
+	m.playlist.Add(playlist.Track{Title: "Old", Path: "/old"})
+	m.activeProviderPlaylistID = "pl1" // the playlist playing before
 	runRadio(t, m, m.handleImmersiveKey(keyMsg("R")))
 
 	im := m.immersive
-	if im.view != immViewRadio || im.focus != immPaneCanvas || im.cursor != 0 || im.queueCursor != 0 {
-		t.Fatalf("view=%d focus=%d cursor=%d queueCursor=%d, want the radio page focused at its top", im.view, im.focus, im.cursor, im.queueCursor)
+	if im.view != immViewRadio || im.focus != immPaneCanvas || im.cursor != 0 {
+		t.Fatalf("view=%d focus=%d cursor=%d, want the radio page focused at its top", im.view, im.focus, im.cursor)
 	}
-	var paths []string
-	for _, it := range m.canvasItems() {
-		paths = append(paths, it.path)
-	}
-	if got := strings.Join(paths, ","); got != playlistPaths(m.playlist) {
-		t.Fatalf("canvas lists %s, want the radio queue %s", got, playlistPaths(m.playlist))
+	if got := canvasPaths(m); got != "/p1,/r1,/p2,/r2" {
+		t.Fatalf("radio page = %s, want the radio's tracks", got)
 	}
 	if got := m.immCanvasTitle(); !strings.HasPrefix(got, "Lizzo Radio") {
 		t.Fatalf("canvas title = %q, want it to name the radio", got)
 	}
-	if got := m.playingContextName(); got != "Lizzo Radio" {
-		t.Fatalf("queue context = %q, want Lizzo Radio, not the playlist played before", got)
-	}
-	if m.activeProviderPlaylistID != "" {
-		t.Fatalf("activeProviderPlaylistID = %q, want the old playlist mirror dropped", m.activeProviderPlaylistID)
+	fake := m.player.(*playbackFakeEngine)
+	if got := playlistPaths(m.playlist); got != "/old" || len(fake.playCalls) != 0 || m.activeProviderPlaylistID != "pl1" {
+		t.Fatalf("queue=%s playCalls=%v mirror=%q, want the queue untouched until the radio is played", got, fake.playCalls, m.activeProviderPlaylistID)
 	}
 
-	// Playing a row keeps the radio as the context.
+	// Playing a row makes the radio the queue.
 	m.immersive.cursor = 1
 	m.handleImmersiveKey(keyMsg("enter"))
-	if got := m.playingContextName(); got != "Lizzo Radio" {
-		t.Fatalf("queue context after playing a radio row = %q, want Lizzo Radio", got)
+	if got := playlistPaths(m.playlist); got != "/p1,/r1,/p2,/r2" {
+		t.Fatalf("queue after playing a radio row = %s, want the radio", got)
+	}
+	if len(fake.playCalls) == 0 || fake.playCalls[len(fake.playCalls)-1] != "/r1" {
+		t.Fatalf("playCalls = %v, want the picked row /r1 playing", fake.playCalls)
+	}
+	if got := m.playingContextName(); got != "Lizzo Radio" || m.activeProviderPlaylistID != "" {
+		t.Fatalf("queue context=%q mirror=%q, want Lizzo Radio and the old playlist mirror dropped", got, m.activeProviderPlaylistID)
 	}
 
 	m.handleImmersiveKey(keyMsg("backspace"))
 	if m.immersive.view != immViewArtist || m.immersive.ctxName != "Lizzo" {
 		t.Fatalf("Back went to view %d %q, want the artist the radio was started from", m.immersive.view, m.immersive.ctxName)
+	}
+}
+
+// With the classic layout on screen there is no page to open: the radio
+// becomes the queue, and still waits to be played.
+func TestRadioLoadsQueueInClassicLayout(t *testing.T) {
+	m := immersiveMouseModel(t)
+	m.exitImmersive()
+	m.openRadio("Song radio", "Seed", []playlist.Track{{Title: "Seed", Path: "/seed"}, {Title: "R", Path: "/r"}})
+	fake := m.player.(*playbackFakeEngine)
+	if got := playlistPaths(m.playlist); got != "/seed,/r" || len(fake.playCalls) != 0 {
+		t.Fatalf("queue=%s playCalls=%v, want the radio queued and nothing started", got, fake.playCalls)
+	}
+	if got := m.playingContextName(); got != "Seed Radio" {
+		t.Fatalf("queue context = %q, want Seed Radio", got)
 	}
 }
 
@@ -372,8 +394,8 @@ func TestCollectionRadioPrefersStation(t *testing.T) {
 	m.immersive.prov = stub
 	m.immersive.view, m.immersive.ctxKind, m.immersive.ctxID, m.immersive.ctxName = immViewArtist, immKindArtist, "ar1", "Lizzo"
 	runRadio(t, m, m.immersiveRadio())
-	if got := playlistPaths(m.playlist); got != "/s1,/s2" {
-		t.Fatalf("radio queue = %s, want the station as it came", got)
+	if got := canvasPaths(m); got != "/s1,/s2" {
+		t.Fatalf("radio page = %s, want the station as it came", got)
 	}
 	want := provider.RadioSeed{Kind: provider.RadioSeedArtist, ID: "ar1"}
 	if len(stub.stations) != 1 || stub.stations[0].Kind != want.Kind || stub.stations[0].ID != want.ID {
@@ -392,8 +414,8 @@ func TestCollectionRadioFallsBackToRecommender(t *testing.T) {
 	m.immersive.prov = stub
 	m.immersive.view, m.immersive.ctxKind, m.immersive.ctxID, m.immersive.ctxName = immViewArtist, immKindArtist, "ar1", "Lizzo"
 	runRadio(t, m, m.immersiveRadio())
-	if got := playlistPaths(m.playlist); got != "/p1,/r1,/p2,/r2" {
-		t.Fatalf("radio queue = %s, want the artist's tracks mixed with recommendations", got)
+	if got := canvasPaths(m); got != "/p1,/r1,/p2,/r2" {
+		t.Fatalf("radio page = %s, want the artist's tracks mixed with recommendations", got)
 	}
 	if len(stub.stations) != 1 || stub.loads != 1 {
 		t.Fatalf("station tries=%d loads=%d, want one failed station then the artist loaded once", len(stub.stations), stub.loads)
@@ -410,14 +432,14 @@ func TestSongRadioUsesStation(t *testing.T) {
 		t.Fatal("song radio did not produce a trackRadioMsg")
 	}
 	m.handleTrackRadio(msg)
-	if got := playlistPaths(m.playlist); got != "/seed,/s1" {
-		t.Fatalf("radio queue = %s, want the seed then its station", got)
+	if got := canvasPaths(m); got != "/seed,/s1" {
+		t.Fatalf("radio page = %s, want the seed then its station", got)
 	}
 	if len(stub.stations) != 1 || stub.stations[0].Kind != "" || len(stub.stations[0].Tracks) != 1 || len(stub.seeds) != 0 {
 		t.Fatalf("stations=%+v recommender calls=%d, want one track station and no recommender call", stub.stations, len(stub.seeds))
 	}
-	if m.immersive.view != immViewRadio || m.playingContextName() != "Seed Radio" {
-		t.Fatalf("view=%d context=%q, want the Seed Radio page", m.immersive.view, m.playingContextName())
+	if m.immersive.view != immViewRadio || m.immersive.ctxName != "Seed Radio" {
+		t.Fatalf("view=%d name=%q, want the Seed Radio page", m.immersive.view, m.immersive.ctxName)
 	}
 }
 
@@ -447,7 +469,8 @@ func TestUndoRestoresPlayingContext(t *testing.T) {
 	m.playImmersiveTrack(0)
 	m.playlist.Queue(1)
 	m.removeQueuedAt(0)
-	m.playRadio("Song radio", "A", []playlist.Track{{Title: "A", Path: "/a"}, {Title: "R", Path: "/r"}})
+	m.openRadio("Song radio", "A", []playlist.Track{{Title: "A", Path: "/a"}, {Title: "R", Path: "/r"}})
+	m.playImmersiveTrack(0)
 	if got := m.playingContextName(); got != "A Radio" {
 		t.Fatalf("context = %q, want A Radio", got)
 	}

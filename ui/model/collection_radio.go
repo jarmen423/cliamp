@@ -178,7 +178,7 @@ func (m *Model) startCollectionRadio(prov playlist.Provider, kind immItemKind, i
 	}
 }
 
-// handleCollectionRadio plays the radio batch.
+// handleCollectionRadio opens the radio batch.
 func (m *Model) handleCollectionRadio(msg collectionRadioMsg) tea.Cmd {
 	if msg.gen != m.requests.trackMenu {
 		return nil
@@ -187,15 +187,13 @@ func (m *Model) handleCollectionRadio(msg collectionRadioMsg) tea.Cmd {
 		m.status.Errorf(statusTTLDefault, "%s failed: %s", msg.label, msg.err)
 		return nil
 	}
-	return m.playRadio(msg.label, msg.name, msg.tracks)
+	m.openRadio(msg.label, msg.name, msg.tracks)
+	return nil
 }
 
-// showImmersiveRadio opens a started radio in the canvas as the playlist it
-// now is, one history step from where it was started.
+// showImmersiveRadio opens a radio in the canvas as a playlist page, one
+// history step from where it was started.
 func (m *Model) showImmersiveRadio(name string, tracks []playlist.Track) {
-	if !m.immersive.active {
-		return
-	}
 	m.pushImmersiveBack()
 	m.dropImmersiveFetches()
 	im := &m.immersive
@@ -204,7 +202,6 @@ func (m *Model) showImmersiveRadio(name string, tracks []playlist.Track) {
 	im.tracks = tracks
 	im.trackSort = immSortTrackOrder
 	im.cursor, im.scroll = 0, 0
-	im.queueCursor, im.queueScroll = 0, 0
 	im.focus = immPaneCanvas
 }
 
