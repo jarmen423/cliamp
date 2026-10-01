@@ -2,6 +2,7 @@
 package model
 
 import (
+	"io"
 	"strings"
 	"time"
 
@@ -348,11 +349,15 @@ type Model struct {
 	immCanvasPref           immCanvasMode   // immersive_view config: canvas view immersive opens in
 	imgMode                 imageMode       // images config: how covers are drawn
 	imgLayer                *termimg.Layer  // Sixel output layer (nil in tests)
+	imgOut                  io.Writer       // program output for kitty graphics (nil in tests)
+	imgTmux                 bool            // inside tmux: kitty sequences need passthrough wrapping
 	art                     *artStore       // decoded/encoded cover cache
 	pixVis                  *pixVisWorker   // Sixel pixel-visualizer renderer (nil in tests)
 	frameMemo               *frameMemo      // previous view's lines, for image redraw after text rewrites
 	artPolling              bool            // the cover request loop is running
 	termSixel               bool            // the terminal reported Sixel support (DA1 attribute 4)
+	termKitty               bool            // the terminal answered the kitty graphics query
+	kittyNamed              bool            // TERM/TERM_PROGRAM or XTVERSION name a kitty-placeholder terminal
 	cellW, cellH            int             // terminal cell size in pixels (CSI 16 t), 0 until known
 	providers               []ProviderEntry // all available providers
 	provPillIdx             int             // selected pill index

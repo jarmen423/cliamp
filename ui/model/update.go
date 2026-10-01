@@ -1638,11 +1638,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case playback.QuitMsg:
-		m.flushPendingSpeedSave()
-		m.flushPendingEQSave()
-		m.player.Close()
-		m.clearPlaybackTrack()
-		m.quitting = true
+		m.shutdown()
 		return m, tea.Quit
 
 	case SetEQPresetMsg:

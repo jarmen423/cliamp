@@ -2,10 +2,11 @@ package model
 
 // immersive_art.go puts real cover art into the immersive frame's art boxes
 // (Now Playing and the rows/grid canvas thumbnails). Covers are fetched and
-// decoded once per URL, then encoded once per box size: as Sixel images for
-// terminals that support them (drawn through the termimg layer on top of
-// blank cells) or as truecolor half-block text everywhere else. Until a
-// cover is ready the box keeps its text placeholder.
+// decoded once per URL, then encoded once per box size: as kitty graphics
+// images shown through Unicode placeholder cells (plain text, no output
+// layer), as Sixel images drawn through the termimg layer on top of blank
+// cells, or as truecolor half-block text everywhere else. Until a cover is
+// ready the box keeps its text placeholder.
 
 import (
 	"context"
@@ -16,6 +17,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -36,10 +38,11 @@ import (
 type imageMode int
 
 const (
-	imagesAuto   imageMode = iota // Sixel when the terminal reports it, else blocks
+	imagesAuto   imageMode = iota // kitty graphics or Sixel when the terminal supports it, else blocks
 	imagesSixel                   // always Sixel
 	imagesBlocks                  // always half-block text
 	imagesOff                     // text placeholders only
+	imagesKitty                   // always kitty graphics (Unicode placeholders)
 )
 
 // artKind is how a cover is drawn right now.
@@ -49,6 +52,7 @@ const (
 	artNone artKind = iota
 	artSixel
 	artBlocks
+	artKitty
 )
 
 const (
@@ -59,7 +63,11 @@ const (
 	artMaxEncodings = 512 // encoded covers kept before the cache is reset
 	artMaxInflight  = 6   // concurrent fetches
 	artMaxSide      = 640 // decoded covers are downscaled to this; boxes are far smaller
+	artMaxKitty     = 64  // kitty images kept in the terminal before off-screen ones are deleted
 )
+
+// kittyVisID is the pixel visualizer's kitty image; covers never use it.
+var kittyVisID = termimg.KittyID(termimg.KittyIDs - 1)
 
 // artStore caches decoded covers by URL and their encodings by box size.
 // It is shared by pointer so View (on a Model copy) and Update agree.
@@ -68,6 +76,7 @@ type artStore struct {
 	imgs     map[string]*artImage
 	encs     map[artKey]*artEncoding
 	inflight int
+	kittySeq int // next kitty image ID sequence number
 }
 
 type artImage struct {
@@ -87,6 +96,8 @@ type artKey struct {
 type artEncoding struct {
 	sixel   []byte
 	blocks  []string
+	kittyID uint32   // kitty image ID, assigned when the encode starts
+	kitty   []string // placeholder lines, set once the image is transmitted
 	loading bool
 }
 
@@ -99,6 +110,8 @@ func (m *Model) SetImageMode(s string) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "sixel":
 		m.imgMode = imagesSixel
+	case "kitty":
+		m.imgMode = imagesKitty
 	case "blocks", "halfblocks", "text":
 		m.imgMode = imagesBlocks
 	case "off", "none", "false":
@@ -106,6 +119,8 @@ func (m *Model) SetImageMode(s string) {
 	default:
 		m.imgMode = imagesAuto
 	}
+	m.imgTmux = os.Getenv("TMUX") != ""
+	m.kittyNamed = kittyPlaceholderEnv()
 }
 
 // SetImageLayer attaches the output layer images are drawn through.
@@ -122,6 +137,11 @@ func (m *Model) SetImageLayer(l *termimg.Layer) {
 	}
 }
 
+// SetImageOutput sets where kitty graphics sequences are written: the
+// program output, so they are serialized with Bubbletea's frames. Without
+// one (tests) kitty images are never transmitted.
+func (m *Model) SetImageOutput(w io.Writer) { m.imgOut = w }
+
 // artKindNow resolves the image mode against what the terminal reported.
 func (m Model) artKindNow() artKind {
 	if m.art == nil {
@@ -134,11 +154,34 @@ func (m Model) artKindNow() artKind {
 		return artSixel
 	case imagesBlocks:
 		return artBlocks
+	case imagesKitty:
+		return artKitty
 	}
-	if m.termSixel {
+	switch {
+	case m.termKitty && m.kittyNamed:
+		return artKitty
+	case m.termSixel:
 		return artSixel
 	}
 	return artBlocks
+}
+
+// kittyPlaceholderTerm reports whether an XTVERSION name is a terminal known
+// to render kitty Unicode placeholders. Answering the graphics query is not
+// enough: other terminals implement parts of the protocol without them.
+func kittyPlaceholderTerm(name string) bool {
+	n := strings.ToLower(name)
+	return strings.HasPrefix(n, "kitty") || strings.HasPrefix(n, "ghostty")
+}
+
+// kittyPlaceholderEnv is kittyPlaceholderTerm for terminals identified by
+// their environment instead of an XTVERSION reply.
+func kittyPlaceholderEnv() bool {
+	switch os.Getenv("TERM") {
+	case "xterm-kitty", "xterm-ghostty":
+		return true
+	}
+	return os.Getenv("TERM_PROGRAM") == "ghostty"
 }
 
 // cellPx is the terminal's cell size in pixels (CSI 16 t), with the common
@@ -156,10 +199,17 @@ func (m Model) cellPx() (int, int) {
 // mode must not trust that answer there.
 func insidePsmux() bool { return os.Getenv("PSMUX_SESSION") != "" }
 
-// termImageQueries asks the terminal for its device attributes (Sixel is
-// attribute 4) and its cell size in pixels.
-func termImageQueries() tea.Cmd {
-	return tea.Batch(tea.Raw(ansi.RequestPrimaryDeviceAttributes), tea.Raw("\x1b[16t"))
+// termImageQueries asks the terminal for its cell size in pixels and its
+// device attributes (Sixel is attribute 4). In auto and kitty modes it
+// first probes kitty graphics and asks for the terminal's name (XTVERSION);
+// the replies arrive in order, so they are in before the DA1 answer. One
+// Raw keeps the order on the wire.
+func (m Model) termImageQueries() tea.Cmd {
+	q := "\x1b[16t"
+	if m.imgMode == imagesAuto || m.imgMode == imagesKitty {
+		q = termimg.KittyQuery() + ansi.RequestNameVersion + q
+	}
+	return tea.Raw(q + ansi.RequestPrimaryDeviceAttributes)
 }
 
 // handleTermImageEvent records terminal replies. It reports whether msg was
@@ -172,7 +222,17 @@ func (m *Model) handleTermImageEvent(msg tea.Msg) bool {
 				m.termSixel = true
 			}
 		}
-		applog.Debug("images: terminal attributes %v, sixel=%v, mode=%d", []int(ev), m.termSixel, m.imgMode)
+		applog.Debug("images: terminal attributes %v, sixel=%v, kitty=%v, placeholders=%v, mode=%d, using %d",
+			[]int(ev), m.termSixel, m.termKitty, m.kittyNamed, m.imgMode, m.artKindNow())
+		return true
+	case uv.KittyGraphicsEvent:
+		if ev.Options.ID == termimg.KittyQueryID && string(ev.Payload) == "OK" {
+			m.termKitty = true
+		}
+		return true
+	case tea.TerminalVersionMsg:
+		m.kittyNamed = m.kittyNamed || kittyPlaceholderTerm(ev.Name)
+		applog.Debug("images: terminal %q", ev.Name)
 		return true
 	case uv.CellSizeEvent:
 		if ev.Width > 0 && ev.Height > 0 && (ev.Width != m.cellW || ev.Height != m.cellH) {
@@ -196,9 +256,11 @@ type artFetchedMsg struct {
 }
 
 type artEncodedMsg struct {
-	key    artKey
-	sixel  []byte
-	blocks []string
+	key     artKey
+	sixel   []byte
+	blocks  []string
+	kittyID uint32
+	kitty   []byte // transmit sequence
 }
 
 func artPollCmd() tea.Cmd {
@@ -271,10 +333,13 @@ func (m *Model) immArtRequests() tea.Cmd {
 	}
 	cw, ch := m.cellPx()
 	a := m.art
+	var del []byte // kitty deletes, written once the lock is released
+	defer func() { m.kittyWrite(del) }()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	var cmds []tea.Cmd
-	for _, s := range m.immArtSlots() {
+	slots := m.immArtSlots()
+	for _, s := range slots {
 		im := a.imgs[s.url]
 		switch {
 		case im == nil:
@@ -282,6 +347,7 @@ func (m *Model) immArtRequests() tea.Cmd {
 				continue
 			}
 			if len(a.imgs) >= artMaxImages {
+				del = append(del, m.dropKittyLocked(nil)...)
 				a.imgs, a.encs = map[string]*artImage{}, map[artKey]*artEncoding{}
 			}
 			a.imgs[s.url] = &artImage{loading: true}
@@ -291,10 +357,19 @@ func (m *Model) immArtRequests() tea.Cmd {
 			key := artKey{url: s.url, w: s.rect.W, h: s.rect.H, cellW: cw, cellH: ch, kind: kind}
 			if a.encs[key] == nil {
 				if len(a.encs) >= artMaxEncodings {
+					del = append(del, m.dropKittyLocked(nil)...)
 					a.encs = map[artKey]*artEncoding{}
 				}
-				a.encs[key] = &artEncoding{loading: true}
-				cmds = append(cmds, encodeArtCmd(key, im.img, cw, ch))
+				e := &artEncoding{loading: true}
+				if kind == artKitty {
+					if a.kittyCountLocked() >= artMaxKitty {
+						del = append(del, m.dropKittyLocked(func(k artKey) bool { return slotsHave(slots, k) })...)
+					}
+					e.kittyID = termimg.KittyID(a.kittySeq % (termimg.KittyIDs - 1))
+					a.kittySeq++
+				}
+				a.encs[key] = e
+				cmds = append(cmds, encodeArtCmd(key, im.img, cw, ch, e.kittyID, m.imgTmux))
 			}
 		}
 	}
@@ -330,12 +405,20 @@ func (m *Model) handleArtMsg(msg tea.Msg) (tea.Cmd, bool) {
 		if m.art == nil {
 			return nil, true
 		}
+		var transmit []byte
 		m.art.mu.Lock()
-		if e := m.art.encs[msg.key]; e != nil {
+		if e := m.art.encs[msg.key]; e != nil && e.kittyID == msg.kittyID {
 			e.loading = false
 			e.sixel, e.blocks = msg.sixel, msg.blocks
+			if len(msg.kitty) > 0 && m.imgOut != nil {
+				transmit = msg.kitty
+				e.kitty = termimg.KittyPlaceholders(e.kittyID, msg.key.w, msg.key.h)
+			}
 		}
 		m.art.mu.Unlock()
+		// Sent before this Update returns, so it lands ahead of the frame
+		// that first shows the placeholder cells.
+		m.kittyWrite(transmit)
 		return nil, true
 	}
 	return nil, false
@@ -347,7 +430,78 @@ func (m *Model) startArtPolling() tea.Cmd {
 		return nil
 	}
 	m.artPolling = true
-	return tea.Batch(artPollCmd(), termImageQueries())
+	return tea.Batch(artPollCmd(), m.termImageQueries())
+}
+
+// — kitty image lifetime —
+
+// kittyWrite sends kitty graphics sequences to the terminal. They are out
+// of band (no cursor movement, no cells), so they may land between frames.
+func (m Model) kittyWrite(seq []byte) {
+	if m.imgOut == nil || len(seq) == 0 {
+		return
+	}
+	if _, err := m.imgOut.Write(seq); err != nil {
+		applog.Debug("images: kitty write: %v", err)
+	}
+}
+
+// kittyCountLocked counts the kitty encodings. Caller holds a.mu.
+func (a *artStore) kittyCountLocked() int {
+	n := 0
+	for k := range a.encs {
+		if k.kind == artKitty {
+			n++
+		}
+	}
+	return n
+}
+
+// dropKittyLocked forgets every kitty encoding keep rejects (all of them
+// when keep is nil) and returns the sequences that delete their images from
+// the terminal. An encode still running for a dropped key is discarded when
+// it lands. Caller holds m.art.mu.
+func (m Model) dropKittyLocked(keep func(artKey) bool) []byte {
+	var del []byte
+	maps.DeleteFunc(m.art.encs, func(k artKey, e *artEncoding) bool {
+		if k.kind != artKitty || (keep != nil && keep(k)) {
+			return false
+		}
+		if e.kitty != nil {
+			del = append(del, termimg.KittyDelete(e.kittyID, m.imgTmux)...)
+		}
+		return true
+	})
+	return del
+}
+
+// releaseImages deletes every kitty image cliamp put in the terminal:
+// leaving immersive or quitting. Deleting the visualizer image when it was
+// never sent is harmless (q=2 silences the error).
+func (m Model) releaseImages() {
+	if m.art == nil || m.imgOut == nil {
+		return
+	}
+	m.art.mu.Lock()
+	del := m.dropKittyLocked(nil)
+	m.art.mu.Unlock()
+	if m.artKindNow() == artKitty {
+		del = append(del, termimg.KittyDelete(kittyVisID, m.imgTmux)...)
+		if m.pixVis != nil {
+			m.pixVis.resend.Store(true)
+		}
+	}
+	m.kittyWrite(del)
+}
+
+// slotsHave reports whether k is the encoding of one of the frame's boxes.
+func slotsHave(slots []artSlot, k artKey) bool {
+	for _, s := range slots {
+		if s.url == k.url && s.rect.W == k.w && s.rect.H == k.h {
+			return true
+		}
+	}
+	return false
 }
 
 func fetchArtCmd(u string) tea.Cmd {
@@ -420,12 +574,15 @@ func loadArt(u string) (image.Image, error) {
 	return img, nil
 }
 
-func encodeArtCmd(key artKey, img image.Image, cellW, cellH int) tea.Cmd {
+func encodeArtCmd(key artKey, img image.Image, cellW, cellH int, kittyID uint32, tmux bool) tea.Cmd {
 	return func() tea.Msg {
 		switch key.kind {
 		case artSixel:
 			px := termimg.Fill(img, key.w*cellW, key.h*cellH)
 			return artEncodedMsg{key: key, sixel: termimg.EncodeSixel(px)}
+		case artKitty:
+			px := termimg.Fill(img, key.w*cellW, key.h*cellH)
+			return artEncodedMsg{key: key, kittyID: kittyID, kitty: termimg.KittyTransmit(kittyID, px, key.w, key.h, tmux)}
 		default:
 			px := termimg.Fill(img, key.w, key.h*2)
 			return artEncodedMsg{key: key, blocks: termimg.HalfBlocks(px)}
@@ -435,9 +592,9 @@ func encodeArtCmd(key artKey, img image.Image, cellW, cellH int) tea.Cmd {
 
 // — drawing —
 
-// immArtCells returns what the text frame shows in an art box: blanks
-// under a ready Sixel cover, the half-block cover, or ok=false to keep the
-// placeholder.
+// immArtCells returns what the text frame shows in an art box: kitty
+// placeholder cells, blanks under a ready Sixel cover, the half-block
+// cover, or ok=false to keep the placeholder.
 func (m Model) immArtCells(u string, w, h int) ([]string, bool) {
 	kind := m.artKindNow()
 	if kind == artNone || u == "" {
@@ -458,6 +615,8 @@ func (m Model) immArtCells(u string, w, h int) ([]string, bool) {
 		return lines, true
 	case kind == artBlocks && len(e.blocks) > 0:
 		return e.blocks, true
+	case kind == artKitty && e.kitty != nil:
+		return e.kitty, true
 	}
 	return nil, false
 }
