@@ -4,9 +4,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bjarneo/cliamp/internal/playback"
 	"github.com/bjarneo/cliamp/internal/resume"
 	"github.com/bjarneo/cliamp/playlist"
 )
+
+func TestRemoteQuitCapturesSession(t *testing.T) {
+	m := immQueuePageModel(t)
+	m.player.(*playbackFakeEngine).position = 42 * time.Second
+	updated, _ := m.Update(playback.QuitMsg{})
+	state := updated.(Model).ExitSession()
+	if state.Path != "/a" || state.PositionSec != 42 || len(state.Queue) != 1 || state.Immersive == nil || state.Immersive.View != "queue" {
+		t.Fatalf("remote quit captured %+v; want active track at 42s, queue and queue page", state)
+	}
+}
 
 func TestSessionStateContents(t *testing.T) {
 	local := playlist.Track{Path: "/music/a.mp3"}

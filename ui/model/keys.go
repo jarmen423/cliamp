@@ -22,11 +22,6 @@ import (
 
 // quit shuts down the player and signals the TUI to exit.
 func (m *Model) quit() tea.Cmd {
-	// Positions are kept only where they can be sought back to (local files,
-	// finite HTTP streams, Mixcloud shows); live streams and other yt-dlp
-	// sites are still reselected, from the start (see sessionState).
-	m.captureExitSession()
-
 	m.shutdown()
 	return tea.Quit
 }
@@ -34,6 +29,7 @@ func (m *Model) quit() tea.Cmd {
 // shutdown flushes pending saves, stops playback, and deletes terminal
 // images before the program exits.
 func (m *Model) shutdown() {
+	m.captureExitSession()
 	m.flushPendingSpeedSave()
 	m.flushPendingEQSave()
 	m.player.Close()

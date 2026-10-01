@@ -19,7 +19,7 @@ import (
 
 // Stable names for the saved page, indexed by the matching constants.
 var (
-	immViewNames = []string{"browse", "playlist", "album", "artist", "show", "search", "settings"}
+	immViewNames = []string{"browse", "playlist", "album", "artist", "show", "search", "settings", "queue"}
 	immKindNames = []string{"playlist", "album", "artist", "show", "track"}
 )
 
@@ -125,6 +125,12 @@ func (m *Model) applyImmersiveRestore() tea.Cmd {
 	}
 	pos := &immRestorePos{cursor: max(0, r.Cursor), scroll: max(0, r.Scroll)}
 	switch view := immersiveView(vi); {
+	case view == immViewQueue:
+		m.openImmersiveQueueView()
+		m.immRestorePos = pos
+		m.applyImmersiveRestorePos()
+		m.immRestorePos = nil // the live queue needs no asynchronous list fetch
+		m.immQueueViewSkipHeader(1)
 	case view == immViewSearch:
 		if r.Query == "" {
 			return nil

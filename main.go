@@ -111,8 +111,8 @@ func restoreResumeContext(state resume.State, restore func(playlist.Track) (play
 // provider (their auth token may have changed) and keeps every other track
 // as saved: local paths, radio URLs and provider URIs such as spotify:track
 // stay valid across launches. Emby shares the download-URL shape, so a URL
-// the configured Emby server owns is kept as saved instead of being dropped
-// when only Jellyfin can refresh.
+// the configured Emby server owns is kept until the play-time resolver
+// refreshes it with current authentication.
 func sessionTrackRestorer(jellyProv *jellyfin.Provider, embyURL string) func(playlist.Track) (playlist.Track, bool) {
 	return func(t playlist.Track) (playlist.Track, bool) {
 		if !jellyfin.IsStreamURL(t.Path) {
@@ -139,6 +139,27 @@ func streamURLOwnedBy(path, serverURL string) bool {
 		return false
 	}
 	return strings.EqualFold(u.Scheme, b.Scheme) && strings.EqualFold(u.Host, b.Host)
+}
+
+// mediaServerSourceResolver refreshes owned Emby and Jellyfin download URLs.
+// Both providers pass foreign URLs through, so they share the HTTP resolver.
+func mediaServerSourceResolver(jellyProv *jellyfin.Provider, embyProv *emby.Provider) player.SourceResolver {
+	return func(rawURL string) (player.ResolvedSource, error) {
+		var err error
+		if embyProv != nil {
+			rawURL, err = embyProv.ResolveSource(rawURL)
+			if err != nil {
+				return player.ResolvedSource{}, fmt.Errorf("refresh Emby stream: %w", err)
+			}
+		}
+		if jellyProv != nil {
+			rawURL, err = jellyProv.ResolveSource(rawURL)
+			if err != nil {
+				return player.ResolvedSource{}, fmt.Errorf("refresh Jellyfin stream: %w", err)
+			}
+		}
+		return player.ResolvedSource{URL: rawURL}, nil
+	}
 }
 
 // requeueSession re-queues the saved play-next entries: an entry already in
@@ -290,7 +311,8 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 		providers = append(providers, model.ProviderEntry{Key: "jellyfin", Name: "Jellyfin", Provider: jellyProv})
 	}
 
-	if embyProv := emby.NewFromConfig(cfg.Emby); embyProv != nil {
+	embyProv := emby.NewFromConfig(cfg.Emby)
+	if embyProv != nil {
 		providers = append(providers, model.ProviderEntry{Key: "emby", Name: "Emby", Provider: embyProv})
 	}
 
@@ -578,13 +600,11 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 		})
 	}
 
-	if jellyProv != nil {
-		// Refresh restored Jellyfin URLs without changing logical playlist paths.
+	if jellyProv != nil || embyProv != nil {
+		// Refresh restored server URLs without changing logical playlist paths.
+		resolver := mediaServerSourceResolver(jellyProv, embyProv)
 		for _, scheme := range []string{"http://", "https://"} {
-			p.RegisterSourceResolver(scheme, func(rawURL string) (player.ResolvedSource, error) {
-				u, err := jellyProv.ResolveSource(rawURL)
-				return player.ResolvedSource{URL: u}, err
-			})
+			p.RegisterSourceResolver(scheme, resolver)
 		}
 	}
 

@@ -44,6 +44,11 @@ func NewFromConfig(cfg config.EmbyConfig) *Provider {
 // Name returns the display name used in the provider selector.
 func (p *Provider) Name() string { return "Emby" }
 
+// ResolveSource refreshes matching Emby URLs when the engine opens them.
+func (p *Provider) ResolveSource(rawURL string) (string, error) {
+	return p.client.ResolveSource(rawURL)
+}
+
 // Refresh clears cached playlist, track, and album data so the next call
 // re-fetches from the server. Implements playlist.Refresher.
 func (p *Provider) Refresh() {

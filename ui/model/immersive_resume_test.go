@@ -60,6 +60,45 @@ func TestImmersiveResumeViewSavesPage(t *testing.T) {
 	}
 }
 
+func TestImmersiveQueuePageRestore(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		cursor, want int
+		empty        bool
+	}{
+		{"queued row", 3, 3, false},
+		{"section header", 2, 3, false},
+		{"empty queue", 90, 0, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			previous := immQueuePageModel(t)
+			previous.immersive.cursor = tt.cursor
+			saved := previous.immersiveResumeView()
+			if saved.View != "queue" {
+				t.Fatalf("saved view = %q, want queue", saved.View)
+			}
+			m, _ := relaunch(t, saved)
+			m.playlist = playlist.New()
+			if !tt.empty {
+				m.playlist.Add(previous.playlist.Tracks()...)
+				m.SetInitialTrack(0)
+				m.playlist.Queue(3)
+			}
+			listsAnswer(m, nil)
+			if m.immersive.view != immViewQueue || m.immersive.cursor != tt.want {
+				t.Fatalf("restored view=%d cursor=%d, want queue cursor=%d", m.immersive.view, m.immersive.cursor, tt.want)
+			}
+			if m.immRestorePos != nil {
+				t.Fatal("queue restore left an asynchronous cursor pending")
+			}
+			m.immersiveGoBack()
+			if m.immersive.view != immViewBrowse {
+				t.Fatal("restored queue page cannot go back to its section")
+			}
+		})
+	}
+}
+
 func TestImmersiveRestoreReopensPage(t *testing.T) {
 	for _, tt := range []struct {
 		name       string
@@ -74,7 +113,7 @@ func TestImmersiveRestoreReopensPage(t *testing.T) {
 		{"search re-runs its query", resume.View{Provider: "stub", Section: "search", View: "search", Query: "kanye"}, immViewSearch, "", 0},
 		{"other provider falls back to the root", resume.View{Provider: "Spotify", Section: "albums", View: "album", Kind: "album", ID: "al9"}, immViewBrowse, "", 0},
 		{"unknown section falls back to the root", resume.View{Provider: "stub", Section: "moods", View: "browse", Cursor: 2}, immViewBrowse, "", 0},
-		{"unknown view falls back to the root", resume.View{Provider: "stub", Section: "playlists", View: "queue", Cursor: 3, Scroll: 3}, immViewBrowse, "", 0},
+		{"unknown view falls back to the root", resume.View{Provider: "stub", Section: "playlists", View: "unknown", Cursor: 3, Scroll: 3}, immViewBrowse, "", 0},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			m, _ := relaunch(t, &tt.view)

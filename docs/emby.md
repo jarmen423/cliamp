@@ -56,6 +56,8 @@ Artist — Album Title (Year)
 
 Select an album to load its tracks. Press `E` to select Emby.
 
+Reopening cliamp without files, URLs, or a playlist restores the last session. Stream URLs use current authentication when playback starts, so saved tracks and queue entries remain playable after a token change. See [Last session](configuration.md#last-session).
+
 ## How it works
 
 cliamp authenticates with an API key or the supplied username and password. It resolves the active Emby user, lists music library views, gets albums from those views, then gets tracks for the selected album. Playback uses Emby's authenticated download endpoint and streams through the cliamp HTTP pipeline.
