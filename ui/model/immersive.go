@@ -76,6 +76,7 @@ const (
 	immViewShow                          // podcast show episodes
 	immViewSearch                        // search results
 	immViewSettings                      // settings/EQ tab (key-only, no pill)
+	immViewQueue                         // queue page (immersive_queue.go)
 )
 
 // isTrackView reports whether the canvas shows a track list (detail or
@@ -86,6 +87,15 @@ func (v immersiveView) isTrackView() bool {
 		return true
 	}
 	return false
+}
+
+// canvasMode is the presentation the canvas draws: the chosen mode, except
+// the queue page, which is always a list.
+func (im immersiveState) canvasMode() immCanvasMode {
+	if im.view == immViewQueue {
+		return immCanvasList
+	}
+	return im.mode
 }
 
 // immCanvasMode is the canvas presentation style cycled by `v`.
@@ -133,6 +143,7 @@ const (
 	immKindArtist
 	immKindShow // podcast show
 	immKindTrack
+	immKindHeader // queue-page section label; never selected
 )
 
 // immItem is one selectable canvas row: a collection in a browse view or a
@@ -586,6 +597,9 @@ func (m Model) canvasItems() []immItem {
 	im := m.immersive
 	if im.view == immViewSettings {
 		return nil
+	}
+	if im.view == immViewQueue {
+		return m.immQueueViewItems()
 	}
 	if im.view.isTrackView() {
 		return trackItems(m.sortedTracks())

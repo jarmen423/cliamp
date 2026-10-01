@@ -467,7 +467,7 @@ footer a{color:var(--fg-2)}
       </div>
       <div class="feat">
         <div class="feat-k">MOUSE &amp; CONTEXT MENU</div>
-        <p>Click or drag on the progress bar to seek, and double-click a track to play it. Right-click any track — playlist, queue, search results, artist pages, provider browsers — for a context menu: add to a playlist, start a song radio, queue it, jump to its album or artist, remove it, or view credits. Every item has a keyboard equivalent (<kbd>;</kbd> opens the menu), and terminals without mouse reporting work exactly as before.</p>
+        <p>Click or drag on the progress bar to seek, and double-click a track to play it. Right-click any track — playlist, queue, search results, artist pages, provider browsers — for a context menu: add to a playlist, start a song, artist, or album radio, queue it, jump to its album or artist, remove it, or view credits. Artist and album radio appear when the provider can identify and load the collection and recommend tracks. Every item has a keyboard equivalent (<kbd>;</kbd> opens the menu), and terminals without mouse reporting work exactly as before.</p>
       </div>
     </div>
   </section>
@@ -750,7 +750,7 @@ user_id = "your-account-user-id"</code></pre>
       <div class="feature"><div class="feature-icon">↔</div><div class="feature-name">Responsive TUI</div><p>Full, compact, and minimal layouts keep playback usable in terminal splits and small SSH sessions.</p></div>
       <div class="feature"><div class="feature-icon">⟲</div><div class="feature-name">Undo Queue Edits</div><p>Restore the last playlist removal or queue clear with <kbd>Ctrl+Z</kbd>.</p></div>
       <div class="feature"><div class="feature-icon">⌨</div><div class="feature-name">Consistent Keyboard Input</div><p>Search, URLs, playlist names, and jump prompts support cursor movement, paste, word deletion, and clear-line editing.</p></div>
-      <div class="feature"><div class="feature-icon">☰</div><div class="feature-name">Mouse &amp; Context Menu</div><p>Click or drag on the progress bar to seek, double-click a track to play it; right-click any track for a context menu (add to playlist, song radio, queue, album, artist, remove, credits) — every item has a keyboard equivalent.</p></div>
+      <div class="feature"><div class="feature-icon">☰</div><div class="feature-name">Mouse &amp; Context Menu</div><p>Click or drag on the progress bar to seek, double-click a track to play it; right-click any track for a context menu (add to playlist, song, artist, or album radio, queue, album, artist, remove, credits) — every item has a keyboard equivalent.</p></div>
     </div>
   </div>
 </section>
@@ -919,7 +919,7 @@ var KEYS=[
   ["Space","play / pause"],["> / <","next / prev"],["+ / -","volume"],["← / →","seek 5s"],
   ["e","EQ preset"],["v / V","visualizer / full screen"],["t","theme, or hide the title in full screen"],["y","lyrics"],
   ["/","filter playlist"],["Ctrl+F","search provider or YouTube"],["z / r","shuffle / repeat"],["a","queue next"],
-  ["o","file browser"],["R / O","radio / podcasts"],["I","immersive layout"],["? / Ctrl+K","find and run commands"]
+  ["o","file browser"],["R / O","radio / podcasts"],["I","immersive layout"],["Q / R","immersive queue page / radio"],["? / Ctrl+K","find and run commands"]
 ];
 
 var COMMUNITY=[

@@ -569,6 +569,8 @@ func (m Model) immCanvasTitle() string {
 		}
 	case immViewSettings:
 		return "Settings"
+	case immViewQueue:
+		return "Queue"
 	case immViewSearch:
 		title = "Search"
 		if im.ctxName != "" {
@@ -662,6 +664,8 @@ func (m Model) renderImmCanvasInner(w, rows int) []string {
 			}
 		case im.view == immViewBrowse:
 			lines[0] = dimStyle.Render("  (empty)")
+		case im.view == immViewQueue:
+			lines[0] = dimStyle.Render("  Nothing playing and nothing queued. Press Q to go back and choose a track.")
 		default:
 			lines[0] = dimStyle.Render("  (empty)")
 		}
@@ -675,7 +679,7 @@ func (m Model) renderImmCanvasInner(w, rows int) []string {
 	if playing, _ := m.currentPlaybackTrack(); playing.Path != "" {
 		playingPath = playing.Path
 	}
-	if im.mode == immCanvasGrid {
+	if im.canvasMode() == immCanvasGrid {
 		// Tiles in one band are disjoint columns: concat their lines in x
 		// order per band row rather than overwriting.
 		bands := map[int][]immItemGeom{}
@@ -720,7 +724,7 @@ func (m Model) renderImmCanvasInner(w, rows int) []string {
 		item := items[g.idx]
 		sel := g.idx == im.cursor && im.focus == immPaneCanvas
 		y := g.box.Y - oy
-		switch im.mode {
+		switch im.canvasMode() {
 		case immCanvasList:
 			if y >= 0 && y < rows {
 				lines[y] = m.immItemListLine(item, g.idx, w, sel, playingPath)
@@ -739,7 +743,13 @@ func (m Model) renderImmCanvasInner(w, rows int) []string {
 // immItemListLine draws a list-mode row: number, title, and right-aligned
 // details.
 func (m Model) immItemListLine(item immItem, idx, w int, sel bool, playingPath string) string {
+	if item.kind == immKindHeader {
+		return labelStyle.Render(" " + ansi.Truncate(item.title, max(1, w-1), "…"))
+	}
 	num := fmt.Sprintf("%3d ", idx+1)
+	if m.immersive.view == immViewQueue {
+		num = "    " // the queue page's sections number nothing
+	}
 	right := item.sub
 	if item.sub2 != "" {
 		if right != "" {
@@ -841,7 +851,7 @@ func (m Model) immCanvasItemsGeom(iw, ih int) []immItemGeom {
 	}
 	g := m.immGeom()
 	ox, oy := g.canvasX+1, g.bodyY+1
-	switch im.mode {
+	switch im.canvasMode() {
 	case immCanvasRows:
 		per := ih / immRowsItemH
 		if per < 1 {

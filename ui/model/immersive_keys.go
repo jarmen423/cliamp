@@ -83,6 +83,24 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.immersive.focus = immPaneCanvas
 		m.immersiveHome()
 		return nil
+	case "Q":
+		return m.openImmersiveQueueView()
+	case "R":
+		return m.immersiveRadio()
+	case "x":
+		if m.immersive.view == immViewQueue && m.immersive.focus == immPaneCanvas {
+			return m.immQueueViewRemove()
+		}
+		return nil
+	case "shift+up", "shift+down":
+		if m.immersive.view == immViewQueue && m.immersive.focus == immPaneCanvas {
+			dir := 1
+			if msg.String() == "shift+up" {
+				dir = -1
+			}
+			return m.immQueueViewMove(dir)
+		}
+		return nil
 	case "q":
 		if m.immersive.focus == immPaneQueue {
 			m.immersive.focus = immPaneCanvas
@@ -270,7 +288,7 @@ func (m *Model) immersiveEscape() tea.Cmd {
 // immersivePageStep is the page-scroll step in the active cursor domain.
 func (m Model) immersivePageStep() int {
 	g := m.immGeom()
-	switch m.immersive.mode {
+	switch m.immersive.canvasMode() {
 	case immCanvasRows:
 		return max(1, g.canvasIH/immRowsItemH-1)
 	case immCanvasGrid:
@@ -319,7 +337,7 @@ func (m *Model) immersiveMoveCanvas(dy, dx int) {
 		return
 	}
 	step := dy
-	if im.mode == immCanvasGrid {
+	if im.canvasMode() == immCanvasGrid {
 		cols := m.immGridCols(m.immGeom().canvasIW)
 		step = dy*cols + dx
 	} else {
@@ -327,6 +345,13 @@ func (m *Model) immersiveMoveCanvas(dy, dx int) {
 	}
 	im.cursor = clampInt(im.cursor+step, 0, n-1)
 	m.clampCanvasScroll()
+	if im.view == immViewQueue {
+		dir := 1
+		if step < 0 {
+			dir = -1
+		}
+		m.immQueueViewSkipHeader(dir)
+	}
 }
 
 // clampCanvasScroll re-derives scroll so the cursor row stays visible. In
@@ -335,7 +360,7 @@ func (m *Model) clampCanvasScroll() {
 	im := &m.immersive
 	g := m.immGeom()
 	n := len(m.canvasItems())
-	switch im.mode {
+	switch im.canvasMode() {
 	case immCanvasRows:
 		per := max(1, g.canvasIH/immRowsItemH)
 		im.scroll = clampedScroll(im.scroll, im.cursor, n, per)
@@ -379,6 +404,12 @@ func (m *Model) immersiveActivate() tea.Cmd {
 
 // activateItem runs a canvas item: collections open, tracks play.
 func (m *Model) activateItem(item immItem) tea.Cmd {
+	if m.immersive.view == immViewQueue {
+		return m.immQueueViewActivate(item)
+	}
+	if item.kind == immKindHeader {
+		return nil
+	}
 	if item.kind == immKindTrack {
 		idx, err := strconv.Atoi(item.id)
 		if err != nil || idx < 0 || idx >= len(m.sortedTracks()) {
@@ -418,7 +449,12 @@ func (m *Model) immersiveQueueJump() tea.Cmd {
 	if m.immersive.queueCursor < 0 || m.immersive.queueCursor >= len(entries) {
 		return nil
 	}
-	idx := entries[m.immersive.queueCursor].TrackIndex
+	return m.immJumpToTrack(entries[m.immersive.queueCursor].TrackIndex)
+}
+
+// immJumpToTrack plays the playlist track at idx, taking it off the
+// play-next queue if it was queued.
+func (m *Model) immJumpToTrack(idx int) tea.Cmd {
 	if idx < 0 || idx >= m.playlist.Len() {
 		return nil
 	}
@@ -443,10 +479,7 @@ func (m *Model) immersiveQueueAppend() tea.Cmd {
 	if track.Path == "" {
 		return nil
 	}
-	m.playlist.Add(track)
-	m.playlist.Queue(m.playlist.Len() - 1)
-	m.status.Showf(statusTTLShort, "Queued %s", trackViewName(track))
-	return m.rearmPreload()
+	return m.queueTrackNext(track)
 }
 
 // immersiveToggleLike hearts the focused track or, lacking a track context,
@@ -579,6 +612,9 @@ func (m *Model) immersiveCursorHome() {
 	default:
 		m.immersive.cursor, m.immersive.scroll = 0, 0
 		m.immersive.settingsCursor = 0
+		if m.immersive.view == immViewQueue {
+			m.immQueueViewSkipHeader(1)
+		}
 	}
 }
 
@@ -629,6 +665,9 @@ func (m Model) immersiveFocusedTrack() (playlist.Track, menuRemoveKind, int, boo
 			return rows[c].Track, menuRemoveQueue, c, true
 		}
 		return rows[c].Track, menuRemoveNone, 0, true
+	}
+	if m.immersive.view == immViewQueue {
+		return m.immQueueViewFocused()
 	}
 	if m.immersive.view.isTrackView() {
 		tracks := m.sortedTracks()

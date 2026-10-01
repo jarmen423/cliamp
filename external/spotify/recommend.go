@@ -27,9 +27,9 @@ const (
 )
 
 // metaSpotifyArtistIDs is the ProviderMeta key carrying a comma-separated
-// list of a track's artist IDs, when the source recorded them. trackFromItem
-// does not populate it today, so the discovery artist-absence check is
-// best-effort: with no IDs on the seed tracks every top artist qualifies.
+// list of a track's artist IDs. trackFromItem fills it; tracks from other
+// sources (queues, saved lists) may carry names only, so the discovery
+// artist-absence check keeps a name fallback.
 const metaSpotifyArtistIDs = "spotify.artist_ids"
 
 // recommendCollector accumulates recommendation candidates, deduped by
@@ -268,7 +268,11 @@ func (p *SpotifyProvider) fetchRecommendAlbumTracks(ctx context.Context, album s
 		t.Album = album.Name
 		t.AlbumArtURL = artURL
 		t.Year = year
-		t.ProviderMeta = map[string]string{metaSpotifyID: item.ID}
+		if t.ProviderMeta == nil {
+			t.ProviderMeta = map[string]string{}
+		}
+		t.ProviderMeta[metaSpotifyID] = item.ID
+		t.ProviderMeta[playlist.MetaAlbumID] = album.ID
 		tracks = append(tracks, t)
 	}
 	return tracks, nil

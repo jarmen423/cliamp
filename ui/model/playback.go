@@ -351,12 +351,17 @@ func (m *Model) cancelSpotRequest() {
 	}
 }
 
-// queueTrackNext adds a track to the playlist and queues it to play next.
+// queueTrackNext queues a track to play next: in place when it is already in
+// the playlist, appended otherwise. When nothing is playing, the queue starts
+// right away (search `q`, IPC queue and Spotify Connect rely on that).
 func (m *Model) queueTrackNext(track playlist.Track) tea.Cmd {
-	m.playlist.Add(track)
-	m.loadedPlaylist = ""
-	m.addToHeaderState([]playlist.Track{track})
-	idx := m.playlist.Len() - 1
+	idx := m.playlist.IndexOfPath(track.Path)
+	if idx < 0 {
+		m.playlist.Add(track)
+		m.loadedPlaylist = ""
+		m.addToHeaderState([]playlist.Track{track})
+		idx = m.playlist.Len() - 1
+	}
 	m.playlist.Queue(idx)
 	m.normalizeQueueOverlay()
 	m.status.Showf(statusTTLMedium, "Queued: %s", track.DisplayName())

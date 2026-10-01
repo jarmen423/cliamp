@@ -109,6 +109,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case trackRadioMsg:
 		return m, m.handleTrackRadio(msg)
 
+	case collectionRadioMsg:
+		return m, m.handleCollectionRadio(msg)
+
 	case menuArtistMsg:
 		if msg.gen != m.requests.trackMenu {
 			return m, nil
