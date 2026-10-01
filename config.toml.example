@@ -73,8 +73,9 @@ eq = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 # Cover art in the immersive layout: "auto" uses Sixel images where the
 # terminal supports them (Windows Terminal, foot, WezTerm, xterm -ti vt340)
-# and colored half-block text elsewhere; "sixel" or "blocks" forces one;
-# "off" keeps the text placeholders.
+# and colored half-block text elsewhere (including inside psmux, which does
+# not pass images through); "sixel" or "blocks" forces one; "off" keeps the
+# text placeholders. Items without cover art get a generated cliamp tile.
 # images = "auto"
 
 # Canvas view the immersive layout opens in: "list", "rows" or "grid".

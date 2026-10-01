@@ -150,6 +150,12 @@ func (m Model) cellPx() (int, int) {
 	return 10, 20
 }
 
+// insidePsmux reports whether cliamp runs in a psmux pane. psmux (tmux for
+// Windows) re-renders panes through ConPTY and passes no image sequences
+// on, but its answer to the attributes query can still claim Sixel, so auto
+// mode must not trust that answer there.
+func insidePsmux() bool { return os.Getenv("PSMUX_SESSION") != "" }
+
 // termImageQueries asks the terminal for its device attributes (Sixel is
 // attribute 4) and its cell size in pixels.
 func termImageQueries() tea.Cmd {
@@ -162,7 +168,7 @@ func (m *Model) handleTermImageEvent(msg tea.Msg) bool {
 	switch ev := msg.(type) {
 	case uv.PrimaryDeviceAttributesEvent:
 		for _, a := range ev {
-			if a == 4 {
+			if a == 4 && !insidePsmux() {
 				m.termSixel = true
 			}
 		}
@@ -206,6 +212,32 @@ type artSlot struct {
 	rect immRect
 }
 
+// placeholderArtScheme marks a generated cover: items without artwork get
+// a "cliamp-art:<name>" URL, and loadArt draws a placeholder tile for it
+// instead of fetching, so placeholders go through the same encode path
+// (Sixel, kitty or half-blocks) as real covers.
+const placeholderArtScheme = "cliamp-art:"
+
+// artURLFor returns the cover URL for an art box: the real cover when the
+// item has one, otherwise a generated placeholder seeded by the item name.
+func artURLFor(u, name string) string {
+	if u != "" || name == "" {
+		return u
+	}
+	return placeholderArtScheme + name
+}
+
+// immNowPlayingArt is the Now Playing box's art URL and the name its
+// placeholder is seeded with ("cliamp" when nothing is loaded).
+func (m Model) immNowPlayingArt() (string, string) {
+	track, _ := m.currentPlaybackTrack()
+	name := track.Title
+	if name == "" {
+		name = trackViewName(track)
+	}
+	return artURLFor(track.AlbumArtURL, firstNonEmpty(track.Album, name, "cliamp")), name
+}
+
 // immArtSlots lists the art boxes the current frame draws.
 func (m Model) immArtSlots() []artSlot {
 	if !m.immersiveShown() || m.fullVis {
@@ -213,16 +245,18 @@ func (m Model) immArtSlots() []artSlot {
 	}
 	g := m.immGeom()
 	var slots []artSlot
-	if t, _ := m.currentPlaybackTrack(); t.AlbumArtURL != "" && g.npArt.W > 0 && g.npArt.H > 0 {
-		slots = append(slots, artSlot{url: t.AlbumArtURL, rect: g.npArt})
+	if u, _ := m.immNowPlayingArt(); g.npArt.W > 0 && g.npArt.H > 0 && !m.immSuggestCovers(g.npArt) {
+		slots = append(slots, artSlot{url: u, rect: g.npArt})
 	}
 	if m.immersive.mode == immCanvasList || m.immersive.view == immViewSettings {
 		return slots
 	}
 	items := m.canvasItems()
 	for _, it := range m.immCanvasItemsGeom(g.canvasIW, g.canvasIH) {
-		if it.idx < len(items) && items[it.idx].art != "" && it.art.W > 0 && it.art.H > 0 {
-			slots = append(slots, artSlot{url: items[it.idx].art, rect: it.art})
+		if it.idx < len(items) && it.art.W > 0 && it.art.H > 0 && !m.immSuggestCovers(it.art) {
+			if u := artURLFor(items[it.idx].art, items[it.idx].title); u != "" {
+				slots = append(slots, artSlot{url: u, rect: it.art})
+			}
 		}
 	}
 	return slots
@@ -323,10 +357,17 @@ func fetchArtCmd(u string) tea.Cmd {
 	}
 }
 
-// loadArt fetches and decodes one cover from an http(s) or file:// URL.
+// placeholderArtSide is the pixel size placeholder tiles are drawn at; the
+// encoder scales them to the box like any cover.
+const placeholderArtSide = 256
+
+// loadArt fetches and decodes one cover from an http(s) or file:// URL, or
+// draws a generated placeholder for a cliamp-art: URL.
 func loadArt(u string) (image.Image, error) {
 	var r io.ReadCloser
 	switch {
+	case strings.HasPrefix(u, placeholderArtScheme):
+		return termimg.PlaceholderArt(strings.TrimPrefix(u, placeholderArtScheme), placeholderArtSide), nil
 	case strings.HasPrefix(u, "file://"):
 		p, err := url.Parse(u)
 		if err != nil {

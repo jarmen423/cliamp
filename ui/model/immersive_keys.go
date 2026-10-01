@@ -248,6 +248,7 @@ func (m *Model) openImmersiveSearch() tea.Cmd {
 	m.immersiveSetSection(immSecSearch)
 	m.immersive.searching = true
 	m.immersive.searchQuery = ""
+	m.closeImmersiveSuggest()
 	return nil
 }
 
@@ -458,8 +459,8 @@ func (m *Model) immersiveToggleLike() tea.Cmd {
 	var ok bool
 	if m.immersive.view.isTrackView() {
 		tracks := m.sortedTracks()
-		if m.immersive.cursor < len(tracks) {
-			track, ok = tracks[m.immersive.cursor], true
+		if c := m.immersive.cursor; c >= 0 && c < len(tracks) && !isSearchPlaceholder(tracks[c]) {
+			track, ok = tracks[c], true
 		}
 	} else {
 		track, _ = m.currentPlaybackTrack()
@@ -496,10 +497,25 @@ func (m *Model) handleImmersiveInputKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		m.immersive.searching = false
 		m.immersive.filtering = false
+		m.closeImmersiveSuggest()
+		return nil
+	case "down", "ctrl+n", "up", "ctrl+p":
+		if m.immersive.searching && len(m.immersive.suggest) > 0 {
+			step := 1
+			if k := msg.String(); k == "up" || k == "ctrl+p" {
+				step = -1
+			}
+			// -1 is "no pick": Enter then runs the full search.
+			m.immersive.suggestCursor = clampInt(m.immersive.suggestCursor+step, -1, len(m.immersive.suggest)-1)
+		}
 		return nil
 	case "enter":
 		if m.immersive.searching {
+			if c := m.immersive.suggestCursor; c >= 0 && c < len(m.immersive.suggest) {
+				return m.openImmersiveSuggestion(c)
+			}
 			m.immersive.searching = false
+			m.closeImmersiveSuggest()
 			return m.runImmersiveSearch()
 		}
 		m.immersive.filtering = false
@@ -516,28 +532,43 @@ func (m *Model) handleImmersiveInputKey(msg tea.KeyPressMsg) tea.Cmd {
 	if m.immersive.filtering {
 		// The visible list changes with every edit; restart at its top.
 		m.immersive.cursor, m.immersive.scroll = 0, 0
-	}
-	return nil
-}
-
-// runImmersiveSearch fires the provider's track search into the canvas.
-func (m *Model) runImmersiveSearch() tea.Cmd {
-	s, ok := m.immersive.prov.(provider.Searcher)
-	if !ok || m.immersive.searchQuery == "" {
 		return nil
 	}
+	return m.immersiveSuggestChanged()
+}
+
+// runImmersiveSearch fires the provider's search into the canvas: the
+// ranked multi-type search when the provider has one, otherwise its track
+// search.
+func (m *Model) runImmersiveSearch() tea.Cmd {
+	multi, isMulti := m.immersive.prov.(provider.MultiSearcher)
+	s, ok := m.immersive.prov.(provider.Searcher)
+	if (!ok && !isMulti) || m.immersive.searchQuery == "" {
+		return nil
+	}
+	m.beginImmersiveSearchView()
+	m.immersive.searchLoading = true
+	m.immersive.tracksLoading = true
+	gen := nextRequest(&m.requests.immersiveSearch)
+	if isMulti {
+		return fetchImmersiveMultiSearchCmd(context.Background(), multi, m.immersive.prov.Name(), m.immersive.searchQuery, gen)
+	}
+	return fetchImmersiveSearchCmd(context.Background(), s, m.immersive.prov.Name(), m.immersive.searchQuery, gen)
+}
+
+// beginImmersiveSearchView switches the canvas to empty results for the
+// current query, recording history so Back returns to the previous view.
+func (m *Model) beginImmersiveSearchView() {
 	m.pushImmersiveBack()
 	m.dropImmersiveFetches()
 	m.immersive.view = immViewSearch
 	m.immersive.ctxID, m.immersive.ctxName = "", "Search: "+m.immersive.searchQuery
 	m.immersive.ctxSub = "Results"
 	m.immersive.ctxKind = immKindTrack
-	m.immersive.searchLoading = true
+	m.immersive.trackSort = immSortTrackOrder
 	m.immersive.tracks = nil
-	m.immersive.tracksLoading = true
 	m.immersive.cursor, m.immersive.scroll = 0, 0
 	m.immersive.focus = immPaneCanvas
-	return fetchImmersiveSearchCmd(context.Background(), s, m.immersive.prov.Name(), m.immersive.searchQuery, nextRequest(&m.requests.immersiveSearch))
 }
 
 // immersiveCursorHome snaps the active cursor back to the first row.
@@ -602,7 +633,7 @@ func (m Model) immersiveFocusedTrack() (playlist.Track, menuRemoveKind, int, boo
 	if m.immersive.view.isTrackView() {
 		tracks := m.sortedTracks()
 		c := m.immersive.cursor
-		if c < 0 || c >= len(tracks) || tracks[c].IsAlbum() {
+		if c < 0 || c >= len(tracks) || isSearchPlaceholder(tracks[c]) {
 			return playlist.Track{}, menuRemoveNone, 0, false
 		}
 		return tracks[c], menuRemoveNone, 0, true

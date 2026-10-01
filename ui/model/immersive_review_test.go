@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/bjarneo/cliamp/playlist"
 	"github.com/bjarneo/cliamp/provider"
@@ -175,6 +176,24 @@ func TestImmersiveGoToAlbumTooSmallUsesClassic(t *testing.T) {
 	}
 }
 
+// Items without cover art get a generated placeholder tile through the
+// normal cover pipeline instead of the text mosaic.
+func TestArtURLForPlaceholder(t *testing.T) {
+	for _, tt := range []struct{ url, name, want string }{
+		{"https://i.scdn.co/x", "Mix", "https://i.scdn.co/x"},
+		{"", "Top Tracks", "cliamp-art:Top Tracks"},
+		{"", "", ""},
+	} {
+		if got := artURLFor(tt.url, tt.name); got != tt.want {
+			t.Errorf("artURLFor(%q, %q) = %q, want %q", tt.url, tt.name, got, tt.want)
+		}
+	}
+	img, err := loadArt("cliamp-art:Top Tracks")
+	if err != nil || img.Bounds().Dx() != placeholderArtSide {
+		t.Fatalf("loadArt(placeholder) = %v, %v; want a %dpx tile", img.Bounds(), err, placeholderArtSide)
+	}
+}
+
 // Quitting clears the layer, and the exit sequence (leave the alternate
 // screen, home, erase below) is not a frame: nothing is redrawn or erased
 // over the shell once the alternate screen is gone.
@@ -216,5 +235,21 @@ func TestImmersiveRightClickCollectionSelectsOnly(t *testing.T) {
 	immClickAt(m, it.box.X+1, it.box.Y, tea.MouseRight)
 	if m.trackMenu.visible || m.immersive.cursor != 1 {
 		t.Fatalf("menu visible=%v cursor=%d, want selection only", m.trackMenu.visible, m.immersive.cursor)
+	}
+}
+
+// psmux can relay the outer terminal's Sixel attribute but passes no image
+// sequences on, so auto mode must not pick Sixel inside it.
+func TestTermSixelIgnoredInsidePsmux(t *testing.T) {
+	for _, tt := range []struct {
+		psmux string
+		want  bool
+	}{{"", true}, {"work", false}} {
+		t.Setenv("PSMUX_SESSION", tt.psmux)
+		m := immersiveModel(t)
+		m.handleTermImageEvent(uv.PrimaryDeviceAttributesEvent{1, 4})
+		if m.termSixel != tt.want {
+			t.Errorf("PSMUX_SESSION=%q: termSixel = %v, want %v", tt.psmux, m.termSixel, tt.want)
+		}
 	}
 }
