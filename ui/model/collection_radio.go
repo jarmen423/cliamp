@@ -1,10 +1,11 @@
 package model
 
 // collection_radio.go is artist, album and playlist radio, next to song
-// radio (track_menu.go). Recommenders suggest tracks around a seed rather
-// than more of it (Spotify's leaves the seed's artists out), so a
-// collection radio mixes a spread of the collection's own tracks with the
-// recommendations: one of its tracks, then recommendations, and so on.
+// radio (track_menu.go). A provider that builds stations (RadioBuilder)
+// supplies the radio whole. Otherwise it comes from the Recommender, which
+// suggests tracks around a seed rather than more of it, so the radio mixes
+// a spread of the collection's own tracks with the recommendations: one of
+// its tracks, then recommendations, and so on.
 
 import (
 	"context"
@@ -13,6 +14,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/bjarneo/cliamp/applog"
 	"github.com/bjarneo/cliamp/playlist"
 	"github.com/bjarneo/cliamp/provider"
 )
@@ -20,10 +22,10 @@ import (
 // radioSeedMax is how many of a collection's tracks seed its radio.
 const radioSeedMax = 10
 
-// collectionRadioMsg carries a collection radio's seeds and recommendations.
+// collectionRadioMsg carries a collection radio's tracks, ready to play.
 type collectionRadioMsg struct {
 	label        string
-	seeds        []playlist.Track
+	name         string // the collection the radio is built from
 	tracks       []playlist.Track
 	err          error
 	providerName string
@@ -42,6 +44,34 @@ func radioLabel(kind immItemKind) string {
 		return "Playlist radio"
 	}
 	return ""
+}
+
+// radioSeedKind is the provider's name for the kind of collection a station
+// is built around.
+func radioSeedKind(kind immItemKind) string {
+	switch kind {
+	case immKindArtist:
+		return provider.RadioSeedArtist
+	case immKindAlbum:
+		return provider.RadioSeedAlbum
+	case immKindPlaylist:
+		return provider.RadioSeedPlaylist
+	}
+	return ""
+}
+
+// stationTracks is prov's station around seed; nil when it builds none, and
+// the radio then comes from its recommendations.
+func stationTracks(ctx context.Context, prov any, seed provider.RadioSeed, limit int) []playlist.Track {
+	rb, ok := prov.(provider.RadioBuilder)
+	if !ok {
+		return nil
+	}
+	tracks, err := rb.RadioTracks(ctx, seed, limit)
+	if err != nil {
+		applog.Debug("radio: no station, using recommendations: %v", err)
+	}
+	return tracks
 }
 
 // collectionTracksLoader returns how to load a collection's tracks on prov,
@@ -109,8 +139,9 @@ func mixRadio(seeds, recs []playlist.Track) []playlist.Track {
 	return out
 }
 
-// startCollectionRadio loads the collection's tracks, then asks prov's
-// recommender for tracks around a sample of them.
+// startCollectionRadio asks prov for the collection's station. Without one
+// it loads the collection's tracks and mixes a sample of them with the
+// recommender's tracks around that sample.
 func (m *Model) startCollectionRadio(prov playlist.Provider, kind immItemKind, id, name string) tea.Cmd {
 	rec, ok := prov.(provider.Recommender)
 	label := radioLabel(kind)
@@ -125,23 +156,29 @@ func (m *Model) startCollectionRadio(prov playlist.Provider, kind immItemKind, i
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		msg := collectionRadioMsg{label: label, providerName: providerName, gen: gen}
+		msg := collectionRadioMsg{label: label, name: name, providerName: providerName, gen: gen}
+		// A station needs only the collection's ID, not its tracks.
+		seed := provider.RadioSeed{Kind: radioSeedKind(kind), ID: id}
+		if msg.tracks = stationTracks(ctx, prov, seed, trackRadioLimit); len(msg.tracks) > 0 {
+			return msg
+		}
 		tracks, err := load()
 		if err != nil {
 			msg.err = err
 			return msg
 		}
-		msg.seeds = sampleSeeds(tracks, radioSeedMax)
-		if len(msg.seeds) == 0 {
+		seeds := sampleSeeds(tracks, radioSeedMax)
+		if len(seeds) == 0 {
 			msg.err = fmt.Errorf("%s has no playable tracks", name)
 			return msg
 		}
-		msg.tracks, msg.err = rec.RecommendTracks(ctx, msg.seeds, trackRadioLimit)
+		recs, err := rec.RecommendTracks(ctx, seeds, trackRadioLimit)
+		msg.tracks, msg.err = mixRadio(seeds, recs), err
 		return msg
 	}
 }
 
-// handleCollectionRadio plays the mixed radio batch.
+// handleCollectionRadio opens the radio batch.
 func (m *Model) handleCollectionRadio(msg collectionRadioMsg) tea.Cmd {
 	if msg.gen != m.requests.trackMenu {
 		return nil
@@ -150,7 +187,22 @@ func (m *Model) handleCollectionRadio(msg collectionRadioMsg) tea.Cmd {
 		m.status.Errorf(statusTTLDefault, "%s failed: %s", msg.label, msg.err)
 		return nil
 	}
-	return m.playRadio(msg.label, mixRadio(msg.seeds, msg.tracks))
+	m.openRadio(msg.label, msg.name, msg.tracks)
+	return nil
+}
+
+// showImmersiveRadio opens a radio in the canvas as a playlist page, one
+// history step from where it was started.
+func (m *Model) showImmersiveRadio(name string, tracks []playlist.Track) {
+	m.pushImmersiveBack()
+	m.dropImmersiveFetches()
+	im := &m.immersive
+	im.view = immViewRadio
+	im.ctxID, im.ctxName, im.ctxSub, im.ctxKind = "", name, "", immKindTrack
+	im.tracks = tracks
+	im.trackSort = immSortTrackOrder
+	im.cursor, im.scroll = 0, 0
+	im.focus = immPaneCanvas
 }
 
 // immersiveRadio is R: radio for the open playlist, album or artist, or in

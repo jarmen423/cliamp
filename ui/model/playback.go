@@ -23,6 +23,7 @@ func (m *Model) replacePlaylist(tracks []playlist.Track) {
 		tracks = playlist.WithPlaybackContext(tracks)
 	}
 	m.playlist.Replace(tracks)
+	m.playingContext = ""
 	m.normalizeQueueOverlay()
 }
 
@@ -441,7 +442,7 @@ func (m *Model) removeSelectedFromPlaylist() {
 			m.providerQueueLastPath = ""
 		}
 	}
-	m.playlistUndo = playlistUndo{active: true, snapshot: snapshot, loaded: loaded, saved: saved, persisted: persisted}
+	m.playlistUndo = playlistUndo{active: true, snapshot: snapshot, context: m.playingContext, loaded: loaded, saved: saved, persisted: persisted}
 	if wasActive {
 		m.stopPlayback()
 		m.player.ClearPreload()
@@ -478,6 +479,7 @@ func (m *Model) undoPlaylistMutation() tea.Cmd {
 		}
 	}
 	m.playlist.Restore(undo.snapshot)
+	m.playingContext = undo.context
 	m.normalizeQueueOverlay()
 	m.playlistUndo = playlistUndo{}
 	m.resetProviderQueueMirror()

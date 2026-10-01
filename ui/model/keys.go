@@ -3179,7 +3179,7 @@ func (m *Model) handleQueueKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "d":
 		removed := false
 		if qLen > 0 {
-			m.playlistUndo = playlistUndo{active: true, snapshot: m.playlist.Snapshot()}
+			m.playlistUndo = playlistUndo{active: true, snapshot: m.playlist.Snapshot(), context: m.playingContext}
 			m.playlist.RemoveQueueAt(m.queue.cursor)
 			removed = true
 			m.status.Show("Removed queued track (Ctrl+Z to undo)", statusTTLDefault)
@@ -3191,7 +3191,7 @@ func (m *Model) handleQueueKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "c":
 		cleared := false
 		if qLen > 0 {
-			m.playlistUndo = playlistUndo{active: true, snapshot: m.playlist.Snapshot()}
+			m.playlistUndo = playlistUndo{active: true, snapshot: m.playlist.Snapshot(), context: m.playingContext}
 			m.playlist.ClearQueue()
 			cleared = true
 			m.normalizeQueueOverlay()

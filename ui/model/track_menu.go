@@ -19,8 +19,8 @@ import (
 )
 
 // trackRadioLimit is how many recommendations a song-radio open asks for.
-// The seed itself is kept at the head so the queue starts where the user
-// pointed, then plays like any replaced queue.
+// The seed itself is kept at the head so the radio starts where the user
+// pointed.
 const trackRadioLimit = 30
 
 // trackMenuItem is one menu row. The accelerator is a live key inside the
@@ -261,7 +261,7 @@ func (m *Model) menuRemoveTrack() tea.Cmd {
 // removeQueuedAt drops queue position pos from the play-next queue, with
 // Ctrl+Z undo.
 func (m *Model) removeQueuedAt(pos int) tea.Cmd {
-	m.playlistUndo = playlistUndo{active: true, snapshot: m.playlist.Snapshot()}
+	m.playlistUndo = playlistUndo{active: true, snapshot: m.playlist.Snapshot(), context: m.playingContext}
 	m.playlist.RemoveQueueAt(pos)
 	m.normalizeQueueOverlay()
 	m.status.Show("Removed queued track (Ctrl+Z to undo)", statusTTLDefault)
@@ -305,7 +305,8 @@ type trackRadioMsg struct {
 	gen          uint64
 }
 
-// startTrackRadio dispatches a RecommendTracks call seeded from one track.
+// startTrackRadio fetches the radio around one track: its station, or the
+// recommender's tracks seeded from it.
 func (m *Model) startTrackRadio(t playlist.Track) tea.Cmd {
 	rec, name := m.recommenderForTrack(t)
 	if rec == nil {
@@ -317,13 +318,18 @@ func (m *Model) startTrackRadio(t playlist.Track) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		tracks, err := rec.RecommendTracks(ctx, []playlist.Track{t}, trackRadioLimit)
+		seed := []playlist.Track{t}
+		tracks := stationTracks(ctx, rec, provider.RadioSeed{Tracks: seed}, trackRadioLimit)
+		var err error
+		if len(tracks) == 0 {
+			tracks, err = rec.RecommendTracks(ctx, seed, trackRadioLimit)
+		}
 		return trackRadioMsg{seed: t, tracks: tracks, err: err, providerName: name, gen: gen}
 	}
 }
 
-// handleTrackRadio applies the radio batch: the seed first, then the
-// recommendations (minus the seed if the provider echoed it back).
+// handleTrackRadio opens the radio batch: the seed first, then the
+// station or recommendations (minus the seed if the provider echoed it back).
 func (m *Model) handleTrackRadio(msg trackRadioMsg) tea.Cmd {
 	if msg.gen != m.requests.trackMenu {
 		return nil
@@ -345,17 +351,26 @@ func (m *Model) handleTrackRadio(msg trackRadioMsg) tea.Cmd {
 		m.status.Show("No recommendations found", statusTTLDefault)
 		return nil
 	}
-	return m.playRadio("Song radio", tracks)
+	m.openRadio("Song radio", firstNonEmpty(seed.Title, seed.DisplayName()), tracks)
+	return nil
 }
 
-// playRadio replaces the playlist with a radio batch and plays its first
-// track.
-func (m *Model) playRadio(label string, tracks []playlist.Track) tea.Cmd {
+// openRadio opens a radio batch as a playlist named after its seed, for the
+// listener to play: a page in the immersive canvas, which leaves the queue
+// alone until a row is played, or the queue itself in the classic layout,
+// which has no pages. Whatever is playing keeps playing.
+func (m *Model) openRadio(label, seedName string, tracks []playlist.Track) {
+	name := seedName + " Radio"
+	m.status.Successf(statusTTLDefault, "%s: %d tracks, Enter plays", label, len(tracks))
+	if m.immersiveShown() {
+		m.showImmersiveRadio(name, tracks)
+		return
+	}
 	m.retireTracksPaging()
 	m.replacePlayerPlaylist(tracks)
-	m.status.Successf(statusTTLDefault, "%s: %d tracks", label, len(tracks))
+	m.resetProviderQueueMirror()
+	m.playingContext = name
 	m.notifyAll()
-	return m.playCurrentTrack()
 }
 
 // — go to artist / album —

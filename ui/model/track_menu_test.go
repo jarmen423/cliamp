@@ -282,7 +282,7 @@ func TestCreditsOverlayScrollBounds(t *testing.T) {
 	}
 }
 
-func TestTrackRadioMsgPlaysSeedFirst(t *testing.T) {
+func TestTrackRadioMsgQueuesSeedFirst(t *testing.T) {
 	seed := playlist.Track{Title: "Seed", Path: "net:seed"}
 	recs := []playlist.Track{
 		{Title: "R1", Path: "net:r1"},
@@ -291,13 +291,13 @@ func TestTrackRadioMsgPlaysSeedFirst(t *testing.T) {
 		{Title: "R2", Path: "net:r2"},
 	}
 	p := playlist.New()
-	m := Model{playlist: p, player: &playbackFakeEngine{}, mouse: &mouseState{}}
+	fake := &playbackFakeEngine{}
+	m := Model{playlist: p, player: fake, mouse: &mouseState{}}
 	m.trackMenu.track = seed
 	gen := nextRequest(&m.requests.trackMenu)
 
-	cmd := m.handleTrackRadio(trackRadioMsg{seed: seed, tracks: recs, gen: gen})
-	if cmd == nil {
-		t.Fatal("expected a play command")
+	if cmd := m.handleTrackRadio(trackRadioMsg{seed: seed, tracks: recs, gen: gen}); cmd != nil || len(fake.playCalls) != 0 {
+		t.Fatalf("playCalls = %v, want the radio loaded without starting playback", fake.playCalls)
 	}
 	got := p.Tracks()
 	if len(got) != 3 || got[0].Path != "net:seed" || got[1].Path != "net:r1" || got[2].Path != "net:r2" {

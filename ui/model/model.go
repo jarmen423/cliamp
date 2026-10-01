@@ -441,6 +441,11 @@ type Model struct {
 
 	loadedPlaylist string // name of the currently loaded local playlist (for resume)
 
+	// playingContext names the album, artist, playlist or radio the queue was
+	// last replaced from, for the immersive queue panel. Empty when the queue
+	// came from anything else.
+	playingContext string
+
 	// activeProviderPlaylistID is the ID of the most recently loaded playlist
 	// from a non-local provider (Spotify, Navidrome, …). Used to highlight that
 	// row in the provider browser. Empty when no provider playlist is active.

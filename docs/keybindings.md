@@ -125,7 +125,7 @@ and `Esc` clears it.
 | `Ctrl+F` | Search with the active provider (Podcasts, Spotify, Qobuz, Tidal, Navidrome, Lyrion, Jellyfin, Emby, Plex, Audiobookshelf, Mixcloud, NetEase, Local), or search YouTube. Available in playlist and provider-browser views. The search line names the source. See [Search and filter modes](#search-and-filter-modes). |
 | `u` | Load URL (stream/playlist) |
 | `;` | Open the track context menu on the highlighted track |
-| `W` (`Shift+W`) | Go to song radio: queue recommendations seeded from the highlighted track (providers with recommendation support, e.g. Spotify) |
+| `W` (`Shift+W`) | Go to song radio: load a radio seeded from the highlighted track as the new queue, the track first (Spotify's own station for the track; other providers with recommendation support use their recommendations). Nothing starts playing until you press `Enter`. In immersive mode the radio opens as a page instead, see [Immersive mode](#immersive-mode-prototype) |
 | `Ctrl+A` | Go to the highlighted track's album |
 | `Ctrl+T` | Go to the highlighted track's artist |
 | `d` | Open the audio device picker |
@@ -172,9 +172,9 @@ and playlist-manager rows.
 | Key | Action |
 |---|---|
 | `w` | Add the track to a playlist (the same picker as `w` in the playlist) |
-| `r` | Go to song radio (recommendations seeded from this track) |
-| `R` | Go to artist radio: the artist's popular tracks mixed with recommendations (providers that can load the artist and recommend, e.g. Spotify) |
-| `b` | Go to album radio: album tracks mixed with recommendations (providers that record the album, can load it, and can recommend, e.g. Spotify) |
+| `r` | Go to song radio: the track, then its radio, opened as a new playlist that waits for you to play it |
+| `R` | Go to artist radio (providers that can load the artist and recommend, e.g. Spotify) |
+| `b` | Go to album radio (providers that record the album, can load it, and can recommend, e.g. Spotify) |
 | `a` | Add to queue — toggles the play-next slot for playlist rows, queues elsewhere |
 | `l` | Go to the track's album |
 | `t` | Go to the track's artist |
@@ -466,7 +466,7 @@ config). It falls back to the classic layout when the terminal is under
 | `n` | Toggle favorite on the focused track |
 | `q` | Focus the Queue panel (queue clicks jump the live queue there) |
 | `Q` | Queue page in the canvas: Now playing, Next in queue, and Next up from the playing context (in shuffled order when shuffle is on). `Enter` jumps there, `x` removes a queued track, `Shift+Up`/`Shift+Down` move it, `;` opens the track menu, `Q` or `Esc` goes back |
-| `R` | Radio: in an open playlist, album or artist, radio for that collection; in a list, radio for the focused artist, album or playlist, or song radio for a focused track. Collection radio mixes a spread of the collection's tracks with recommendations (providers with recommendations, e.g. Spotify) |
+| `R` | Radio: in an open playlist, album or artist, radio for that collection; in a list, radio for the focused artist, album or playlist, or song radio for a focused track. The radio opens in the canvas as a new playlist page and the queue is left alone: `Enter` or `p` plays it, the Queue panel then shows it as "Next from … Radio", and `Backspace` returns to where you were. On Spotify it is Spotify's station for the seed; other providers with recommendations mix a spread of the collection's tracks with them |
 | `V` | Full-screen visualizer |
 | `I` or `Esc` | Exit immersive mode |
 
