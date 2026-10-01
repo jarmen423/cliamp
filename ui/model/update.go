@@ -1258,8 +1258,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.noteImmersiveLoadErr("Playlists", msg.err)
 		if msg.err == nil {
 			m.immersive.lists = m.filterImmersivePlaylists(msg.lists)
+			m.applyImmersiveRestorePos()
 		}
-		return m, nil
+		return m, m.immersiveRestoreListsLoaded(msg.err)
 
 	case immersiveAlbumsMsg:
 		if !m.isCurrentImmersiveRequest(msg.gen, msg.providerName, m.requests.immersiveAlbums) {
@@ -1269,6 +1270,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.noteImmersiveLoadErr("Albums", msg.err)
 		if msg.err == nil {
 			m.immersive.albums = msg.albums
+			m.applyImmersiveRestorePos()
 		}
 		return m, nil
 
@@ -1280,6 +1282,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.noteImmersiveLoadErr("Artists", msg.err)
 		if msg.err == nil {
 			m.immersive.artists = msg.artists
+			m.applyImmersiveRestorePos()
 		}
 		return m, nil
 
@@ -1291,9 +1294,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.immersive.ctxID, m.immersive.ctxName, m.immersive.ctxSub = msg.id, msg.name, msg.sub
 		if msg.err != nil {
 			m.status.Errorf(statusTTLDefault, "Load failed: %s", msg.err)
+			m.immersiveRestoreFailed()
 			return m, nil
 		}
 		m.immersive.tracks = msg.tracks
+		m.applyImmersiveRestorePos()
 		return m, nil
 
 	case immersiveArtistMsg:
@@ -1303,10 +1308,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.immersive.tracksLoading = false
 		if msg.err != nil {
 			m.status.Errorf(statusTTLDefault, "Artist load failed: %s", msg.err)
+			m.immersiveRestoreFailed()
 			return m, nil
 		}
 		m.immersive.tracks = msg.detail.Popular
 		m.immersive.ctxSub = msg.detail.Info.Name
+		m.applyImmersiveRestorePos()
 		return m, nil
 
 	case immSuggestTickMsg, immSuggestMsg:
@@ -1321,9 +1328,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.immersive.tracksLoading = false
 		if msg.err != nil {
 			m.status.Errorf(statusTTLDefault, "Search failed: %s", msg.err)
+			m.immersiveRestoreFailed()
 			return m, nil
 		}
 		m.immersive.tracks = msg.tracks
+		m.applyImmersiveRestorePos()
 		return m, nil
 
 	case trackLikeToggledMsg:

@@ -22,25 +22,6 @@ import (
 
 // quit shuts down the player and signals the TUI to exit.
 func (m *Model) quit() tea.Cmd {
-	// Only save resume for seekable tracks:
-	// - local files (not stream)
-	// - HTTP streams with known duration (podcast MP3s, seek-by-reconnect)
-	// - finite Mixcloud shows (yt-dlp tracks with a counted PCM position)
-	// Other yt-dlp sites and real-time live streams remain excluded.
-	if track, _ := m.currentPlaybackTrack(); track.Path != "" &&
-		(!playlist.IsYTDL(track.Path) || playlist.IsMixcloudURL(track.Path)) &&
-		!track.IsLive() &&
-		m.player.IsPlaying() && !m.buffering && !m.player.GaplessAdvanced() {
-		if secs := int(m.player.Position().Seconds()); secs > 0 {
-			context, contextIndex := m.playbackContextFor(track)
-			m.exitResume.path = track.Path
-			m.exitResume.secs = secs
-			m.exitResume.playlist = m.loadedPlaylist
-			m.exitResume.context = cloneTracks(context)
-			m.exitResume.contextIndex = contextIndex
-		}
-	}
-
 	m.shutdown()
 	return tea.Quit
 }
@@ -48,6 +29,7 @@ func (m *Model) quit() tea.Cmd {
 // shutdown flushes pending saves, stops playback, and deletes terminal
 // images before the program exits.
 func (m *Model) shutdown() {
+	m.captureExitSession()
 	m.flushPendingSpeedSave()
 	m.flushPendingEQSave()
 	m.player.Close()

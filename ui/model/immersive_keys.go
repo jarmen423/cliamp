@@ -595,7 +595,7 @@ func (m *Model) beginImmersiveSearchView() {
 	m.pushImmersiveBack()
 	m.dropImmersiveFetches()
 	m.immersive.view = immViewSearch
-	m.immersive.ctxID, m.immersive.ctxName = "", "Search: "+m.immersive.searchQuery
+	m.immersive.ctxID, m.immersive.ctxName = "", immSearchCtxPrefix+m.immersive.searchQuery
 	m.immersive.ctxSub = "Results"
 	m.immersive.ctxKind = immKindTrack
 	m.immersive.trackSort = immSortTrackOrder

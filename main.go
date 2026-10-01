@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,8 +73,12 @@ func isBufferedProviderURL(u string) bool {
 		yandex.IsStreamURL(u)
 }
 
-func restoreJellyfinContext(state resume.State, prov *jellyfin.Provider) ([]playlist.Track, int, string, bool) {
-	if prov == nil || len(state.Context) == 0 {
+// restoreResumeContext rebuilds the saved playback context and finds the
+// active entry in it. restore refreshes a saved track (Jellyfin stream URLs
+// carry an auth token) and reports false for one it cannot restore: the
+// active track must restore, other tracks it cannot restore stay as saved.
+func restoreResumeContext(state resume.State, restore func(playlist.Track) (playlist.Track, bool)) ([]playlist.Track, int, string, bool) {
+	if len(state.Context) == 0 {
 		return nil, 0, "", false
 	}
 	index := state.ContextIndex
@@ -89,17 +94,97 @@ func restoreJellyfinContext(state resume.State, prov *jellyfin.Provider) ([]play
 	if index < 0 {
 		return nil, 0, "", false
 	}
-	if _, ok := prov.RestoreTrack(state.Context[index]); !ok {
+	if _, ok := restore(state.Context[index]); !ok {
 		return nil, 0, "", false
 	}
 
 	tracks := append([]playlist.Track(nil), state.Context...)
 	for i, track := range tracks {
-		if restored, ok := prov.RestoreTrack(track); ok {
+		if restored, ok := restore(track); ok {
 			tracks[i] = restored
 		}
 	}
 	return tracks, index, tracks[index].Path, true
+}
+
+// sessionTrackRestorer refreshes saved Jellyfin stream URLs through the
+// provider (their auth token may have changed) and keeps every other track
+// as saved: local paths, radio URLs and provider URIs such as spotify:track
+// stay valid across launches. Emby shares the download-URL shape, so a URL
+// the configured Emby server owns is kept until the play-time resolver
+// refreshes it with current authentication.
+func sessionTrackRestorer(jellyProv *jellyfin.Provider, embyURL string) func(playlist.Track) (playlist.Track, bool) {
+	return func(t playlist.Track) (playlist.Track, bool) {
+		if !jellyfin.IsStreamURL(t.Path) {
+			return t, true
+		}
+		if jellyProv != nil {
+			if restored, ok := jellyProv.RestoreTrack(t); ok {
+				return restored, true
+			}
+		}
+		if streamURLOwnedBy(t.Path, embyURL) {
+			return t, true
+		}
+		return playlist.Track{}, false
+	}
+}
+
+// streamURLOwnedBy reports whether a download URL points at the configured
+// server's scheme and host, the way embyapi.Client.StreamItemID scopes URLs.
+func streamURLOwnedBy(path, serverURL string) bool {
+	u, uerr := url.Parse(path)
+	b, berr := url.Parse(serverURL)
+	if uerr != nil || berr != nil || serverURL == "" {
+		return false
+	}
+	return strings.EqualFold(u.Scheme, b.Scheme) && strings.EqualFold(u.Host, b.Host)
+}
+
+// mediaServerSourceResolver refreshes owned Emby and Jellyfin download URLs.
+// Both providers pass foreign URLs through, so they share the HTTP resolver.
+func mediaServerSourceResolver(jellyProv *jellyfin.Provider, embyProv *emby.Provider) player.SourceResolver {
+	return func(rawURL string) (player.ResolvedSource, error) {
+		var err error
+		if embyProv != nil {
+			rawURL, err = embyProv.ResolveSource(rawURL)
+			if err != nil {
+				return player.ResolvedSource{}, fmt.Errorf("refresh Emby stream: %w", err)
+			}
+		}
+		if jellyProv != nil {
+			rawURL, err = jellyProv.ResolveSource(rawURL)
+			if err != nil {
+				return player.ResolvedSource{}, fmt.Errorf("refresh Jellyfin stream: %w", err)
+			}
+		}
+		return player.ResolvedSource{URL: rawURL}, nil
+	}
+}
+
+// requeueSession re-queues the saved play-next entries: an entry already in
+// the restored list is queued in place, anything else is appended first.
+func requeueSession(pl *playlist.Playlist, queue []playlist.Track, restore func(playlist.Track) (playlist.Track, bool)) {
+	tracks := pl.Tracks()
+	for _, saved := range queue {
+		t, ok := restore(saved)
+		if !ok {
+			continue
+		}
+		idx := -1
+		for i, cand := range tracks {
+			if cand.Path == t.Path && pl.QueuePosition(i) == 0 {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			pl.Add(t)
+			tracks = append(tracks, t)
+			idx = len(tracks) - 1
+		}
+		pl.Queue(idx)
+	}
 }
 
 // logProviderRegistered records that a provider joined the active set. It
@@ -226,7 +311,8 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 		providers = append(providers, model.ProviderEntry{Key: "jellyfin", Name: "Jellyfin", Provider: jellyProv})
 	}
 
-	if embyProv := emby.NewFromConfig(cfg.Emby); embyProv != nil {
+	embyProv := emby.NewFromConfig(cfg.Emby)
+	if embyProv != nil {
 		providers = append(providers, model.ProviderEntry{Key: "emby", Name: "Emby", Provider: embyProv})
 	}
 
@@ -406,6 +492,19 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 		(len(positional) == 0 && defaultProvider == "cliamp" && (daemon || cfg.AutoPlay))
 	resumeState := resume.Load()
 
+	// A launch with nothing to play picks up the last session: its list with
+	// the track selected (not playing), the play-next queue, and the
+	// immersive page. auto_play with the live channels keeps starting them,
+	// since a restored session stays silent.
+	restoreSession := !daemon && cfg.Playlist == "" && len(positional) == 0 && !(liveChannels && cfg.AutoPlay)
+	restoreTrack := sessionTrackRestorer(jellyProv, cfg.Emby.URL)
+	var sessionTracks []playlist.Track
+	sessionIndex, restoredResumePath := 0, ""
+	restoredSession := false
+	if restoreSession {
+		sessionTracks, sessionIndex, restoredResumePath, restoredSession = restoreResumeContext(resumeState, restoreTrack)
+	}
+
 	pl := playlist.New()
 	if cfg.Playlist != "" && localProv != nil {
 		tracks, err := localProv.Tracks(cfg.Playlist)
@@ -413,7 +512,7 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 			return fmt.Errorf("playlist %q: %w", cfg.Playlist, err)
 		}
 		pl.Add(tracks...)
-	} else if liveChannels {
+	} else if liveChannels && !restoredSession {
 		// The channel list lives in the M3U the radio provider already serves,
 		// so resolve that instead of restating it here: the startup playlist
 		// then matches what browsing "cliamp radio" shows -- same channels,
@@ -423,17 +522,13 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 		resolved.Pending = append(resolved.Pending, radio.BuiltinURL)
 	}
 	pl.Add(resolved.Tracks...)
-
-	restoredJellyfinChoice := false
-	restoredJellyfinIndex := 0
-	restoredResumePath := ""
-	if !daemon && defaultProvider == "jellyfin" && jellyProv != nil && cfg.Playlist == "" && len(positional) == 0 && len(resolved.Pending) == 0 && pl.Len() == 0 {
-		if tracks, index, activePath, ok := restoreJellyfinContext(resumeState, jellyProv); ok {
-			pl.Add(tracks...)
-			restoredJellyfinChoice = true
-			restoredJellyfinIndex = index
-			restoredResumePath = activePath
-		}
+	if restoredSession {
+		pl.Add(sessionTracks...)
+	}
+	if restoreSession {
+		// The saved queue restores even when the context did not (the active
+		// track could not be restored, or nothing was playing at exit).
+		requeueSession(pl, resumeState.Queue, restoreTrack)
 	}
 
 	// Daemon mode has no UI loop to drain pending URLs (feeds, M3U, yt-dlp),
@@ -505,13 +600,11 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 		})
 	}
 
-	if jellyProv != nil {
-		// Refresh restored Jellyfin URLs without changing logical playlist paths.
+	if jellyProv != nil || embyProv != nil {
+		// Refresh restored server URLs without changing logical playlist paths.
+		resolver := mediaServerSourceResolver(jellyProv, embyProv)
 		for _, scheme := range []string{"http://", "https://"} {
-			p.RegisterSourceResolver(scheme, func(rawURL string) (player.ResolvedSource, error) {
-				u, err := jellyProv.ResolveSource(rawURL)
-				return player.ResolvedSource{URL: u}, err
-			})
+			p.RegisterSourceResolver(scheme, resolver)
 		}
 	}
 
@@ -551,19 +644,22 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 
 	m := model.New(p, pl, providers, defaultProvider, localProv, themes, luaMgr, config.SaveFunc{})
 	m.SetRadioFavorites(radioFavorites)
-	if defaultProvider == "jellyfin" && jellyProv != nil {
-		m.SetResumeSaver(func(track playlist.Track, positionSec int, context []playlist.Track, contextIndex int) {
-			if _, ok := jellyProv.RestoreTrack(track); !ok {
+	// Checkpoints go through the same restorer as startup, so a session whose
+	// track could not be restored never replaces a good resume file.
+	saveSession := func(state resume.State) {
+		if state.Path != "" {
+			if _, ok := restoreTrack(playlist.Track{Path: state.Path}); !ok {
 				return
 			}
-			resume.SaveState(resume.State{
-				Path: track.Path, PositionSec: positionSec,
-				Context: context, ContextIndex: contextIndex,
-			})
-		})
+		}
+		resume.SaveState(state)
 	}
-	if restoredJellyfinChoice {
-		m.SetInitialTrack(restoredJellyfinIndex)
+	m.SetResumeSaver(saveSession)
+	if restoredSession {
+		m.SetInitialTrack(sessionIndex)
+	}
+	if restoreSession && resumeState.Immersive != nil {
+		m.SetImmersiveRestore(resumeState.Immersive)
 	}
 	m.SetIPCBroker(pluginBroker)
 	m.SetCustomEQBands(cfg.EQ)
@@ -651,7 +747,7 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 	if cfg.Visualizer != "" {
 		m.SetVisualizer(cfg.Visualizer)
 	}
-	if cfg.AutoPlay && !restoredJellyfinChoice {
+	if cfg.AutoPlay && !restoredSession {
 		m.SetAutoPlay(true)
 	}
 	if cfg.LowPower {
@@ -686,9 +782,9 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 	}
 
 	if resumeState.Path != "" && resumeState.PositionSec > 0 {
-		// Jellyfin resumes the restored context above. Mixcloud is also commonly
-		// opened from its provider browser rather than a positional URL; preserve
-		// cliamp's existing positional-file behavior for other providers.
+		// A restored session resumes its selected track above. Mixcloud is also
+		// commonly opened from its provider browser rather than a positional URL;
+		// preserve cliamp's existing positional-file behavior for other launches.
 		switch {
 		case restoredResumePath != "":
 			m.SetResume(restoredResumePath, resumeState.PositionSec)
@@ -805,17 +901,7 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 		}
 		_ = config.Save("theme", fmt.Sprintf("%q", themeName))
 
-		if path, secs, playlistName := fm.ResumeState(); path != "" && secs > 0 {
-			if defaultProvider == "jellyfin" && jellyfin.IsStreamURL(path) {
-				context, index := fm.ResumeContext()
-				resume.SaveState(resume.State{
-					Path: path, PositionSec: secs, Playlist: playlistName,
-					Context: context, ContextIndex: index,
-				})
-			} else {
-				resume.Save(path, secs, playlistName)
-			}
-		}
+		saveSession(fm.ExitSession())
 	}
 
 	return nil

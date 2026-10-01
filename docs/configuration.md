@@ -334,6 +334,23 @@ Valid values: `cliamp` (default), `radio`, `podcast`, `navidrome`, `lyrion`, `sp
 
 You can also override this setting on the CLI: `cliamp --provider jellyfin`.
 
+## Last Session
+
+cliamp remembers where you left off, for every provider:
+
+- The last track and its position. Local files, finite streams, and Mixcloud shows resume at the saved position. Live radio and other yt-dlp sites are reselected from the start.
+- The list the track was chosen from, such as the album, playlist, search results, or station list.
+- The play-next queue.
+- In immersive mode, the page on screen: the section, the open playlist, album, artist, search, or queue, and the cursor and scroll.
+
+cliamp saves this when a track starts, every two seconds during confirmed playback, and on a normal exit. `q`, `Ctrl+C`, and quitting through system media controls save the current position. If the terminal closes or cliamp exits abruptly, the last checkpoint is used. Buffering and unfinished seeks never overwrite the checkpoint with an unconfirmed position. The file is `resume.json` in the config directory. It keeps up to 500 tracks of the list, around the active track, and 200 queued tracks, so a checkpoint of a large library stays small.
+
+The next launch with no files, URLs, or playlist opens that list with the last track selected but not playing. Press `Enter` to continue from the saved position. A restored session stays silent even when `auto_play` is set. The one exception is `auto_play` with the cliamp radio channels, which keeps starting the live channels. Shuffle and repeat come back from their own config keys.
+
+In immersive mode, a saved page opens once the provider answers, so a Spotify session that is still signing in gets its page back after sign-in. A page that no longer loads, such as a deleted playlist or a different provider, opens at its section root instead.
+
+Jellyfin and Emby download URLs use the current API key or password session when playback starts, including restored tracks and queued entries.
+
 ## Podcasts
 
 Podcasts is always registered: no `enabled` setting, API key, account, or setup
