@@ -576,6 +576,8 @@ func (m Model) immCanvasTitle() string {
 		if im.ctxName != "" {
 			title = im.ctxName
 		}
+	case immViewRadio:
+		title = im.ctxName
 	default:
 		kind := "Playlist"
 		switch im.view {
@@ -1188,6 +1190,9 @@ func (m Model) renderImmStatusLine(w int) string {
 
 // playingContextName names the list the live queue is playing from.
 func (m Model) playingContextName() string {
+	if m.playingContext != "" {
+		return m.playingContext
+	}
 	if m.loadedPlaylist != "" {
 		return m.loadedPlaylist
 	}

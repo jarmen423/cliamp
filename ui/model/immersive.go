@@ -77,13 +77,14 @@ const (
 	immViewSearch                        // search results
 	immViewSettings                      // settings/EQ tab (key-only, no pill)
 	immViewQueue                         // queue page (immersive_queue.go)
+	immViewRadio                         // started radio's tracks (collection_radio.go)
 )
 
 // isTrackView reports whether the canvas shows a track list (detail or
 // search results) rather than a collection browse or the settings tab.
 func (v immersiveView) isTrackView() bool {
 	switch v {
-	case immViewPlaylist, immViewAlbum, immViewArtist, immViewShow, immViewSearch:
+	case immViewPlaylist, immViewAlbum, immViewArtist, immViewShow, immViewSearch, immViewRadio:
 		return true
 	}
 	return false
@@ -895,13 +896,24 @@ func (m *Model) playImmersiveContext(startIdx int) tea.Cmd {
 	}
 	m.plCursor = startIdx
 	m.playlist.SetIndex(startIdx)
-	if m.immersive.view == immViewPlaylist {
-		m.activeProviderPlaylistID = m.immersive.ctxID
-		m.loadedPlaylist = ""
-	}
+	m.notePlayingContext()
 	cmd := m.playCurrentTrack()
 	m.notifyPlayback()
 	return cmd
+}
+
+// notePlayingContext records the open canvas view as what the queue now
+// plays from, so the queue panel names it and not the list played before.
+func (m *Model) notePlayingContext() {
+	im := m.immersive
+	if im.view == immViewPlaylist {
+		m.activeProviderPlaylistID = im.ctxID
+	} else {
+		m.resetProviderQueueMirror()
+	}
+	if im.view != immViewSearch { // search results are no list to name
+		m.playingContext = im.ctxName
+	}
 }
 
 // playableFrom drops search placeholders (albums, artists, playlists) so
@@ -931,9 +943,7 @@ func (m *Model) playImmersiveTrack(index int) tea.Cmd {
 	m.replacePlayerPlaylist(tracks)
 	m.plCursor = index
 	m.playlist.SetIndex(index)
-	if m.immersive.view == immViewPlaylist {
-		m.activeProviderPlaylistID = m.immersive.ctxID
-	}
+	m.notePlayingContext()
 	cmd := m.playCurrentTrack()
 	m.notifyPlayback()
 	return cmd

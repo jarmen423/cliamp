@@ -27,6 +27,7 @@ type searchState struct {
 type playlistUndo struct {
 	active    bool
 	snapshot  playlist.Snapshot
+	context   string // playingContext when the snapshot was taken
 	loaded    string
 	saved     []playlist.Track
 	persisted bool

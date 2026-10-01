@@ -442,6 +442,28 @@ type Recommender interface {
 	RecommendTracks(ctx context.Context, seed []playlist.Track, limit int) ([]playlist.Track, error)
 }
 
+// RadioSeed kinds: the collection a station is built around.
+const (
+	RadioSeedArtist   = "artist"
+	RadioSeedAlbum    = "album"
+	RadioSeedPlaylist = "playlist"
+)
+
+// RadioSeed is what a radio station is built around: the artist, album or
+// playlist Kind and ID name, or with no Kind the first of Tracks.
+type RadioSeed struct {
+	Kind   string
+	ID     string
+	Tracks []playlist.Track
+}
+
+// RadioBuilder is implemented by providers that can build a station around
+// a seed (Spotify's "Go to radio"). A Recommender's tracks follow the
+// listener's taste instead, so radio prefers the station when there is one.
+type RadioBuilder interface {
+	RadioTracks(ctx context.Context, seed RadioSeed, limit int) ([]playlist.Track, error)
+}
+
 // PlaylistFollower is implemented by providers that support following and
 // unfollowing playlists by ID. For playlists owned by the user, unfollowing
 // typically deletes the playlist.

@@ -19,7 +19,7 @@ import (
 
 // Stable names for the saved page, indexed by the matching constants.
 var (
-	immViewNames = []string{"browse", "playlist", "album", "artist", "show", "search", "settings", "queue"}
+	immViewNames = []string{"browse", "playlist", "album", "artist", "show", "search", "settings", "queue", "radio"}
 	immKindNames = []string{"playlist", "album", "artist", "show", "track"}
 )
 
