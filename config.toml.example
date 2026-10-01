@@ -71,11 +71,13 @@ eq = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 # Nerd Font patched font in your terminal). Default is Unicode glyphs.
 # nerd_font_glyphs = true
 
-# Cover art in the immersive layout: "auto" uses Sixel images where the
-# terminal supports them (Windows Terminal, foot, WezTerm, xterm -ti vt340)
-# and colored half-block text elsewhere (including inside psmux, which does
-# not pass images through); "sixel" or "blocks" forces one; "off" keeps the
-# text placeholders. Items without cover art get a generated cliamp tile.
+# Cover art in the immersive layout: "auto" uses kitty graphics in kitty and
+# Ghostty, Sixel images where the terminal supports them (Windows Terminal,
+# foot, WezTerm, Konsole, xterm -ti vt340) and colored half-block text
+# elsewhere (including inside psmux, which does not pass images through);
+# "kitty", "sixel" or "blocks" forces one; "off" keeps the text placeholders.
+# Inside tmux, use "kitty" with `set -g allow-passthrough on`. Items without
+# cover art get a generated cliamp tile.
 # images = "auto"
 
 # Canvas view the immersive layout opens in: "list", "rows" or "grid".

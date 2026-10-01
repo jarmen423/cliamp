@@ -669,7 +669,9 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 	m.SetImageMode(cfg.Images)
 	m.SetImmersiveView(cfg.ImmersiveView)
 	imgLayer := termimg.NewLayer()
+	imgOut := termimg.NewWriter(os.Stdout, imgLayer)
 	m.SetImageLayer(imgLayer)
+	m.SetImageOutput(imgOut)
 	if cfg.HideHelpBar {
 		m.SetHideHelpBar(true)
 	}
@@ -695,7 +697,7 @@ func run(overrides config.Overrides, positional []string, daemon, visualizer60FP
 		}
 	}
 
-	progOpts := []tea.ProgramOption{tea.WithFPS(defaultUIFPS), tea.WithOutput(termimg.NewWriter(os.Stdout, imgLayer))}
+	progOpts := []tea.ProgramOption{tea.WithFPS(defaultUIFPS), tea.WithOutput(imgOut)}
 	if cfg.LowPower {
 		progOpts[0] = tea.WithFPS(lowPowerUIFPS)
 	}
