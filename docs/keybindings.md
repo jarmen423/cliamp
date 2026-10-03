@@ -125,7 +125,7 @@ and `Esc` clears it.
 | `Ctrl+F` | Search with the active provider (Podcasts, Spotify, Qobuz, Tidal, Navidrome, Lyrion, Jellyfin, Emby, Plex, Audiobookshelf, Mixcloud, NetEase, Local), or search YouTube. Available in playlist and provider-browser views. The search line names the source. See [Search and filter modes](#search-and-filter-modes). |
 | `u` | Load URL (stream/playlist) |
 | `;` | Open the track context menu on the highlighted track |
-| `W` (`Shift+W`) | Go to song radio: load a radio seeded from the highlighted track as the new queue, the track first (Spotify's own station for the track; other providers with recommendation support use their recommendations). Nothing starts playing until you press `Enter`. In immersive mode the radio opens as a page instead, see [Immersive mode](#immersive-mode-prototype) |
+| `W` (`Shift+W`) | Go to song radio: load a radio seeded from the highlighted track as the new queue, the track first (Spotify's own station for the track; other providers with recommendation support use their recommendations). When Spotify has no station for the track (it withholds radio for some artists), the status line says so and nothing is loaded; artist and album radio do the same. Nothing starts playing until you press `Enter`. In immersive mode the radio opens as a page instead, see [Immersive mode](#immersive-mode-prototype) |
 | `Ctrl+A` | Go to the highlighted track's album |
 | `Ctrl+T` | Go to the highlighted track's artist |
 | `d` | Open the audio device picker |

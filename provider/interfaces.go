@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/gopxl/beep/v2"
@@ -475,6 +476,12 @@ type RadioSeed struct {
 type RadioBuilder interface {
 	RadioTracks(ctx context.Context, seed RadioSeed, limit int) ([]playlist.Track, error)
 }
+
+// ErrNoStation is returned by RadioTracks when the provider answers that it
+// has no station for the seed (Spotify withholds radio for some artists).
+// Radio then tells the listener instead of filling in with recommendations,
+// which follow the listener's taste and not the seed.
+var ErrNoStation = errors.New("no radio station for this seed")
 
 // PlaylistFollower is implemented by providers that support following and
 // unfollowing playlists by ID. For playlists owned by the user, unfollowing

@@ -39,6 +39,9 @@ var stationTrackURIs = func(ctx context.Context, s *Session, contextURI string, 
 		ContextUri:     proto.String(contextURI),
 		RecentTrackUri: recent,
 	})
+	if isStationNotFound(err) {
+		return nil, fmt.Errorf("spotify: radio: %s: %w", contextURI, provider.ErrNoStation)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("spotify: radio: resolve station: %w", err)
 	}
@@ -49,6 +52,14 @@ var stationTrackURIs = func(ctx context.Context, s *Session, contextURI string, 
 		}
 	}
 	return uris, nil
+}
+
+// isStationNotFound reports whether the autoplay resolver answered 404,
+// which is how Spotify says it builds no station for a context (every
+// R. Kelly track and his artist page, for one). go-librespot reports the
+// status only in its error text.
+func isStationNotFound(err error) bool {
+	return err != nil && strings.HasSuffix(err.Error(), "context resolve autoplay: 404")
 }
 
 // isSpotifyID reports whether id is a bare base62 Spotify ID, which rules
@@ -114,6 +125,9 @@ func (p *SpotifyProvider) RadioTracks(ctx context.Context, seed provider.RadioSe
 	uris, err := stationTrackURIs(ctx, sess, contextURI, recent)
 	if err != nil {
 		return nil, err
+	}
+	if len(uris) == 0 {
+		return nil, fmt.Errorf("spotify: radio: %s: empty station: %w", contextURI, provider.ErrNoStation)
 	}
 
 	ids := make([]string, 0, limit)

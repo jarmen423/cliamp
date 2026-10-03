@@ -7,6 +7,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -319,9 +320,8 @@ func (m *Model) startTrackRadio(t playlist.Track) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		seed := []playlist.Track{t}
-		tracks := stationTracks(ctx, rec, provider.RadioSeed{Tracks: seed}, trackRadioLimit)
-		var err error
-		if len(tracks) == 0 {
+		tracks, err := stationTracks(ctx, rec, provider.RadioSeed{Tracks: seed}, trackRadioLimit)
+		if len(tracks) == 0 && err == nil {
 			tracks, err = rec.RecommendTracks(ctx, seed, trackRadioLimit)
 		}
 		return trackRadioMsg{seed: t, tracks: tracks, err: err, providerName: name, gen: gen}
@@ -332,6 +332,10 @@ func (m *Model) startTrackRadio(t playlist.Track) tea.Cmd {
 // station or recommendations (minus the seed if the provider echoed it back).
 func (m *Model) handleTrackRadio(msg trackRadioMsg) tea.Cmd {
 	if msg.gen != m.requests.trackMenu {
+		return nil
+	}
+	if errors.Is(msg.err, provider.ErrNoStation) {
+		m.status.Warningf(statusTTLDefault, "%s has no radio for %s", msg.providerName, msg.seed.DisplayName())
 		return nil
 	}
 	if msg.err != nil {

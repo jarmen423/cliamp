@@ -94,3 +94,32 @@ func TestRadioTracksErrors(t *testing.T) {
 		t.Errorf("err = %v, want errNoStationSeed for an empty seed", err)
 	}
 }
+
+// A station with no tracks is no station: the UI must not open an empty
+// radio or fill it with recommendations.
+func TestRadioTracksEmptyStation(t *testing.T) {
+	stubStation(t, nil, nil)
+	newMockAPI(t) // no handlers: the Web API must not be reached
+	seed := provider.RadioSeed{Tracks: []playlist.Track{{Path: "spotify:track:seed"}}}
+	if _, err := newTestProvider().RadioTracks(t.Context(), seed, 10); !errors.Is(err, provider.ErrNoStation) {
+		t.Errorf("err = %v, want provider.ErrNoStation", err)
+	}
+}
+
+// Spotify answers 404 for contexts it builds no station around; go-librespot
+// carries the status only in the error text.
+func TestIsStationNotFound(t *testing.T) {
+	for _, tt := range []struct {
+		err  error
+		want bool
+	}{
+		{errors.New("invalid status code from context resolve autoplay: 404"), true},
+		{errors.New("invalid status code from context resolve autoplay: 500"), false},
+		{errors.New("dial tcp: i/o timeout"), false},
+		{nil, false},
+	} {
+		if got := isStationNotFound(tt.err); got != tt.want {
+			t.Errorf("isStationNotFound(%v) = %v, want %v", tt.err, got, tt.want)
+		}
+	}
+}
