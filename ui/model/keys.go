@@ -1223,28 +1223,11 @@ func (m *Model) openProviderSearch() {
 // MultiSearcher.
 func (m *Model) openProviderSearchWith(prov playlist.Provider) {
 	if _, ok := prov.(provider.Searcher); ok {
-		m.cancelSpotRequest()
-		nextRequest(&m.requests.spotSearch)
-		nextRequest(&m.requests.spotLists)
-		nextRequest(&m.requests.spotMutation)
-		m.spotSearch = spotSearchState{
-			prov:    prov,
-			visible: true,
-			screen:  spotSearchInput,
-		}
+		m.resetSpotSearch(prov, false)
 		return
 	}
 	if _, ok := prov.(provider.MultiSearcher); ok {
-		m.cancelSpotRequest()
-		nextRequest(&m.requests.spotSearch)
-		nextRequest(&m.requests.spotLists)
-		nextRequest(&m.requests.spotMutation)
-		m.spotSearch = spotSearchState{
-			prov:    prov,
-			visible: true,
-			screen:  spotSearchInput,
-			multi:   true,
-		}
+		m.resetSpotSearch(prov, true)
 		return
 	}
 	nextRequest(&m.requests.netSearch)
@@ -1255,6 +1238,21 @@ func (m *Model) openProviderSearchWith(prov playlist.Provider) {
 	}
 	m.prevFocus = m.focus
 	m.focus = focusNetSearch
+}
+
+// resetSpotSearch opens a fresh provider search overlay on its input screen,
+// invalidating every request the previous overlay left in flight.
+func (m *Model) resetSpotSearch(prov playlist.Provider, multi bool) {
+	m.cancelSpotRequest()
+	nextRequest(&m.requests.spotSearch)
+	nextRequest(&m.requests.spotLists)
+	nextRequest(&m.requests.spotMutation)
+	m.spotSearch = spotSearchState{
+		prov:    prov,
+		visible: true,
+		screen:  spotSearchInput,
+		multi:   multi,
+	}
 }
 
 func (m *Model) closeJumpMode() {

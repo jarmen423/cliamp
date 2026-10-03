@@ -38,9 +38,13 @@ const (
 	BrowseArtists
 	BrowseArtistAlbums
 	BrowseGenres
+	// BrowseCategories opens a CategoryBrowser's discovery page rather than
+	// the hierarchical browser.
+	BrowseCategories
 )
 
-// BrowseEntry is a provider-pane shortcut into the hierarchical browser.
+// BrowseEntry is a provider-pane shortcut into the hierarchical browser or,
+// for BrowseCategories, the Browse page.
 type BrowseEntry struct {
 	ID      string
 	Name    string
@@ -60,7 +64,7 @@ type BrowseEntry struct {
 }
 
 // BrowseEntryProvider is implemented by providers that want their principal
-// hierarchical browse routes advertised in the provider playlist pane.
+// browse routes advertised in the provider playlist pane.
 type BrowseEntryProvider interface {
 	BrowseEntries() []BrowseEntry
 }
@@ -70,6 +74,14 @@ type BrowseEntryProvider interface {
 // load every track from every show in a category through BrowseArtists.
 type BrowseModeProvider interface {
 	BrowseModes() []BrowseMode
+}
+
+// CategoryBrowser is implemented by providers with an editorial discovery page
+// (genres, moods, new releases). Each category opens as multi-type results so
+// the UI can present it like a search.
+type CategoryBrowser interface {
+	BrowseCategories(ctx context.Context) ([]CategoryInfo, error)
+	CategoryContent(ctx context.Context, cat CategoryInfo) (SearchResults, error)
 }
 
 // DefaultBrowseModeProvider is implemented by providers that should open a

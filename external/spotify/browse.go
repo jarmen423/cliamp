@@ -79,6 +79,10 @@ func albumFromSpotify(a spotifyAlbum) provider.AlbumInfo {
 	return info
 }
 
+func artistFromSpotify(a spotifyArtist) provider.ArtistInfo {
+	return provider.ArtistInfo{ID: a.ID, Name: a.Name, ImageURL: pickCoverImage(a.Images)}
+}
+
 // Artists returns the artists the current user follows.
 // AlbumCount stays 0: Spotify doesn't report it cheaply.
 func (p *SpotifyProvider) Artists() ([]provider.ArtistInfo, error) {
@@ -113,7 +117,7 @@ func (p *SpotifyProvider) Artists() ([]provider.ArtistInfo, error) {
 		}
 
 		for _, a := range result.Artists.Items {
-			all = append(all, provider.ArtistInfo{ID: a.ID, Name: a.Name, ImageURL: pickCoverImage(a.Images)})
+			all = append(all, artistFromSpotify(a))
 		}
 
 		if len(result.Artists.Items) == 0 || offset+spotifyPlaylistPageSize >= result.Artists.Total {

@@ -1116,21 +1116,19 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.cancelSpotRequest()
 		m.spotSearch.loading = false
-		m.spotSearch.cursor = 0
-		m.spotSearch.scroll = 0
-		m.spotSearch.tab = spotTabTracks
-		m.spotSearch.drill = nil
 		if msg.err != nil {
 			m.spotSearch.err = msg.err.Error()
 			return m, nil
 		}
-		m.spotSearch.resultsAll = msg.results
-		m.spotSearch.screen = spotSearchResults
-		if m.spotSearch.resultsAllCount() == 0 {
-			m.spotSearch.err = "No results found"
-		}
-		m.applyHeightMode()
-		m.clampActiveScrollState()
+		m.showSpotResultsAll(msg.results, spotTabTracks, "No results found")
+		return m, nil
+
+	case spotCategoriesMsg:
+		m.handleSpotCategoriesMsg(msg)
+		return m, nil
+
+	case spotCategoryMsg:
+		m.handleSpotCategoryMsg(msg)
 		return m, nil
 
 	case spotDrillLoadedMsg:

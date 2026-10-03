@@ -154,6 +154,8 @@ func (m *Model) clampActiveScrollState() {
 			m.spotSearchResultsMaybeAdjustScroll(m.spotSearchResultsVisible())
 		} else if m.spotSearch.screen == spotSearchPlaylist {
 			m.spotSearchPlaylistMaybeAdjustScroll(m.spotSearchPlaylistVisible())
+		} else if m.spotSearch.screen == spotSearchBrowse {
+			m.spotBrowseMaybeAdjustScroll(m.spotSearchResultsVisible())
 		}
 	case screenHome:
 		m.homeMaybeAdjustScroll()

@@ -72,6 +72,12 @@ func (p *SpotifyProvider) RecommendTracks(ctx context.Context, seed []playlist.T
 	if err := p.ensureSession(); err != nil {
 		return nil, err
 	}
+	return p.recommendTracks(ctx, seed, limit, nil)
+}
+
+// recommendTracks is RecommendTracks with the user's top artists optionally
+// already fetched; nil top fetches them when the discovery source needs them.
+func (p *SpotifyProvider) recommendTracks(ctx context.Context, seed []playlist.Track, limit int, top []spotifyArtist) ([]playlist.Track, error) {
 	if limit < 1 {
 		return nil, nil
 	}
@@ -99,8 +105,9 @@ func (p *SpotifyProvider) RecommendTracks(ctx context.Context, seed []playlist.T
 	// Discovery source: newest albums of top artists absent from the seed.
 	var artistsErr error
 	if !c.full() {
-		var top []spotifyArtist
-		top, artistsErr = p.fetchRecommendTopArtists(ctx)
+		if top == nil {
+			top, artistsErr = p.fetchRecommendTopArtists(ctx)
+		}
 		if artistsErr == nil {
 			for _, artist := range recommendDiscoveryArtists(top, seedArtistUniverse(seed)) {
 				if c.full() {

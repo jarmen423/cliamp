@@ -63,6 +63,15 @@ func YearFromDate(date string) int {
 	return y
 }
 
+// CategoryInfo is one entry on a CategoryBrowser's discovery page. Group
+// clusters entries under a heading (e.g. "For you", "Genres & moods").
+type CategoryInfo struct {
+	ID       string
+	Name     string
+	Group    string
+	ImageURL string
+}
+
 // SearchResults carries multi-type search results from a MultiSearcher.
 type SearchResults struct {
 	Tracks    []playlist.Track

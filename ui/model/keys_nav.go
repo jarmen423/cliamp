@@ -115,6 +115,9 @@ func (m Model) navMenuItems() []navMenuItem {
 	if _, ok := m.navBrowser.prov.(provider.GenreBrowser); ok {
 		items = append(items, navMenuItem{label: labels.genresTitle(), mode: provider.BrowseGenres})
 	}
+	if _, ok := m.navBrowser.prov.(provider.CategoryBrowser); ok {
+		items = append(items, navMenuItem{label: "Browse & discover", mode: provider.BrowseCategories})
+	}
 	if restricted, ok := m.navBrowser.prov.(provider.BrowseModeProvider); ok {
 		modes := restricted.BrowseModes()
 		items = slices.DeleteFunc(items, func(item navMenuItem) bool { return !slices.Contains(modes, item.mode) })

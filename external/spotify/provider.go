@@ -94,6 +94,14 @@ type SpotifyProvider struct {
 	// connectCfg is non-nil once EnableConnect ran; sessions created after
 	// that point start the Connect receiver automatically.
 	connectCfg *ConnectConfig
+
+	// Browse page caches (discover.go).
+	categories    []provider.CategoryInfo
+	categoriesAt  time.Time
+	categoryPages map[string]categoryPage
+
+	// resolvePlaylist overrides the spclient playlist fallback in tests.
+	resolvePlaylist func(ctx context.Context, playlistID string) ([]playlist.Track, error)
 }
 
 const playlistListCacheTTL = 5 * time.Minute
@@ -249,6 +257,8 @@ func (p *SpotifyProvider) resetSessionScopedStateLocked() {
 	p.recentTracksAt = time.Time{}
 	p.listCache = nil
 	clear(p.writable)
+	p.categories = nil
+	clear(p.categoryPages)
 }
 
 func (p *SpotifyProvider) Name() string { return "Spotify" }
@@ -534,6 +544,9 @@ func (p *SpotifyProvider) Tracks(playlistID string) ([]playlist.Track, error) {
 	for {
 		page, pageTotal, err := p.fetchTracksPage(ctx, playlistID, offset)
 		if err != nil {
+			if offset == 0 && isForeignPlaylistErr(playlistID, err) {
+				return p.resolveForeignPlaylist(ctx, playlistID, err)
+			}
 			return nil, err
 		}
 		if total < 0 {
@@ -734,6 +747,12 @@ func (p *SpotifyProvider) TracksPage(playlistID string, offset int) ([]playlist.
 	}
 	page, total, err := p.fetchTracksPage(ctx, playlistID, offset)
 	if err != nil {
+		if offset == 0 && isForeignPlaylistErr(playlistID, err) {
+			// The fallback loads the whole list at once, so it is a single
+			// complete page.
+			tracks, err := p.resolveForeignPlaylist(ctx, playlistID, err)
+			return tracks, 0, err
+		}
 		return nil, 0, err
 	}
 
