@@ -1,0 +1,75 @@
+name: Linux QA build
+
+# Manual QA builds: produces the release-equivalent Linux amd64 binary as a run
+# artifact WITHOUT creating a tag or a public release. Trigger from the
+# Actions tab ("Run workflow") or via `gh workflow run build-linux-qa.yml`.
+# Download the binary from the run summary page (requires repo access).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libflac-dev libvorbis-dev libogg-dev
+
+      - name: Force static linking of codec libs
+        run: |
+          # Same as release.yml: remove .so symlinks so the linker falls back
+          # to static .a archives and the binary runs on newer distros.
+          LIB_DIR=/usr/lib/x86_64-linux-gnu
+          sudo rm -f ${LIB_DIR}/libFLAC.so ${LIB_DIR}/libvorbis.so ${LIB_DIR}/libvorbisenc.so ${LIB_DIR}/libogg.so
+
+      - name: Build static mpg123
+        run: |
+          VERSION=1.32.6
+          ARCHIVE="mpg123-${VERSION}.tar.bz2"
+          PREFIX="${RUNNER_TEMP}/mpg123"
+          curl -fsSL "https://www.mpg123.de/download/${ARCHIVE}" -o "${RUNNER_TEMP}/${ARCHIVE}"
+          echo "ccdd1d0abc31d73d8b435fc658c79049d0a905b30669b6a42a03ad169dc609e6  ${RUNNER_TEMP}/${ARCHIVE}" | sha256sum -c -
+          tar -xjf "${RUNNER_TEMP}/${ARCHIVE}" -C "${RUNNER_TEMP}"
+          cd "${RUNNER_TEMP}/mpg123-${VERSION}"
+          ./configure --with-cpu=x86-64 --disable-shared --enable-static \
+            --disable-components --enable-libmpg123 --disable-network --prefix="$PREFIX"
+          make -j2
+          make install
+          echo "MPG123_PREFIX=$PREFIX" >> "$GITHUB_ENV"
+
+      - name: Build static binary (release-equivalent)
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: "1"
+        run: |
+          export PKG_CONFIG_PATH="${MPG123_PREFIX}/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig"
+          VERSION="qa-${GITHUB_SHA:0:7}-run${GITHUB_RUN_NUMBER}"
+          go build -a -trimpath \
+            -ldflags="-s -w -X main.version=${VERSION} -extldflags '-lvorbisenc -lvorbis -lFLAC -logg -lmpg123 -lm'" \
+            -o cliamp .
+          if readelf -d cliamp | grep -E 'Shared library:.*(FLAC|vorbis|ogg|mpg123)'; then
+            echo "codec libraries must be statically linked" >&2
+            exit 1
+          fi
+          ls -l cliamp
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: cliamp-linux-amd64-qa
+          path: cliamp
+          retention-days: 14
