@@ -62,7 +62,7 @@ func TestSetupRewriteKeepsUserLines(t *testing.T) {
 			section: "spotify",
 			values:  map[string]string{keySpotifyMode: "default", "bitrate": "320"},
 			initial: "[spotify]\nenabled = false\nclient_id = \"old\"\nbitrate = 160\n",
-			want:    "[spotify]\nbitrate = 320\n",
+			want:    "[spotify]\nbitrate = 320\nconnect_enabled = false\nconnect_name = \"cliamp\"\nconnect_port = 0\n",
 		},
 		{
 			name:    "no config file",

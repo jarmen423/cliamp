@@ -374,7 +374,7 @@ func providers() []providerSpec {
 				return nil
 			},
 			// enabled is owned, so setup removes an old enabled = false.
-			owned: []string{"enabled", "client_id", "bitrate"},
+			owned: []string{"enabled", "client_id", "bitrate", "connect_enabled", "connect_name", "connect_port"},
 			body: func(v map[string]string) []config.KeyValue {
 				br := v["bitrate"]
 				if br == "" {

@@ -11,7 +11,6 @@ import (
 	"github.com/bjarneo/cliamp/playlist"
 	"github.com/bjarneo/cliamp/provider"
 	"github.com/bjarneo/cliamp/theme"
-	"github.com/bjarneo/cliamp/ui"
 )
 
 // Inline overlays render in the playlist region while the now-playing,

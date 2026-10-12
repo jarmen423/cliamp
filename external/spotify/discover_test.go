@@ -48,7 +48,7 @@ func genre(name string) provider.CategoryInfo {
 
 func TestBrowseCategoriesListsForYouThenAPICategories(t *testing.T) {
 	calls := 0
-	p := stubSpotifyAPI(t, "own", map[string]route{
+	p := stubSpotifyAPI("own", map[string]route{
 		"/v1/browse/categories": queryRoute(func(q url.Values) (int, string) {
 			calls++
 			if q.Get("offset") == "0" {
@@ -85,7 +85,7 @@ func TestBrowseCategoriesListsForYouThenAPICategories(t *testing.T) {
 }
 
 func TestBrowseCategoriesFallsBackToBuiltinGenres(t *testing.T) {
-	p := stubSpotifyAPI(t, "own", map[string]route{
+	p := stubSpotifyAPI("own", map[string]route{
 		"/v1/browse/categories": apiResponse(http.StatusNotFound, notFoundBody),
 	})
 
@@ -103,7 +103,7 @@ func TestBrowseCategoriesFallsBackToBuiltinGenres(t *testing.T) {
 
 func TestCategoryContentSearchesPlaylistsAndGenre(t *testing.T) {
 	var queries []string
-	p := stubSpotifyAPI(t, "own", map[string]route{
+	p := stubSpotifyAPI("own", map[string]route{
 		"/v1/me": apiResponse(http.StatusOK, `{"id":"me"}`),
 		"/v1/search": queryRoute(func(q url.Values) (int, string) {
 			queries = append(queries, q.Get("q")+"|"+q.Get("type")+"|"+q.Get("offset"))
@@ -147,7 +147,7 @@ func TestCategoryContentSearchesPlaylistsAndGenre(t *testing.T) {
 
 func TestCategoryContentFallsBackToPlainSearchForMoods(t *testing.T) {
 	var artistQueries []string
-	p := stubSpotifyAPI(t, "own", map[string]route{
+	p := stubSpotifyAPI("own", map[string]route{
 		"/v1/me": apiResponse(http.StatusOK, `{"id":"me"}`),
 		"/v1/search": queryRoute(func(q url.Values) (int, string) {
 			if q.Get("type") == "playlist" {
@@ -175,7 +175,7 @@ func TestCategoryContentFallsBackToPlainSearchForMoods(t *testing.T) {
 
 func TestNewReleasesPagesWhenFullPageRejected(t *testing.T) {
 	var limits []string
-	p := stubSpotifyAPI(t, "own", map[string]route{
+	p := stubSpotifyAPI("own", map[string]route{
 		"/v1/browse/new-releases": queryRoute(func(q url.Values) (int, string) {
 			limits = append(limits, q.Get("limit")+"@"+q.Get("offset"))
 			switch {
@@ -204,7 +204,7 @@ func TestForeignPlaylistFallsBackToSpclient(t *testing.T) {
 	for _, status := range []int{http.StatusNotFound, http.StatusForbidden} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			apiCalls := 0
-			p := stubSpotifyAPI(t, "own", map[string]route{
+			p := stubSpotifyAPI("own", map[string]route{
 				"/v1/playlists/ed1/items": func(req *http.Request) *http.Response {
 					apiCalls++
 					return apiResponse(status, `{"error":{"status":0,"message":"no"}}`)(req)
@@ -238,7 +238,7 @@ func TestForeignPlaylistFallsBackToSpclient(t *testing.T) {
 }
 
 func TestForeignPlaylistFallbackFailureKeepsAPIError(t *testing.T) {
-	p := stubSpotifyAPI(t, "own", map[string]route{
+	p := stubSpotifyAPI("own", map[string]route{
 		"/v1/playlists/x/items": apiResponse(http.StatusForbidden, `{"error":{"status":403,"message":"Forbidden"}}`),
 	})
 	p.resolvePlaylist = func(context.Context, string) ([]playlist.Track, error) {
@@ -251,7 +251,7 @@ func TestForeignPlaylistFallbackFailureKeepsAPIError(t *testing.T) {
 }
 
 func TestSavedTracksErrorsDoNotFallBack(t *testing.T) {
-	p := stubSpotifyAPI(t, "own", map[string]route{
+	p := stubSpotifyAPI("own", map[string]route{
 		"/v1/me/tracks": apiResponse(http.StatusNotFound, notFoundBody),
 	})
 	p.resolvePlaylist = func(context.Context, string) ([]playlist.Track, error) {
