@@ -2,7 +2,6 @@ package model
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -98,9 +97,7 @@ func (m Model) recommenderForQueue() (provider.Recommender, string) {
 func (m *Model) toggleSmartShuffle() tea.Cmd {
 	if m.playlist.Smart() {
 		removed := m.playlist.DisableSmart()
-		if err := m.configSaver.Save("smart_shuffle", fmt.Sprintf("%v", m.playlist.Smart())); err != nil {
-			m.status.Showf(statusTTLDefault, "Config save failed: %s", err)
-		}
+		_ = m.saveConfigBool("smart_shuffle", m.playlist.Smart())
 		if removed > 0 {
 			m.status.Showf(statusTTLDefault, "Smart Shuffle off (-%d queued)", removed)
 		} else {
@@ -116,13 +113,9 @@ func (m *Model) toggleSmartShuffle() tea.Cmd {
 	m.playlist.EnableSmart()
 	if !m.playlist.Shuffled() {
 		m.playlist.ToggleShuffle()
-		if err := m.configSaver.Save("shuffle", fmt.Sprintf("%v", m.playlist.Shuffled())); err != nil {
-			m.status.Showf(statusTTLDefault, "Config save failed: %s", err)
-		}
+		_ = m.saveConfigBool("shuffle", m.playlist.Shuffled())
 	}
-	if err := m.configSaver.Save("smart_shuffle", fmt.Sprintf("%v", m.playlist.Smart())); err != nil {
-		m.status.Showf(statusTTLDefault, "Config save failed: %s", err)
-	}
+	_ = m.saveConfigBool("smart_shuffle", m.playlist.Smart())
 	m.status.Show("Smart Shuffle on", statusTTLDefault)
 	m.player.ClearPreload()
 	// Top up immediately so enabling is visibly doing something — the

@@ -630,16 +630,16 @@ func TestSpotifySetupBodyConnect(t *testing.T) {
 	tests := []struct {
 		name   string
 		values map[string]string
-		want   []string
+		want   map[string]string
 	}{
 		{
 			name:   "defaults",
 			values: map[string]string{},
-			want: []string{
-				"bitrate   = 320",
-				"connect_enabled = false",
-				`connect_name = "cliamp"`,
-				"connect_port = 0",
+			want: map[string]string{
+				"bitrate":         "320",
+				"connect_enabled": "false",
+				"connect_name":    `"cliamp"`,
+				"connect_port":    "0",
 			},
 		},
 		{
@@ -652,28 +652,23 @@ func TestSpotifySetupBodyConnect(t *testing.T) {
 				"connect_name":    "Living Room",
 				"connect_port":    "46325",
 			},
-			want: []string{
-				`client_id = "id123"`,
-				"bitrate   = 160",
-				"connect_enabled = true",
-				`connect_name = "Living Room"`,
-				"connect_port = 46325",
+			want: map[string]string{
+				"client_id":       `"id123"`,
+				"bitrate":         "160",
+				"connect_enabled": "true",
+				"connect_name":    `"Living Room"`,
+				"connect_port":    "46325",
 			},
 		},
 		{
 			name:   "enabled normalizes to bool",
 			values: map[string]string{"connect_enabled": "TRUE"},
-			want:   []string{"connect_enabled = true"},
+			want:   map[string]string{"connect_enabled": "true"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body := spec.body(tt.values)
-			for _, want := range tt.want {
-				if !strings.Contains(body, want) {
-					t.Errorf("body missing %q\ngot:\n%s", want, body)
-				}
-			}
+			checkBody(t, spec.body(tt.values), tt.want)
 		})
 	}
 

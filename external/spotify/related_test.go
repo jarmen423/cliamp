@@ -152,7 +152,7 @@ func TestTracksMetadataBatchesAndSkipsMissing(t *testing.T) {
 	}
 }
 
-func TestTrackFromMetadata(t *testing.T) {
+func TestRelatedTrackFromMetadata(t *testing.T) {
 	m := &metadatapb.Track{
 		Name:     proto.String("Instant Crush"),
 		Number:   proto.Int32(5),
@@ -178,6 +178,7 @@ func TestTrackFromMetadata(t *testing.T) {
 		Year:         2013,
 		DurationSecs: 337,
 		TrackNumber:  5,
+		ProviderMeta: map[string]string{},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("trackFromMetadata =\n%+v\nwant\n%+v", got, want)

@@ -222,7 +222,7 @@ func TestLoadGolden(t *testing.T) {
 		ScrobbleDisabled: true,
 	}
 	sectionsWant.Lyrion = LyrionConfig{URL: "http://nas.local:9000", User: "bob", Password: "lyr#ion", ShowUnplayable: true}
-	sectionsWant.Spotify = SpotifyConfig{Enabled: true, ClientID: "spotify-client", Bitrate: 160}
+	sectionsWant.Spotify = SpotifyConfig{Enabled: true, ClientID: "spotify-client", Bitrate: 160, ConnectName: "cliamp"}
 	sectionsWant.Qobuz = QobuzConfig{Enabled: true, Quality: 27}
 	sectionsWant.Tidal = TidalConfig{Enabled: true, ClientID: "tidal-id", ClientSecret: "tidal-secret", Quality: "hires"}
 	sectionsWant.YouTubeMusic = YouTubeMusicConfig{
@@ -324,8 +324,12 @@ func TestLoadGolden(t *testing.T) {
 	allWant.Theme = "Tokyo Night"
 	allWant.Visualizer = "Bars"
 	allWant.Podcast = PodcastConfig{Country: "no"}
-	allWant.Spotify = SpotifyConfig{Enabled: true, ClientID: "your-spotify-app-client-id", Bitrate: 320}
-	allWant.Qobuz = QobuzConfig{Enabled: true, Quality: 6}
+	allWant.Immersive = true
+	allWant.NerdFontGlyphs = true
+	allWant.Images = "auto"
+	allWant.ImmersiveView = "list"
+	allWant.Spotify = SpotifyConfig{Enabled: true, ClientID: "your-spotify-app-client-id", Bitrate: 320, AlbumSort: "recent", ConnectName: "cliamp"}
+	allWant.Qobuz = QobuzConfig{Enabled: true, Quality: 6, PrivateKey: "..."}
 	allWant.Tidal = TidalConfig{Enabled: true, Quality: "lossless"}
 	allWant.Navidrome = NavidromeConfig{
 		URL:        "https://music.example.com",

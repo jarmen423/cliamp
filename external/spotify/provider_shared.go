@@ -2,6 +2,7 @@ package spotify
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/bjarneo/cliamp/playlist"

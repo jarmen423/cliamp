@@ -239,7 +239,7 @@ func (m Model) renderPlaylistPickerBody() string {
 		head = fmt.Sprintf("%d tracks selected", n)
 	}
 	head = dimStyle.Render("  " + truncate(head, max(1, m.layout.panelWidth-2)))
-	list := windowList(items, m.plPicker.cursor, m.plPicker.scroll, max(0, budget-1))
+	list := strings.Join(fitLines(lines, max(0, budget-1)), "\n")
 	return strings.Join([]string{head, list}, "\n")
 }
 

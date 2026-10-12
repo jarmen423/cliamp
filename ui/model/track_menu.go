@@ -670,7 +670,7 @@ func (m Model) trackMenuHeaderLine() string {
 	if name == "" {
 		name = "Track"
 	}
-	return sepHeaderN("Track — "+name, m.trackMenu.cursor+1, len(m.trackMenuItems()))
+	return sepHeaderN("Track — "+name, m.trackMenu.cursor+1, len(m.trackMenuItems()), m.layout.panelWidth)
 }
 
 func (m Model) trackMenuHelpLine() string {
@@ -699,7 +699,7 @@ func (m Model) creditsHeaderLine() string {
 	if name == "" {
 		name = "Track"
 	}
-	return sepHeader("Credits — " + name)
+	return sepHeader("Credits — "+name, m.layout.panelWidth)
 }
 
 func (m Model) creditsHelpLine() string {
