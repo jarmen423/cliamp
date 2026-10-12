@@ -397,6 +397,23 @@ func searchOverlaySection(t playlist.Track) string {
 	return "Tracks"
 }
 
+// spotSearchRow is one rendered row of the provider search results: a section
+// separator when Index is negative, otherwise the result at Index.
+type spotSearchRow struct {
+	Index   int
+	Track   playlist.Track
+	Section string
+}
+
+// spotSearchSection names the section a search result belongs to. Albums are
+// placeholders that expand into a record; everything else plays as-is.
+func spotSearchSection(t playlist.Track) string {
+	if t.IsAlbum() {
+		return "Albums"
+	}
+	return "Tracks"
+}
+
 // sectionRow is one rendered row of a sectioned list: a section separator
 // when Index is negative, otherwise the item at Index.
 type sectionRow struct {

@@ -39,9 +39,9 @@ func (m Model) artistInfoLine() string {
 func (m Model) artistHeaderLine() string {
 	if len(m.artist.drill) > 0 {
 		lvl := m.artist.drill[len(m.artist.drill)-1]
-		return sepHeaderN("Artist — "+m.artist.info.Name, lvl.cursor+1, m.spotDrillCount(lvl))
+		return sepHeaderN("Artist — "+m.artist.info.Name, lvl.cursor+1, m.spotDrillCount(lvl), m.layout.panelWidth)
 	}
-	return sepHeaderN("Artist — "+m.artist.info.Name, m.artist.cursor+1, len(m.artistRows()))
+	return sepHeaderN("Artist — "+m.artist.info.Name, m.artist.cursor+1, len(m.artistRows()), m.layout.panelWidth)
 }
 
 func (m Model) artistHelpLine() string {

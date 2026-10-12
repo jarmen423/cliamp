@@ -132,6 +132,14 @@ YinYang 48x9 02df638de81d1c0f
 YinYang 13x3 f4eeb3b12f247c6b
 YinYang 40x1 04a9cc2059f93746
 YinYang 140x16 f70549104a2bc058
+Aurora 48x9 4a8e74dd9f7dbcb3
+Aurora 13x3 56c0b4106a38d52a
+Aurora 40x1 0ffd3b6250bca0c0
+Aurora 140x16 3c41e4e74b03e0f0
+Phosphor 48x9 89ab336321800a9e
+Phosphor 13x3 89212917432a22ff
+Phosphor 40x1 9a3268eb50250dd0
+Phosphor 140x16 a5be2141b2f15786
 None 48x9 a09d945a1cd8d6e5
 None 13x3 a09d945a1cd8d6e5
 None 40x1 a09d945a1cd8d6e5

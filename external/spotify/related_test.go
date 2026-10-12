@@ -39,7 +39,7 @@ func TestStationTrackURIsPagesUntilEnoughSongs(t *testing.T) {
 		}
 		return pages[idx], nil
 	}
-	got, err := stationTrackURIs(context.Background(), page, "spotify:track:seed", 3)
+	got, err := relatedStationURIs(context.Background(), page, "spotify:track:seed", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestStationTrackURIsPagesUntilEnoughSongs(t *testing.T) {
 	}
 
 	asked = nil
-	got, err = stationTrackURIs(context.Background(), page, "spotify:track:seed", 50)
+	got, err = relatedStationURIs(context.Background(), page, "spotify:track:seed", 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestStationTrackURIsFailingPage(t *testing.T) {
 		}
 		return nil, boom
 	}
-	if got, err := stationTrackURIs(context.Background(), failSecond, "spotify:track:seed", 10); !errors.Is(err, boom) {
+	if got, err := relatedStationURIs(context.Background(), failSecond, "spotify:track:seed", 10); !errors.Is(err, boom) {
 		t.Fatalf("later page failing: got %v, %v; want %v", got, err, boom)
 	}
 }

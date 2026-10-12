@@ -30,6 +30,7 @@ func TestTrackSurvivesEveryStore(t *testing.T) {
 		Restricted:     true,
 		DurationSecs:   208,
 		Bookmark:       true,
+		Smart:          true,
 		Unplayable:     true,
 		DirSourced:     true,
 		EmbeddedLyrics: "[00:01.00]Line",

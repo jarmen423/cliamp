@@ -24,6 +24,7 @@ func fullTOMLTrack() Track {
 		Feed:           true,
 		DurationSecs:   208,
 		Bookmark:       true,
+		Smart:          true,
 		Restricted:     true,
 		Unplayable:     true,
 		DirSourced:     true,

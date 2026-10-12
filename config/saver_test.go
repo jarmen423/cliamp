@@ -29,7 +29,7 @@ func TestSaveCreatesConfigFile(t *testing.T) {
 	home := withHome(t)
 
 	if err := save("volume", "-6"); err != nil {
-		t.Fatalf("Save: %v", err)
+		t.Fatalf("SaveBool: %v", err)
 	}
 
 	got := readConfig(t, home)
@@ -50,7 +50,7 @@ func TestSaveReplacesExistingKey(t *testing.T) {
 	}
 
 	if err := save("volume", "-3"); err != nil {
-		t.Fatalf("Save: %v", err)
+		t.Fatalf("SaveBool: %v", err)
 	}
 
 	got := readConfig(t, home)
@@ -77,7 +77,7 @@ func TestSaveInsertsBeforeFirstSection(t *testing.T) {
 	}
 
 	if err := save("volume", "-6"); err != nil {
-		t.Fatalf("Save: %v", err)
+		t.Fatalf("SaveBool: %v", err)
 	}
 
 	got := readConfig(t, home)
@@ -106,7 +106,7 @@ func TestSaveDoesNotMatchKeyInSection(t *testing.T) {
 	}
 
 	if err := save("volume", "-6"); err != nil {
-		t.Fatalf("Save: %v", err)
+		t.Fatalf("SaveBool: %v", err)
 	}
 
 	got := readConfig(t, home)
@@ -273,13 +273,13 @@ func TestSaveFuncDelegates(t *testing.T) {
 	home := withHome(t)
 
 	var f SaveFunc
-	if err := f.Save("test_key", "123"); err != nil {
-		t.Fatalf("SaveFunc.Save: %v", err)
+	if err := f.SaveBool("test_key", true); err != nil {
+		t.Fatalf("SaveFunc.SaveBool: %v", err)
 	}
 
 	got := readConfig(t, home)
-	if !strings.Contains(got, "test_key = 123") {
-		t.Errorf("config should contain 'test_key = 123':\n%s", got)
+	if !strings.Contains(got, "test_key = true") {
+		t.Errorf("config should contain 'test_key = true':\n%s", got)
 	}
 }
 
@@ -330,8 +330,8 @@ func TestSaveSmartShuffleRoundtrip(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	if err := Save("smart_shuffle", "true"); err != nil {
-		t.Fatalf("Save: %v", err)
+	if err := SaveBool("smart_shuffle", true); err != nil {
+		t.Fatalf("SaveBool: %v", err)
 	}
 
 	cfg, err := Load()
@@ -345,6 +345,7 @@ func TestSaveSmartShuffleRoundtrip(t *testing.T) {
 		t.Errorf("Shuffle = %v, want untouched false", cfg.Shuffle)
 	}
 }
+
 // TestSaveWithCommentedSectionHeaders checks that the savers see a header
 // with a trailing comment, so they neither duplicate the section nor write
 // a top-level key inside it.

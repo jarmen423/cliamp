@@ -553,15 +553,17 @@ func (m Model) spotSearchHeaderLine() string {
 		}
 		if m.spotSearch.multi && len(m.spotSearch.drill) > 0 {
 			lvl := m.spotSearch.drill[len(m.spotSearch.drill)-1]
-			return sepHeaderN(label, lvl.cursor+1, m.spotDrillCount(lvl))
+			return sepHeaderN(label, lvl.cursor+1, m.spotDrillCount(lvl), m.layout.panelWidth)
 		}
-		return sepHeaderN(label, m.spotSearch.cursor+1, m.spotResultsListLen())
+		return sepHeaderN(label, m.spotSearch.cursor+1, m.spotResultsListLen(), m.layout.panelWidth)
 	case spotSearchBrowse:
-		return sepHeaderN(m.spotBrowseCrumb(), m.spotSearch.catCursor+1, len(m.spotSearch.categories))
+		return sepHeaderN(m.spotBrowseCrumb(), m.spotSearch.catCursor+1, len(m.spotSearch.categories), m.layout.panelWidth)
 	case spotSearchPlaylist:
-		return sepHeaderN("Add to Playlist", m.spotSearch.cursor+1, len(m.spotSearch.playlists)+1)
+		return sepHeaderN("Add to Playlist", m.spotSearch.cursor+1, len(m.spotSearch.playlists)+1, m.layout.panelWidth)
 	case spotSearchNewName:
 		return m.promptHeader("spot-playlist-name", "New Playlist", m.spotSearch.newName)
+	default:
+		return m.filterHeader("Search: "+providerName(m.spotSearch.prov), "spot-search", m.spotSearch.query, "")
 	}
 }
 
@@ -678,13 +680,6 @@ func (m Model) renderSearchOverlayBody() string {
 	switch m.searchOverlay.screen {
 	case searchOverlayResults:
 		switch {
-		case m.spotSearch.multi:
-			if len(m.spotSearch.drill) > 0 {
-				body = m.renderSpotDrillBody(bodyBudget)
-			} else {
-				body = m.renderSpotTabsBody(bodyBudget)
-			}
-		case m.spotSearch.albumLoading:
 		case m.searchOverlay.albumLoading:
 			body = bodyLines([]string{loadingLine("Loading album…")}, bodyBudget)
 		case len(m.searchOverlay.results) == 0:
@@ -712,16 +707,10 @@ func (m Model) renderSearchOverlayBody() string {
 		body = strings.Join([]string{head, list}, "\n")
 	case searchOverlayNewName:
 		body = bodyMessage("Enter a name for the new playlist above.", bodyBudget)
-	case spotSearchBrowse:
-		body = m.renderSpotBrowseBody(bodyBudget)
 	default:
 		var lines []string
-		if m.spotSearch.loading {
-			lines = append(lines, loadingLine("Searching "+providerName(m.spotSearch.prov)+"..."))
-		} else if m.searchOverlay.loading {
+		if m.searchOverlay.loading {
 			lines = append(lines, loadingLine("Searching "+providerName(m.searchOverlay.prov)+"..."))
-		} else if _, ok := m.spotSearch.prov.(provider.CategoryBrowser); ok {
-			lines = append(lines, dimStyle.Render("  Type a query and press Enter to search, or press Enter now to browse."))
 		} else {
 			lines = append(lines, dimStyle.Render("  Type a query and press Enter to search."))
 		}

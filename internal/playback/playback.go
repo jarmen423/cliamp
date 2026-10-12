@@ -19,12 +19,12 @@ type (
 		Position time.Duration
 	}
 	SetVolumeMsg struct{ VolumeDB float64 }
-	SetSpeedMsg struct{ Ratio float64 }
+	SetSpeedMsg  struct{ Ratio float64 }
 	// ToggleMonoMsg flips mono output. It toggles and does not set a value,
 	// so two toggles that a sender queues before Update runs cancel out.
 	ToggleMonoMsg struct{}
 	SetShuffleMsg struct{ On bool }
-	SetRepeatMsg struct{ Mode playlist.RepeatMode }
+	SetRepeatMsg  struct{ Mode playlist.RepeatMode }
 
 	// EnqueueMsg appends a track to the playlist and marks it queued
 	// (plays next), matching the UI's "queue next" action.

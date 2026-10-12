@@ -2,7 +2,6 @@ package spotify
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -73,7 +72,7 @@ func (s *Session) relatedTracks(ctx context.Context, seedURI string, n int) ([]p
 	if err != nil {
 		return nil, fmt.Errorf("spotify: song radio: %w", err)
 	}
-	uris, err := stationTrackURIs(ctx, resolver.Page, seedURI, n)
+	uris, err := relatedStationURIs(ctx, resolver.Page, seedURI, n)
 	if err != nil {
 		return nil, fmt.Errorf("spotify: song radio: %w", err)
 	}
@@ -90,9 +89,9 @@ func (s *Session) relatedTracks(ctx context.Context, seedURI string, n int) ([]p
 	return tracks, nil
 }
 
-// stationTrackURIs collects up to n song URIs from a station's pages, skipping
+// relatedStationURIs collects up to n song URIs from a station's pages, skipping
 // the seed, repeats and anything that is not a song.
-func stationTrackURIs(ctx context.Context, page func(context.Context, int) ([]*connectpb.ContextTrack, error), seedURI string, n int) ([]string, error) {
+func relatedStationURIs(ctx context.Context, page func(context.Context, int) ([]*connectpb.ContextTrack, error), seedURI string, n int) ([]string, error) {
 	seen := map[string]bool{seedURI: true}
 	var uris []string
 	for idx := 0; idx < maxStationPages && len(uris) < n; idx++ {
@@ -150,43 +149,4 @@ func tracksMetadata(ctx context.Context, fetch func(context.Context, *extmetadat
 		}
 	}
 	return meta, nil
-}
-
-// trackFromMetadata converts extended metadata into a playlist track, filling
-// the same fields as trackFromItem does from the Web API except Unplayable:
-// go-librespot plays a restricted song through an unrestricted alternative,
-// so the original's restrictions don't mean it won't play.
-func trackFromMetadata(uri string, t *metadatapb.Track) playlist.Track {
-	artists := make([]string, 0, len(t.GetArtist()))
-	for _, a := range t.GetArtist() {
-		artists = append(artists, a.GetName())
-	}
-	return playlist.Track{
-		Path:         uri,
-		Title:        t.GetName(),
-		Artist:       strings.Join(artists, ", "),
-		Album:        t.GetAlbum().GetName(),
-		AlbumArtURL:  coverImageURL(t.GetAlbum().GetCoverGroup().GetImage()),
-		Year:         int(t.GetAlbum().GetDate().GetYear()),
-		DurationSecs: int(t.GetDuration() / 1000),
-		TrackNumber:  int(t.GetNumber()),
-	}
-}
-
-// coverImageURL picks the 300 px cover, which is what pickCoverImage aims for,
-// or the first cover when that size is missing.
-func coverImageURL(images []*metadatapb.Image) string {
-	var pick *metadatapb.Image
-	for _, img := range images {
-		if len(img.GetFileId()) == 0 {
-			continue
-		}
-		if pick == nil || img.GetSize() == metadatapb.Image_DEFAULT {
-			pick = img
-		}
-	}
-	if pick == nil {
-		return ""
-	}
-	return "https://i.scdn.co/image/" + hex.EncodeToString(pick.GetFileId())
 }
