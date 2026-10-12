@@ -942,11 +942,6 @@ func (p *Playlist) ToggleBookmark(idx int) {
 	defer p.mu.Unlock()
 	if idx >= 0 && idx < len(p.tracks) {
 		p.tracks[idx].Bookmark = !p.tracks[idx].Bookmark
-		if p.tracks[idx].Bookmark {
-			p.bookmarkCount++
-		} else {
-			p.bookmarkCount--
-		}
 		p.revision++
 	}
 }
@@ -955,7 +950,13 @@ func (p *Playlist) ToggleBookmark(idx int) {
 func (p *Playlist) BookmarkCount() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.bookmarkCount
+	count := 0
+	for _, track := range p.tracks {
+		if track.Bookmark {
+			count++
+		}
+	}
+	return count
 }
 
 // Smart reports whether Smart Shuffle mode is enabled. The flag alone changes

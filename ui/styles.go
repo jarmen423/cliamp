@@ -35,6 +35,20 @@ var (
 
 func init() { ApplyThemeColors(theme.Default()) }
 
+// PanelWidth is the usable inner width of the frame. The model keeps it
+// current on every layout pass; fork screens that render outside the layout
+// struct (immersive, Home, Browse, mouse geometry) read it directly.
+var PanelWidth = 80 - 2*3
+
+// WithPanelWidth narrows PanelWidth for a scope and returns the restore func,
+// so callers rendering into a sub-width column can `defer WithPanelWidth(w)()`
+// and be sure the frame width comes back even if the call panics.
+func WithPanelWidth(w int) func() {
+	previous := PanelWidth
+	PanelWidth = w
+	return func() { PanelWidth = previous }
+}
+
 // Palette holds the colors that a theme gives the UI. A nil Background keeps
 // the terminal background.
 type Palette struct {

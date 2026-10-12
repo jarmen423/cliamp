@@ -78,7 +78,7 @@ func (p *SpotifyProvider) AddTracksToPlaylist(ctx context.Context, playlistID st
 		chunk := uris[:size]
 
 		body, _ := json.Marshal(map[string]any{"uris": chunk})
-		resp, err := p.webAPIWithBody(ctx, http.MethodPost, path, nil, bytes.NewReader(body), "application/json", http.StatusOK, http.StatusCreated)
+		resp, err := p.webAPIWithRetry(ctx, http.MethodPost, path, nil, bytes.NewReader(body), "application/json", http.StatusOK, http.StatusCreated)
 		if err != nil {
 			return added, skipped, fmt.Errorf("spotify: add tracks: %w", err)
 		}
@@ -140,7 +140,7 @@ func (p *SpotifyProvider) ToggleTrackLike(ctx context.Context, track playlist.Tr
 	if liked {
 		method = http.MethodDelete // saved: remove it
 	}
-	resp, err = p.webAPIWithBody(ctx, method, "/v1/me/library", url.Values{"uris": {uri}}, nil, "", http.StatusOK, http.StatusNoContent)
+	resp, err = p.webAPIWithRetry(ctx, method, "/v1/me/library", url.Values{"uris": {uri}}, nil, "", http.StatusOK, http.StatusNoContent)
 	if err != nil {
 		return false, fmt.Errorf("spotify: toggle like: %w", err)
 	}
@@ -182,7 +182,7 @@ func (p *SpotifyProvider) setPlaylistFollowed(ctx context.Context, playlistID st
 		method = http.MethodDelete
 	}
 	uri := "spotify:playlist:" + playlistID
-	resp, err := p.webAPIWithBody(ctx, method, "/v1/me/library", url.Values{"uris": {uri}}, nil, "", http.StatusOK, http.StatusNoContent)
+	resp, err := p.webAPIWithRetry(ctx, method, "/v1/me/library", url.Values{"uris": {uri}}, nil, "", http.StatusOK, http.StatusNoContent)
 	if err != nil {
 		return fmt.Errorf("spotify: %s playlist: %w", followWord(follow), err)
 	}
@@ -219,7 +219,7 @@ func (p *SpotifyProvider) setArtistFollowed(ctx context.Context, artistID string
 		method = http.MethodDelete
 	}
 	uri := "spotify:artist:" + artistID
-	resp, err := p.webAPIWithBody(ctx, method, "/v1/me/library", url.Values{"uris": {uri}}, nil, "", http.StatusOK, http.StatusNoContent)
+	resp, err := p.webAPIWithRetry(ctx, method, "/v1/me/library", url.Values{"uris": {uri}}, nil, "", http.StatusOK, http.StatusNoContent)
 	if err != nil {
 		return fmt.Errorf("spotify: %s artist: %w", followWord(follow), err)
 	}
@@ -256,7 +256,7 @@ func (p *SpotifyProvider) RemoveTrackFromPlaylist(ctx context.Context, playlistI
 		"items": []map[string]any{{"uri": uri}},
 	})
 	path := fmt.Sprintf("/v1/playlists/%s/items", playlistID)
-	resp, err := p.webAPIWithBody(ctx, http.MethodDelete, path, nil, bytes.NewReader(body), "application/json", http.StatusOK)
+	resp, err := p.webAPIWithRetry(ctx, http.MethodDelete, path, nil, bytes.NewReader(body), "application/json", http.StatusOK)
 	if err != nil {
 		return fmt.Errorf("spotify: remove track: %w", err)
 	}
@@ -280,7 +280,7 @@ func (p *SpotifyProvider) RenamePlaylistByID(ctx context.Context, playlistID, ne
 
 	body, _ := json.Marshal(map[string]any{"name": newName})
 	path := fmt.Sprintf("/v1/playlists/%s", playlistID)
-	resp, err := p.webAPIWithBody(ctx, http.MethodPut, path, nil, bytes.NewReader(body), "application/json", http.StatusOK)
+	resp, err := p.webAPIWithRetry(ctx, http.MethodPut, path, nil, bytes.NewReader(body), "application/json", http.StatusOK)
 	if err != nil {
 		return fmt.Errorf("spotify: rename playlist: %w", err)
 	}

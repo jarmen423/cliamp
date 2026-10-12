@@ -236,6 +236,7 @@ func (m *Model) recomputeLayout() {
 	}
 
 	m.layout = layout
+	ui.PanelWidth = layout.panelWidth
 	if m.vis != nil {
 		m.vis.Cols = layout.panelWidth
 		if m.width <= 0 && !m.headless {

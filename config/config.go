@@ -1243,7 +1243,7 @@ func SaveNavidromeSort(sortType string) error {
 // in-place, or appends it after the [spotify] section if not present.
 // If no [spotify] section exists, one is appended along with the key.
 func SaveSpotifySort(sortType string) error {
-	return saveSectionValue("spotify", "album_sort", strconv.Quote(sortType))
+	return SaveSection("spotify", []KeyValue{{"album_sort", QuoteString(sortType)}}, nil)
 }
 
 // SaveRadioCountry persists the listener's home country in the [radio] section
