@@ -238,7 +238,7 @@ func (m Model) renderSpotBrowseBody(budget int) string {
 		}
 		if row.Index < 0 {
 			if budget > 1 {
-				lines = append(lines, dimStyle.Render(labeledSeparator("", row.Section)))
+				lines = append(lines, dimStyle.Render(labeledSeparator("", row.Section, m.layout.panelWidth)))
 			}
 			continue
 		}

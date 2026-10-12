@@ -8,7 +8,6 @@ package model
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"unicode/utf8"
 
@@ -128,7 +127,7 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.immersive.mode = immCanvasMode((int(m.immersive.mode) + 1) % int(immCanvasModeCount))
 		m.immersive.scroll = 0
 		m.immCanvasPref = m.immersive.mode
-		m.saveConfigKey("immersive_view", fmt.Sprintf("%q", immCanvasModeNames[m.immersive.mode]))
+		_ = m.saveConfigString("immersive_view", immCanvasModeNames[m.immersive.mode])
 		return nil
 	case "e":
 		if m.immersive.view == immViewSettings {
@@ -201,21 +200,21 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 // targets (a click on a box-drawn button is dispatched as its key).
 func (m *Model) immTogglePlay() tea.Cmd {
 	cmd := m.togglePlayPause()
-	m.notifyPlayback()
+	m.notifyPlaybackChange()
 	return cmd
 }
 
 func (m *Model) immNext() tea.Cmd {
 	refresh := m.scrobbleCurrent()
 	cmd := m.nextTrack()
-	m.notifyPlayback()
+	m.notifyPlaybackChange()
 	return tea.Batch(refresh, cmd)
 }
 
 func (m *Model) immPrev() tea.Cmd {
 	refresh := m.scrobbleCurrent()
 	cmd := m.prevTrack()
-	m.notifyPlayback()
+	m.notifyPlaybackChange()
 	return tea.Batch(refresh, cmd)
 }
 
@@ -226,8 +225,8 @@ func (m *Model) immCycleShuffle() tea.Cmd {
 	switch {
 	case !m.playlist.Shuffled():
 		m.playlist.ToggleShuffle()
-		m.saveConfigKey("shuffle", boolString(m.playlist.Shuffled()))
-		return m.rearmPreload()
+		_ = m.saveConfigBool("shuffle", m.playlist.Shuffled())
+		return m.rearmStalePreload()
 	case !m.playlist.Smart():
 		if rec, _ := m.recommenderForQueue(); rec != nil {
 			return m.toggleSmartShuffle()
@@ -236,8 +235,8 @@ func (m *Model) immCycleShuffle() tea.Cmd {
 		m.toggleSmartShuffle() // off; its preload is superseded below
 	}
 	m.playlist.ToggleShuffle()
-	m.saveConfigKey("shuffle", boolString(m.playlist.Shuffled()))
-	return m.rearmPreload()
+	_ = m.saveConfigBool("shuffle", m.playlist.Shuffled())
+	return m.rearmStalePreload()
 }
 
 // immCycleVisualizer is the classic `v`: next visualizer mode, persisted.
@@ -247,13 +246,13 @@ func (m *Model) immCycleVisualizer() {
 	}
 	m.vis.CycleMode()
 	m.vis.RequestRefresh()
-	m.saveConfigKey("visualizer", fmt.Sprintf("%q", m.vis.ModeName()))
+	_ = m.saveConfigString("visualizer", m.vis.ModeName())
 }
 
 func (m *Model) immCycleRepeat() tea.Cmd {
 	const repeatModes = playlist.RepeatOne + 1
 	m.playlist.SetRepeat((m.playlist.Repeat() + 1) % repeatModes)
-	m.saveConfigKey("repeat", repeatLabel(m.playlist.Repeat()))
+	_ = m.saveConfigString("repeat", m.playlist.Repeat().String())
 	return nil
 }
 
@@ -462,7 +461,7 @@ func (m *Model) immJumpToTrack(idx int) tea.Cmd {
 	m.playlist.SetIndex(idx)
 	m.playlist.Dequeue(idx) // no-op for upcoming (unqueued) rows
 	cmd := m.playCurrentTrack()
-	m.notifyPlayback()
+	m.notifyPlaybackChange()
 	return cmd
 }
 
@@ -485,7 +484,7 @@ func (m *Model) immersiveQueueAppend() tea.Cmd {
 // immersiveToggleLike hearts the focused track or, lacking a track context,
 // the playing track — mirroring `n` on the playlist pane.
 func (m *Model) immersiveToggleLike() tea.Cmd {
-	if m.favMgr == nil {
+	if m.favStore == nil {
 		return nil
 	}
 	var track playlist.Track
@@ -502,7 +501,7 @@ func (m *Model) immersiveToggleLike() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	added, err := m.favMgr.ToggleFavorite(track)
+	added, err := m.favStore.Toggle(track)
 	if err != nil {
 		m.status.Errorf(statusTTLDefault, "Favorite failed: %s", err)
 		return nil
@@ -513,7 +512,7 @@ func (m *Model) immersiveToggleLike() tea.Cmd {
 	} else {
 		m.status.Show("Removed from favorites "+favRemovedMark(), statusTTLShort)
 	}
-	return m.fetchProviderPlaylists()
+	return tea.Batch(m.syncTrackFavoriteCmd(track, added), m.refreshPaneAfterLocalWrite())
 }
 
 // handleImmersiveInputKey drives the two text fields (search pill input and

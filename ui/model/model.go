@@ -4,9 +4,11 @@ package model
 import (
 	"io"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/bjarneo/cliamp/external/radio"
+	"github.com/bjarneo/cliamp/favorites"
 	"github.com/bjarneo/cliamp/history"
 	"github.com/bjarneo/cliamp/internal/playback"
 	"github.com/bjarneo/cliamp/internal/resume"
@@ -19,26 +21,57 @@ import (
 	"github.com/bjarneo/cliamp/ui/termimg"
 )
 
-// ConfigSaver persists individual config key-value pairs.
+// ConfigSaver persists top-level config keys with typed values.
 // Satisfied by config.SaveFunc (the default) or a test stub.
 type ConfigSaver interface {
-	Save(key, value string) error
+	SaveString(key, value string) error
+	SaveBool(key string, value bool) error
+	SaveFloat(key string, value float64, prec int) error
+	SaveFloats(key string, values []float64) error
 }
 
 // ResumeSaver persists the session checkpoint: the active track, timeline
 // position and source context, plus the queue and immersive page.
 type ResumeSaver func(state resume.State)
 
-// saveConfigKey persists a top-level config key, surfacing a write failure in
-// the status line. It is a no-op when no saver is wired, so headless callers
-// and tests can toggle settings without touching the config file.
-func (m *Model) saveConfigKey(key, value string) {
+// The saveConfig* helpers persist a top-level config key and show a write
+// failure in the status line. They return the error, so an IPC job can fail
+// too. They do nothing when no saver is wired, so tests can change settings
+// without touching the config file.
+
+func (m *Model) saveConfigString(key, value string) error {
 	if m.configSaver == nil {
-		return
+		return nil
 	}
-	if err := m.configSaver.Save(key, value); err != nil {
+	return m.reportConfigSave(m.configSaver.SaveString(key, value))
+}
+
+func (m *Model) saveConfigBool(key string, value bool) error {
+	if m.configSaver == nil {
+		return nil
+	}
+	return m.reportConfigSave(m.configSaver.SaveBool(key, value))
+}
+
+func (m *Model) saveConfigFloat(key string, value float64, prec int) error {
+	if m.configSaver == nil {
+		return nil
+	}
+	return m.reportConfigSave(m.configSaver.SaveFloat(key, value, prec))
+}
+
+func (m *Model) saveConfigFloats(key string, values []float64) error {
+	if m.configSaver == nil {
+		return nil
+	}
+	return m.reportConfigSave(m.configSaver.SaveFloats(key, values))
+}
+
+func (m *Model) reportConfigSave(err error) error {
+	if err != nil {
 		m.status.Errorf(statusTTLDefault, "Config save failed: %s", err)
 	}
+	return err
 }
 
 type focusArea int
@@ -179,6 +212,7 @@ const (
 	screenFileBrowser
 	screenNavBrowser
 	screenPlaylistManager
+	screenSearchOverlay
 	screenSpotSearch
 	screenArtist
 	screenHome
@@ -190,6 +224,8 @@ const (
 	screenURLInput
 	screenLyrics
 	screenJump
+	// screenFullVisualizer stays last. TestOverlayStackOrder checks that
+	// overlayStack holds each screen up to it.
 	screenFullVisualizer
 	screenImmersive
 	screenTrackMenu
@@ -213,8 +249,8 @@ func (s topLevelScreen) label() string {
 	case screenNavBrowser:
 		return "Browse"
 	case screenPlaylistManager:
-		return "Playlists"
-	case screenSpotSearch, screenNetSearch:
+		return "Playlist"
+	case screenSearchOverlay, screenSpotSearch, screenNetSearch:
 		return "Search"
 	case screenArtist:
 		return "Artist"
@@ -284,13 +320,6 @@ const (
 	navBrowseScreenTracks                            // final song list in any mode
 )
 
-// ProviderEntry pairs a display name with a key and provider implementation.
-type ProviderEntry struct {
-	Key      string            // config key: "radio", "navidrome", "spotify"
-	Name     string            // display name: "Radio", "Navidrome", "Spotify"
-	Provider playlist.Provider // nil if not configured
-}
-
 // statusTTL* constants define how long a status message is shown.
 const (
 	statusTTLShort   statusTTL = statusTTL(2 * time.Second)         // brief confirmations
@@ -300,9 +329,17 @@ const (
 	statusTTLLong    statusTTL = statusTTL(6 * time.Second)         // loading indicators
 )
 
+// ProviderEntry is the UI's provider list entry: display name, config key
+// and implementation. It aliases provider.Entry, which the fork's screens
+// and tests still call by this name.
+type ProviderEntry = provider.Entry
+
 // Model is the Bubbletea model for the CLIAMP TUI.
 type Model struct {
 	downloadsDirectory string
+	// audioDevice names the output device that the last device switch or
+	// list reported. The runtime snapshot shows it.
+	audioDevice string
 	// Core playback
 	player        player.Engine
 	playlist      *playlist.Playlist
@@ -336,33 +373,27 @@ type Model struct {
 	// Provider state
 	provider                playlist.Provider
 	localProvider           playlist.Provider // local playlist provider for file-based playlist management (always available)
-	providerLists           []playlist.PlaylistInfo
-	provCursor              int
-	provScroll              int
-	provLoading             bool
-	provSignIn              bool            // true when provider needs interactive sign-in
-	provAskLoc              bool            // true while the location question is on screen
-	provAuthURL             string          // OAuth URL to display while interactive auth is in flight
-	openDefaultProviderOnce bool            // open the provider's preferred hierarchy after Init
-	openImmersiveOnce       bool            // enter immersive mode after Init (immersive config)
-	nerdFontGlyphs          bool            // nerd_font_glyphs config: Nerd Font transport glyphs
-	immCanvasPref           immCanvasMode   // immersive_view config: canvas view immersive opens in
-	imgMode                 imageMode       // images config: how covers are drawn
-	imgLayer                *termimg.Layer  // Sixel output layer (nil in tests)
-	imgOut                  io.Writer       // program output for kitty graphics (nil in tests)
-	imgTmux                 bool            // inside tmux: kitty sequences need passthrough wrapping
-	art                     *artStore       // decoded/encoded cover cache
-	pixVis                  *pixVisWorker   // Sixel pixel-visualizer renderer (nil in tests)
-	frameMemo               *frameMemo      // previous view's lines, for image redraw after text rewrites
-	artPolling              bool            // the cover request loop is running
-	termSixel               bool            // the terminal reported Sixel support (DA1 attribute 4)
-	termKitty               bool            // the terminal answered the kitty graphics query
-	kittyNamed              bool            // TERM/TERM_PROGRAM or XTVERSION name a kitty-placeholder terminal
-	cellW, cellH            int             // terminal cell size in pixels (CSI 16 t), 0 until known
-	providers               []ProviderEntry // all available providers
-	provPillIdx             int             // selected pill index
-	eqPresetIdx             int             // -1 = custom, 0+ = index into eqPresets
-	eqCustomLabel           string          // non-empty = plugin-defined preset label (shown instead of "Custom")
+	provPane                providerPane
+	openDefaultProviderOnce bool             // open the provider's preferred hierarchy after Init
+	openImmersiveOnce       bool             // enter immersive mode after Init (immersive config)
+	nerdFontGlyphs          bool             // nerd_font_glyphs config: Nerd Font transport glyphs
+	immCanvasPref           immCanvasMode    // immersive_view config: canvas view immersive opens in
+	imgMode                 imageMode        // images config: how covers are drawn
+	imgLayer                *termimg.Layer   // Sixel output layer (nil in tests)
+	imgOut                  io.Writer        // program output for kitty graphics (nil in tests)
+	imgTmux                 bool             // inside tmux: kitty sequences need passthrough wrapping
+	art                     *artStore        // decoded/encoded cover cache
+	pixVis                  *pixVisWorker    // Sixel pixel-visualizer renderer (nil in tests)
+	frameMemo               *frameMemo       // previous view's lines, for image redraw after text rewrites
+	artPolling              bool             // the cover request loop is running
+	termSixel               bool             // the terminal reported Sixel support (DA1 attribute 4)
+	termKitty               bool             // the terminal answered the kitty graphics query
+	kittyNamed              bool             // TERM/TERM_PROGRAM or XTVERSION name a kitty-placeholder terminal
+	cellW, cellH            int              // terminal cell size in pixels (CSI 16 t), 0 until known
+	providers               []provider.Entry // all available providers
+	provPillIdx             int              // selected pill index
+	eqPresetIdx             int              // -1 = custom, 0+ = index into eqPresets
+	eqCustomLabel           string           // non-empty = plugin-defined preset label (shown instead of "Custom")
 	eqCustomBands           [eqBandCount]float64
 
 	// Overlay / feature state (see state.go for struct definitions)
@@ -381,6 +412,7 @@ type Model struct {
 	spotSearch     spotSearchState
 	artist         artistScreenState
 	home           homeState
+	searchOverlay  searchOverlayState
 	fileBrowser    fileBrowserState
 	navBrowser     navBrowserState
 	immersive      immersiveState
@@ -400,15 +432,8 @@ type Model struct {
 	eqSaveAfter    time.Duration
 	termTitle      terminalTitleState
 
-	// Jump to time mode
-	jumping   bool
-	jumpInput string
-	jumpErr   string
-
-	// URL input mode (load playlist/stream URL at runtime)
-	urlInputting bool
-	urlInput     string
-	urlErr       string
+	jump     jumpState
+	urlInput urlInputState
 
 	// Async feed/M3U URL resolution
 	pendingURLs []string
@@ -418,6 +443,9 @@ type Model struct {
 
 	visVolumeLinked bool // when true, visualizer samples are scaled by volume gain
 	visRows         int  // configured visualizer height at the full tier; 0 uses ui.DefaultVisRows
+	paddingH        int  // configured frame padding left and right; used when paddingSet
+	paddingV        int  // configured frame padding above and below; used when paddingSet
+	paddingSet      bool // false uses defaultPaddingH and defaultPaddingV
 
 	// Async stream buffering (true while HTTP connect is in progress)
 	buffering   bool
@@ -439,7 +467,15 @@ type Model struct {
 
 	lastProgressReport time.Time // last interim provider progress report
 
-	loadedPlaylist string // name of the currently loaded local playlist (for resume)
+	// loadedPlaylist names the saved local list that the queue mirrors, for
+	// resume. When it is set, the ♥ rule treats station rows as tracks.
+	// Write-backs read writableLoadedPlaylist, which excludes Favorites.
+	loadedPlaylist string
+
+	// playlistSource names the provider list that an IPC load put in the
+	// queue, as key:id or key:album:id, when loadedPlaylist is empty. Only
+	// the runtime snapshot reads it.
+	playlistSource string
 
 	// playingContext names the album, artist, playlist or radio the queue was
 	// last replaced from, for the immersive queue panel. Empty when the queue
@@ -489,6 +525,13 @@ type Model struct {
 	immRestore    *resume.View
 	immRestorePos *immRestorePos
 
+	// radioListeners holds live listener counts per cliamp radio channel slug.
+	// Nil means unknown: the fetch never ran or failed, and rows show no
+	// counts rather than zero. radioListenersAt stamps the last fetch so a
+	// failed fetch backs off instead of retrying on every pane load.
+	radioListeners   map[string]int
+	radioListenersAt time.Time
+
 	// preloading is true while a preloadStreamCmd goroutine is in-flight.
 	preloading bool
 	// preloadFor is the path of the armed or in-flight preload.
@@ -519,13 +562,19 @@ type Model struct {
 	// track.change has fired. It stays false while a stream buffers or after a
 	// start failed, so those never count as a finished track.
 	playingTrackStarted bool
-	playbackDetached    bool
+	// playingTrackLeft is set once leaveTrack has reported playingTrack, so
+	// a stop or a start that follows does not report it again.
+	playingTrackLeft bool
+	playbackDetached bool
 	// playingProvider names the provider that was active when the playing
 	// track started, so a label for it stays right after the listener
 	// switches providers while it keeps playing.
 	playingProvider string
 
-	notifiers []playback.Notifier
+	notifier playback.Notifier
+	// notice is the playback state that the notifier and the playback.state
+	// plugin event got last. Update keeps it in the Model that it returns.
+	notice playbackNotice
 
 	// Lua plugin manager (nil if no plugins loaded)
 	luaMgr *luaplugin.Manager
@@ -535,21 +584,33 @@ type Model struct {
 	// snapshot survives Update's value-receiver copy.
 	pluginEmit *pluginEmitState
 
+	// pluginState holds the state that Lua plugins read. It is nil when no
+	// plugin is loaded. See publishPluginState.
+	pluginState *atomic.Pointer[PluginState]
+
 	// ipcRuntime publishes GUI-facing runtime snapshots from the Update owner.
 	// It is shared by value-receiver copies of Model.
 	ipcRuntime *ipcRuntimeState
 
-	// History recorder (nil if config dir unavailable; safe to call when nil)
+	// historyStore records Recently Played. It is nil when the config
+	// directory is unavailable. buildProviders in package main shares it with
+	// the local provider.
 	historyStore *history.Store
 
-	// Favorites manager (nil when local provider doesn't support it; safe to
-	// call when nil). Cached here to avoid a type assertion per rendered track.
-	favMgr provider.FavoritesManager
+	// favStore holds the ♥ favorites. It is nil when the config directory is
+	// unavailable. buildProviders in package main shares it with the local
+	// provider, which lists it as the Favorites playlist.
+	favStore *favorites.Store
+	// favSync orders the calls that copy favorite changes to providers. It
+	// is created on first use and shared across Model value copies.
+	favSync *favorites.SyncQueue
+	// reports orders the now-playing, progress and scrobble reports to
+	// providers. It is shared across Model value copies.
+	reports *reportQueue
 
-	// Local station favorites, independent of bookmarks and heart favorites.
+	// Local station favorites. A directory radio station row shows these
+	// instead of the track favorites in favSet.
 	radioFavorites *radio.Favorites
-	// Shared across Model value copies; keyed by input revisions, not handlers.
-	radioMarkers *radioMarkerCache
 
 	// favSet is a cached set of favorited paths for O(1) lookup during
 	// rendering. Refreshed on init and after every toggle.
@@ -562,9 +623,7 @@ type Model struct {
 	themes   []theme.Theme
 	themeIdx int
 
-	// Track info overlay (metadata details)
-	showInfo   bool
-	infoScroll int
+	info infoOverlay
 
 	showAlbumHeaders bool
 	headerManual     bool
@@ -586,6 +645,7 @@ type Model struct {
 
 	autoPlay        bool // start playing immediately on launch
 	lowPower        bool // lower UI/render cadences in low-power mode
+	headless        bool // no screen: cliamp --daemon runs without a renderer
 	visualizer60FPS bool // render a visible visualizer at the animation cadence
 	simplified      bool // simplified playback view: track summary and time strip
 	hideTrackInfo   bool // full-screen visualizer: show the source instead of the track
@@ -601,93 +661,23 @@ type Model struct {
 
 }
 
+// activeScreen returns the screen of the top open overlay, or screenMain.
 func (m Model) activeScreen() topLevelScreen {
-	switch {
-	case m.fullVis:
-		return screenFullVisualizer
-	case m.credits.visible:
-		return screenCredits
-	case m.trackMenu.visible:
-		return screenTrackMenu
-	case m.keymap.visible:
-		return screenKeymap
-	case m.devicePicker.visible:
-		return screenDevicePicker
-	case m.plPicker.visible:
-		return screenPlaylistPicker
-	// Immersive sits under the transient pickers it opens (keymap, track
-	// menu, credits, playlist picker) and over the classic browse overlays.
-	case m.immersiveShown():
-		return screenImmersive
-	case m.fileBrowser.visible:
-		return screenFileBrowser
-	case m.artist.visible:
-		return screenArtist
-	case m.spotSearch.visible:
-		return screenSpotSearch
-	case m.navBrowser.visible:
-		return screenNavBrowser
-	case m.home.visible:
-		return screenHome
-	case m.themePicker.visible:
-		return screenThemePicker
-	case m.visPicker.visible:
-		return screenVisPicker
-	case m.plManager.visible:
-		return screenPlaylistManager
-	case m.queue.visible:
-		return screenQueue
-	case m.subs.visible:
-		return screenSubs
-	case m.showInfo:
-		return screenInfo
-	case m.lyrics.visible:
-		return screenLyrics
-	case m.jumping:
-		return screenJump
-	case m.urlInputting:
-		return screenURLInput
-	case m.search.active:
-		return screenSearch
-	case m.netSearch.active:
-		return screenNetSearch
-	default:
-		return screenMain
+	if spec, ok := m.topOverlay(); ok {
+		return spec.screen
 	}
-}
-
-// isOverlayActive reports whether an overlay suppresses the live main view.
-// Overlays now render inline, so this is always false; it is kept as the single
-// seam the tick loop gates on.
-func (m Model) isOverlayActive() bool {
-	return false
+	return screenMain
 }
 
 // usesContentFirstLayout gives list-heavy tasks more room while preserving a
-// compact now-playing summary. The visualizer picker deliberately keeps the
-// normal playback chrome for live previews.
+// compact now-playing summary. The top overlay decides, as it decides the
+// keys and the render. With no overlay, the provider pane is content-first.
 func (m Model) usesContentFirstLayout() bool {
-	if m.activeScreen() == screenMain && m.focus == focusProvider {
-		return true
+	screen := m.activeScreen()
+	if screen == screenMain {
+		return m.focus == focusProvider
 	}
-	// The queue is deliberately absent: it holds the same tracks as the
-	// playlist and reads as a view of it, so it keeps the playback chrome and
-	// the settings pane rather than taking the frame.
-	if m.keymap.visible || m.devicePicker.visible || m.fileBrowser.visible ||
-		m.artist.visible || m.navBrowser.visible || m.themePicker.visible ||
-		m.subs.visible || m.search.active || m.home.visible {
-		return true
-	}
-	if m.plPicker.visible && m.plPicker.screen == plPickerChoose {
-		return true
-	}
-	if m.spotSearch.visible && (m.spotSearch.screen == spotSearchResults || m.spotSearch.screen == spotSearchPlaylist) {
-		return true
-	}
-	if m.plManager.visible && (m.plManager.screen == plMgrScreenList || m.plManager.screen == plMgrScreenTracks) {
-		return true
-	}
-	return m.netSearch.active && m.netSearch.screen == netSearchResults
+	return m.overlayContentFirst(screen)
 }
 
 // usesSimplifiedLayout applies the sparse playback chrome only to the main

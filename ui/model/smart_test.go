@@ -452,9 +452,9 @@ func TestSmartHeaderChipAndRowMarker(t *testing.T) {
 	p.Add(
 		playlist.Track{Title: "Plain"},
 		playlist.Track{Title: "Rec", Smart: true},
-		playlist.Track{Title: "Saved rec", Smart: true, Bookmark: true},
+		playlist.Track{Title: "Saved rec", Path: "saved.mp3", Smart: true},
 	)
-	m := Model{player: &playbackFakeEngine{}, playlist: p, focus: focusPlaylist, plVisible: 3}
+	m := Model{player: &playbackFakeEngine{}, playlist: p, focus: focusPlaylist, plVisible: 3, favSet: map[string]struct{}{"saved.mp3": {}}}
 
 	header := ansi.Strip(m.renderPlaylistHeader())
 	if strings.Contains(header, "Smart") {
@@ -472,8 +472,8 @@ func TestSmartHeaderChipAndRowMarker(t *testing.T) {
 	if strings.Count(rows, "✚") != 1 {
 		t.Fatalf("rows = %q; want exactly one smart marker", rows)
 	}
-	if !strings.Contains(rows, "★") {
-		t.Fatalf("rows = %q; bookmark must still render", rows)
+	if !strings.Contains(rows, "♥") {
+		t.Fatalf("rows = %q; favorite must still render", rows)
 	}
 }
 

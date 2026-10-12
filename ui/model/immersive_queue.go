@@ -179,5 +179,5 @@ func (m *Model) immQueueViewMove(dir int) tea.Cmd {
 	}
 	m.immersive.cursor += dir // queued rows are contiguous under one label
 	m.clampCanvasScroll()
-	return m.rearmPreload()
+	return m.rearmStalePreload()
 }

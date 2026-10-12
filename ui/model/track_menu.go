@@ -230,7 +230,7 @@ func (m *Model) menuQueueTrack() tea.Cmd {
 			m.playlist.Queue(tm.removeIdx)
 		}
 		m.normalizeQueueOverlay()
-		return m.rearmPreload()
+		return m.rearmStalePreload()
 	}
 	return m.queueTrackNext(tm.track)
 }
@@ -266,7 +266,7 @@ func (m *Model) removeQueuedAt(pos int) tea.Cmd {
 	m.playlist.RemoveQueueAt(pos)
 	m.normalizeQueueOverlay()
 	m.status.Show("Removed queued track (Ctrl+Z to undo)", statusTTLDefault)
-	return m.rearmPreload()
+	return m.rearmStalePreload()
 }
 
 // — song radio —
@@ -374,7 +374,7 @@ func (m *Model) openRadio(label, seedName string, tracks []playlist.Track) {
 	m.replacePlayerPlaylist(tracks)
 	m.resetProviderQueueMirror()
 	m.playingContext = name
-	m.notifyAll()
+	m.notifyPlaybackChange()
 }
 
 // — go to artist / album —

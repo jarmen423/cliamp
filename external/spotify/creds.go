@@ -19,14 +19,6 @@ import (
 // and other catalog endpoints stay accessible.
 const DefaultClientID = "65b708073fc0480ea92a077233ca87bd"
 
-// storedCreds holds persisted Spotify credentials for re-authentication.
-type storedCreds struct {
-	Username     string `json:"username"`
-	Data         []byte `json:"data"`
-	DeviceID     string `json:"device_id"`
-	RefreshToken string `json:"refresh_token,omitempty"` // OAuth2 refresh token for silent re-auth
-}
-
 // storedCredsFile is the on-disk envelope for spotify_credentials.json.
 // dpapi carries base64 of protectCreds() output — CryptProtectData ciphertext
 // on Windows, plaintext storedCreds JSON elsewhere (the envelope stays uniform

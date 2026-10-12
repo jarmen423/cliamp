@@ -16,6 +16,11 @@ func (m *Model) handleNavBrowserKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.navBrowser.visible = false
 		return nil
 	}
+	// The replace prompt owns the keys until it is answered, like the delete
+	// prompt of the playlist manager.
+	if m.navBrowser.confirmReplace {
+		return m.handleNavReplacePromptKey(msg)
+	}
 
 	key := msg.String()
 
@@ -42,7 +47,7 @@ func (m *Model) handleNavBrowserKey(msg tea.KeyPressMsg) tea.Cmd {
 	// Shift+letter quick-switch to another provider — only when not typing
 	// into the filter, so users can still type capital letters in queries.
 	if !m.navBrowser.searching && (key != "R" || m.navBrowser.screen != navBrowseScreenTracks) {
-		if cmd := m.quickSwitchProvider(key); cmd != nil {
+		if cmd, ok := m.quickSwitchProvider(key); ok {
 			return cmd
 		}
 	}
@@ -132,9 +137,6 @@ func (m *Model) handleNavMenuKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+x":
 		m.toggleExpandedView()
 		return nil
-	case "ctrl+c":
-		m.navBrowser.visible = false
-		return m.quit()
 	case "up", "k":
 		if m.navBrowser.cursor > 0 {
 			m.navBrowser.cursor--
@@ -209,9 +211,6 @@ func (m *Model) handleNavGenreListKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	switch msg.String() {
-	case "ctrl+c":
-		m.navBrowser.visible = false
-		return m.quit()
 	case "up", "k":
 		if m.navBrowser.cursor > 0 {
 			m.navBrowser.cursor--
@@ -276,9 +275,6 @@ func (m *Model) handleNavGenreSortKey(msg tea.KeyPressMsg) tea.Cmd {
 		listLen = len(m.navBrowser.searchIdx)
 	}
 	switch msg.String() {
-	case "ctrl+c":
-		m.navBrowser.visible = false
-		return m.quit()
 	case "up", "k":
 		if m.navBrowser.cursor > 0 {
 			m.navBrowser.cursor--
@@ -348,9 +344,6 @@ func (m *Model) handleNavArtistListKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	switch msg.String() {
-	case "ctrl+c":
-		m.navBrowser.visible = false
-		return m.quit()
 	case "up", "k":
 		if m.navBrowser.cursor > 0 {
 			m.navBrowser.cursor--
@@ -425,9 +418,6 @@ func (m *Model) handleNavAlbumListKey(msg tea.KeyPressMsg, artistAlbums bool) te
 	}
 
 	switch msg.String() {
-	case "ctrl+c":
-		m.navBrowser.visible = false
-		return m.quit()
 	case "up", "k":
 		if m.navBrowser.cursor > 0 {
 			m.navBrowser.cursor--
@@ -514,19 +504,23 @@ func (m *Model) handleNavAlbumListKey(msg tea.KeyPressMsg, artistAlbums bool) te
 	return nil
 }
 
+// handleNavReplacePromptKey answers the "Replace current queue?" prompt.
+// Enter replaces the queue, Esc or R cancels, and other keys do nothing.
+func (m *Model) handleNavReplacePromptKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
+	case "enter":
+		m.navBrowser.confirmReplace = false
+		return m.replacePlaylistFromNav()
+	case "esc", "R":
+		m.navBrowser.confirmReplace = false
+	default:
+		m.status.Show("Enter confirms replace, Esc cancels.", statusTTLShort)
+	}
+	return nil
+}
+
 // handleNavTrackListKey handles the final track-list screen (used by all modes).
 func (m *Model) handleNavTrackListKey(msg tea.KeyPressMsg) tea.Cmd {
-	if m.navBrowser.confirmReplace {
-		switch msg.String() {
-		case "enter":
-			m.navBrowser.confirmReplace = false
-			return m.replacePlaylistFromNav()
-		case "esc", "R":
-			m.navBrowser.confirmReplace = false
-		}
-		return nil
-	}
-
 	// Determine effective list length (filtered or full).
 	listLen := len(m.navBrowser.tracks)
 	if m.navBrowser.search != "" {
@@ -538,9 +532,6 @@ func (m *Model) handleNavTrackListKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.toggleAlbumHeadersManual()
 		m.navMaybeAdjustScroll()
 		return nil
-	case "ctrl+c":
-		m.navBrowser.visible = false
-		return m.quit()
 	case "up", "k":
 		if m.navBrowser.cursor > 0 {
 			m.navBrowser.cursor--
@@ -564,15 +555,12 @@ func (m *Model) handleNavTrackListKey(msg tea.KeyPressMsg) tea.Cmd {
 		tracks := m.navPlaybackTracks()
 		if index := m.navBrowser.cursor; index >= 0 && index < len(tracks) {
 			const maxAdd = 500
-			m.player.Stop()
+			m.stopPlayback()
 			m.player.ClearPreload()
 
 			toAdd := tracks[index:min(index+maxAdd, len(tracks))]
 
-			m.playlist.Add(toAdd...)
-			m.loadedPlaylist = ""
-			m.addToHeaderState(toAdd)
-			newIdx := m.playlist.Len() - len(toAdd)
+			newIdx := m.appendTracks(toAdd...)
 			m.playlist.SetIndex(newIdx)
 			m.plCursor = newIdx
 			m.adjustScroll()
@@ -581,9 +569,7 @@ func (m *Model) handleNavTrackListKey(msg tea.KeyPressMsg) tea.Cmd {
 			} else {
 				m.status.Showf(statusTTLMedium, "Playing: %s", toAdd[0].DisplayName())
 			}
-			cmd := m.playCurrentTrack()
-			m.notifyPlayback()
-			return cmd
+			return m.playCurrentTrack()
 		}
 	case "R":
 		if m.playlist.Len() > 0 {
@@ -596,15 +582,11 @@ func (m *Model) handleNavTrackListKey(msg tea.KeyPressMsg) tea.Cmd {
 		tracks := m.navPlaybackTracks()
 		if len(tracks) > 0 {
 			wasEmpty := m.playlist.Len() == 0
-			m.playlist.Add(tracks...)
-			m.loadedPlaylist = ""
-			m.addToHeaderState(tracks)
+			m.appendTracks(tracks...)
 			m.status.Showf(statusTTLMedium, "Added %d tracks", len(tracks))
 			if wasEmpty || !m.player.IsPlaying() {
 				m.playlist.SetIndex(0)
-				cmd := m.playCurrentTrack()
-				m.notifyPlayback()
-				return cmd
+				return m.playCurrentTrack()
 			}
 		}
 	case "q":
@@ -615,19 +597,18 @@ func (m *Model) handleNavTrackListKey(msg tea.KeyPressMsg) tea.Cmd {
 		tracks := m.navPlaybackTracks()
 		if index := m.navBrowser.cursor; index >= 0 && index < len(tracks) {
 			t := tracks[index]
-			m.playlist.Add(t)
-			m.loadedPlaylist = ""
-			m.addToHeaderState([]playlist.Track{t})
-			newIdx := m.playlist.Len() - 1
+			newIdx := m.appendTracks(t)
 			m.playlist.Queue(newIdx)
 			m.normalizeQueueOverlay()
 			m.status.Showf(statusTTLMedium, "Queued: %s", t.DisplayName())
 			if !m.player.IsPlaying() {
-				cmd := m.nextTrack()
-				m.notifyPlayback()
-				return cmd
+				return m.nextTrack()
 			}
-			return m.rearmPreload()
+			return m.rearmStalePreload()
+		}
+	case "f":
+		if idx := m.selectedNavRawIndex(len(m.navBrowser.tracks)); idx >= 0 {
+			return m.favoriteTrackKey(m.navBrowser.tracks[idx])
 		}
 	case "*":
 		// Like/unlike the highlighted track on its owning provider.
@@ -686,12 +667,11 @@ func (m *Model) replacePlaylistFromNav() tea.Cmd {
 	if len(tracks) == 0 {
 		return nil
 	}
-	m.player.Stop()
+	m.stopPlayback()
 	m.player.ClearPreload()
-	m.resetYTDLBatch()
 	m.retireTracksPaging()
 	m.replacePlaylist(tracks)
-	m.loadedPlaylist = ""
+	m.clearLoadedPlaylist()
 	m.resetProviderQueueMirror()
 	m.setHeaderStateFromTracks(tracks)
 	m.plCursor = 0
@@ -700,9 +680,7 @@ func (m *Model) replacePlaylistFromNav() tea.Cmd {
 	m.focus = focusPlaylist
 	m.navBrowser.visible = false
 	m.status.Successf(statusTTLDefault, "Replaced queue with %d tracks", len(tracks))
-	cmd := m.playCurrentTrack()
-	m.notifyPlayback()
-	return cmd
+	return m.playCurrentTrack()
 }
 
 // handleNavSearchKey handles key input while the nav search bar is open.
@@ -771,5 +749,5 @@ func (m *Model) navMaybeAdjustScroll() {
 	if m.navBrowser.search != "" {
 		count = len(m.navBrowser.searchIdx)
 	}
-	clampScroll(&m.navBrowser.cursor, &m.navBrowser.scroll, count, m.navVisible())
+	clampScroll(&m.navBrowser.cursor, &m.navBrowser.scroll, count, m.effectivePlaylistVisible())
 }

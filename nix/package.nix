@@ -8,12 +8,13 @@
   libogg,
   libvorbis,
   makeWrapper,
-  mpg123,
+  libmpg123,
   pipewire,
   pkg-config,
   stdenv,
   symlinkJoin,
   version ? "dev",
+  versionCheckHook,
   yt-dlp,
 }:
 
@@ -37,25 +38,52 @@ buildGoModule {
   pname = "cliamp";
   inherit version;
 
-  src = lib.cleanSource ../.;
-  vendorHash = "sha256-AuFmYdBFvUNgA+3DROqFDVjQN98TTxXJ+RZl5j03LVI=";
+  # Leave out the local media, scratch data and secrets that sit in a working
+  # tree. A flake copies only the files that git tracks, but callPackage on a
+  # checkout copies the whole directory.
+  src =
+    let
+      root = toString ../.;
+      excluded = map (name: "${root}/${name}") [
+        ".claude"
+        ".env"
+        "config.backup.toml"
+        "mp3"
+        "navdata"
+      ];
+    in
+    lib.cleanSourceWith {
+      src = lib.cleanSource ../.;
+      filter = path: _type: !(builtins.elem path excluded);
+    };
+  # TODO(sync): placeholder hash — replace with the real vendorHash from the Nix CI failure log.
+  vendorHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
   nativeBuildInputs = [
     makeWrapper
     pkg-config
   ];
 
+  doInstallCheck = true;
+  nativeInstallCheckInputs = [ versionCheckHook ];
+
   buildInputs = [
     flac
     libogg
     libvorbis
-    mpg123
+    libmpg123
   ]
   ++ lib.optionals stdenv.hostPlatform.isLinux [
     alsa-lib
   ];
   # On darwin the CoreAudio/MediaPlayer/AppKit frameworks referenced by the
   # cgo files come from the Apple SDK that stdenv provides by default.
+
+  # macOS limits Unix socket paths to 104 bytes. Keep the temporary build
+  # directory short so IPC tests can bind their sockets successfully.
+  preCheck = lib.optionalString stdenv.hostPlatform.isDarwin ''
+    export TMPDIR="$(mktemp -d /tmp/cliamp-XXXXXX)"
+  '';
 
   ldflags = [
     "-s"

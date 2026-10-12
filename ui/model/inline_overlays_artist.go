@@ -113,7 +113,7 @@ func (m Model) renderArtistBody() string {
 	}
 	for i := m.artist.scroll; i < len(rows) && len(lines) < listBudget; i++ {
 		if rows[i].kind != prev {
-			lines = append(lines, dimStyle.Render(labeledSeparator("  ", m.artistSectionLabel(rows[i].kind))))
+			lines = append(lines, dimStyle.Render(labeledSeparator("  ", m.artistSectionLabel(rows[i].kind), m.layout.panelWidth)))
 			if len(lines) >= listBudget {
 				break
 			}

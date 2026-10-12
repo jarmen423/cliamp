@@ -548,8 +548,8 @@ func TestProviderUnfollowConfirmOwnedVsFollowed(t *testing.T) {
 			}}
 			m := newSpotifyTestModel(fake)
 			m.focus = focusProvider
-			m.providerLists = fake.lists
-			m.provCursor = tt.cursor
+			m.provPane.lists = fake.lists
+			m.provPane.cursor = tt.cursor
 			m.plVisible = 12
 
 			m.handleKey(tea.KeyPressMsg{Text: "D"})
@@ -585,11 +585,11 @@ func TestProviderUnfollowConfirmOwnedVsFollowed(t *testing.T) {
 			if !strings.Contains(m.status.text, tt.wantStatus) {
 				t.Fatalf("status = %q, want %q", m.status.text, tt.wantStatus)
 			}
-			if len(m.providerLists) != 1 {
-				t.Fatalf("providerLists len = %d, want refreshed list of 1", len(m.providerLists))
+			if len(m.provPane.lists) != 1 {
+				t.Fatalf("providerLists len = %d, want refreshed list of 1", len(m.provPane.lists))
 			}
-			if m.provCursor >= len(m.providerLists) {
-				t.Fatalf("provCursor = %d out of range for %d lists", m.provCursor, len(m.providerLists))
+			if m.provPane.cursor >= len(m.provPane.lists) {
+				t.Fatalf("provCursor = %d out of range for %d lists", m.provPane.cursor, len(m.provPane.lists))
 			}
 		})
 	}
@@ -599,7 +599,7 @@ func TestProviderUnfollowConfirmCancel(t *testing.T) {
 	fake := &fakeSpotifyLibProvider{name: "Spotify", lists: []playlist.PlaylistInfo{{ID: "pl1", Name: "Mine"}}}
 	m := newSpotifyTestModel(fake)
 	m.focus = focusProvider
-	m.providerLists = fake.lists
+	m.provPane.lists = fake.lists
 
 	m.handleKey(tea.KeyPressMsg{Text: "D"})
 	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -619,8 +619,8 @@ func TestProviderUnfollowSkipsSyntheticRows(t *testing.T) {
 	}}
 	m := newSpotifyTestModel(fake)
 	m.focus = focusProvider
-	m.providerLists = fake.lists
-	m.provCursor = 0 // synthetic Library row
+	m.provPane.lists = fake.lists
+	m.provPane.cursor = 0 // synthetic Library row
 
 	m.handleKey(tea.KeyPressMsg{Text: "D"})
 	if m.provConfirm.active {
@@ -635,7 +635,7 @@ func TestProviderUnfollowSkipsSyntheticRows(t *testing.T) {
 		if c.Enabled(m) {
 			t.Fatal("D should be disabled on a synthetic Library row")
 		}
-		m.provCursor = 1
+		m.provPane.cursor = 1
 		if !c.Enabled(m) {
 			t.Fatal("D should stay enabled on a real playlist row")
 		}
@@ -649,10 +649,10 @@ func TestProviderRenameFlow(t *testing.T) {
 	}}
 	m := newSpotifyTestModel(fake)
 	m.focus = focusProvider
-	m.providerLists = fake.lists
+	m.provPane.lists = fake.lists
 
 	// Non-owned rows refuse the rename.
-	m.provCursor = 1
+	m.provPane.cursor = 1
 	m.handleKey(tea.KeyPressMsg{Text: "r"})
 	if m.provRename.active {
 		t.Fatal("rename armed for non-owned playlist")
@@ -661,7 +661,7 @@ func TestProviderRenameFlow(t *testing.T) {
 		t.Fatalf("status = %q, want ownership hint", m.status.text)
 	}
 
-	m.provCursor = 0
+	m.provPane.cursor = 0
 	m.handleKey(tea.KeyPressMsg{Text: "r"})
 	if !m.provRename.active || m.provRename.oldName != "Mine" {
 		t.Fatalf("rename state = %+v; want armed with prefilled name", m.provRename)

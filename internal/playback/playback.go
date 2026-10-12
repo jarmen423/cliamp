@@ -18,9 +18,13 @@ type (
 	SetPositionMsg struct {
 		Position time.Duration
 	}
-	SetVolumeMsg  struct{ VolumeDB float64 }
+	SetVolumeMsg struct{ VolumeDB float64 }
+	SetSpeedMsg struct{ Ratio float64 }
+	// ToggleMonoMsg flips mono output. It toggles and does not set a value,
+	// so two toggles that a sender queues before Update runs cancel out.
+	ToggleMonoMsg struct{}
 	SetShuffleMsg struct{ On bool }
-	SetRepeatMsg  struct{ Mode playlist.RepeatMode }
+	SetRepeatMsg struct{ Mode playlist.RepeatMode }
 
 	// EnqueueMsg appends a track to the playlist and marks it queued
 	// (plays next), matching the UI's "queue next" action.
@@ -64,11 +68,12 @@ type Track struct {
 }
 
 type State struct {
-	Status   Status
-	Track    Track
-	VolumeDB float64
-	Position time.Duration
-	Seekable bool
+	Status      Status
+	Track       Track
+	VolumeDB    float64
+	VolumeMinDB float64 // engine volume floor in dB
+	Position    time.Duration
+	Seekable    bool
 	// Shuffle and Repeat mirror the playlist's modes; NextURL is the path of
 	// the track queued to play next, if any.
 	Shuffle bool
