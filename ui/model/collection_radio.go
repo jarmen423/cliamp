@@ -9,6 +9,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -61,17 +62,23 @@ func radioSeedKind(kind immItemKind) string {
 }
 
 // stationTracks is prov's station around seed; nil when it builds none, and
-// the radio then comes from its recommendations.
-func stationTracks(ctx context.Context, prov any, seed provider.RadioSeed, limit int) []playlist.Track {
+// the radio then comes from its recommendations. The one error it returns
+// is provider.ErrNoStation: the provider has no radio for this seed, and
+// recommendations (the listener's taste, not the seed) must not pass for
+// one.
+func stationTracks(ctx context.Context, prov any, seed provider.RadioSeed, limit int) ([]playlist.Track, error) {
 	rb, ok := prov.(provider.RadioBuilder)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	tracks, err := rb.RadioTracks(ctx, seed, limit)
+	if errors.Is(err, provider.ErrNoStation) {
+		return nil, err
+	}
 	if err != nil {
 		applog.Debug("radio: no station, using recommendations: %v", err)
 	}
-	return tracks
+	return tracks, nil
 }
 
 // collectionTracksLoader returns how to load a collection's tracks on prov,
@@ -159,7 +166,7 @@ func (m *Model) startCollectionRadio(prov playlist.Provider, kind immItemKind, i
 		msg := collectionRadioMsg{label: label, name: name, providerName: providerName, gen: gen}
 		// A station needs only the collection's ID, not its tracks.
 		seed := provider.RadioSeed{Kind: radioSeedKind(kind), ID: id}
-		if msg.tracks = stationTracks(ctx, prov, seed, trackRadioLimit); len(msg.tracks) > 0 {
+		if msg.tracks, msg.err = stationTracks(ctx, prov, seed, trackRadioLimit); len(msg.tracks) > 0 || msg.err != nil {
 			return msg
 		}
 		tracks, err := load()
@@ -181,6 +188,10 @@ func (m *Model) startCollectionRadio(prov playlist.Provider, kind immItemKind, i
 // handleCollectionRadio opens the radio batch.
 func (m *Model) handleCollectionRadio(msg collectionRadioMsg) tea.Cmd {
 	if msg.gen != m.requests.trackMenu {
+		return nil
+	}
+	if errors.Is(msg.err, provider.ErrNoStation) {
+		m.status.Warningf(statusTTLDefault, "%s has no radio for %s", msg.providerName, msg.name)
 		return nil
 	}
 	if msg.err != nil {

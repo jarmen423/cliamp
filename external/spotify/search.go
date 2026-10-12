@@ -62,41 +62,64 @@ func (p *SpotifyProvider) SearchAll(ctx context.Context, query string, limit int
 	} else if limit > 10 {
 		limit = 10
 	}
+	return p.search(ctx, query, "track,album,artist,playlist,episode", limit, 0)
+}
 
+// spotifySearchResult is a decoded /v1/search response.
+type spotifySearchResult struct {
+	Tracks struct {
+		Items []*spotifyItem `json:"items"`
+	} `json:"tracks"`
+	Episodes struct {
+		Items []*spotifyItem `json:"items"`
+	} `json:"episodes"`
+	Albums struct {
+		Items []spotifyAlbum `json:"items"`
+	} `json:"albums"`
+	Artists struct {
+		Items []spotifyArtist `json:"items"`
+	} `json:"artists"`
+	Playlists struct {
+		Items []searchPlaylist `json:"items"`
+	} `json:"playlists"`
+}
+
+// search runs one /v1/search request for the given comma-separated types and
+// converts every result kind present. Callers clamp limit to the Development
+// Mode maximum.
+func (p *SpotifyProvider) search(ctx context.Context, query, types string, limit, offset int) (provider.SearchResults, error) {
+	raw, err := p.searchRaw(ctx, query, types, limit, offset)
+	if err != nil {
+		return provider.SearchResults{}, err
+	}
+	return p.convertSearch(ctx, raw), nil
+}
+
+func (p *SpotifyProvider) searchRaw(ctx context.Context, query, types string, limit, offset int) (spotifySearchResult, error) {
 	// No market parameter: with a user OAuth token Spotify implicitly scopes
 	// results to the account's country (same as SearchTracks).
 	q := url.Values{
 		"q":     {query},
-		"type":  {"track,album,artist,playlist,episode"},
+		"type":  {types},
 		"limit": {strconv.Itoa(limit)},
+	}
+	if offset > 0 {
+		q.Set("offset", strconv.Itoa(offset))
 	}
 
 	resp, err := p.webAPI(ctx, "GET", "/v1/search", q)
 	if err != nil {
-		return provider.SearchResults{}, friendlySearchError(err)
+		return spotifySearchResult{}, friendlySearchError(err)
 	}
-
-	var result struct {
-		Tracks struct {
-			Items []*spotifyItem `json:"items"`
-		} `json:"tracks"`
-		Episodes struct {
-			Items []*spotifyItem `json:"items"`
-		} `json:"episodes"`
-		Albums struct {
-			Items []spotifyAlbum `json:"items"`
-		} `json:"albums"`
-		Artists struct {
-			Items []spotifyArtist `json:"items"`
-		} `json:"artists"`
-		Playlists struct {
-			Items []searchPlaylist `json:"items"`
-		} `json:"playlists"`
-	}
+	var result spotifySearchResult
 	if err := decodeBody(resp, &result); err != nil {
-		return provider.SearchResults{}, fmt.Errorf("spotify: parse search: %w", err)
+		return spotifySearchResult{}, fmt.Errorf("spotify: parse search: %w", err)
 	}
+	return result, nil
+}
 
+// convertSearch maps a decoded search response to provider results.
+func (p *SpotifyProvider) convertSearch(ctx context.Context, result spotifySearchResult) provider.SearchResults {
 	var out provider.SearchResults
 	for _, items := range [][]*spotifyItem{result.Tracks.Items, result.Episodes.Items} {
 		for _, t := range items {
@@ -106,14 +129,26 @@ func (p *SpotifyProvider) SearchAll(ctx context.Context, query string, limit int
 			out.Tracks = append(out.Tracks, trackFromItem(t))
 		}
 	}
+	// Spotify returns null entries for unavailable items; they decode to zero
+	// values with no ID.
 	for _, a := range result.Albums.Items {
-		out.Albums = append(out.Albums, albumFromSpotify(a))
+		if a.ID != "" {
+			out.Albums = append(out.Albums, albumFromSpotify(a))
+		}
 	}
 	for _, a := range result.Artists.Items {
-		out.Artists = append(out.Artists, provider.ArtistInfo{ID: a.ID, Name: a.Name, ImageURL: pickCoverImage(a.Images)})
+		if a.ID != "" {
+			out.Artists = append(out.Artists, artistFromSpotify(a))
+		}
+	}
+	if len(result.Playlists.Items) == 0 {
+		return out
 	}
 	userID := p.currentUserID(ctx)
 	for _, pl := range result.Playlists.Items {
+		if pl.ID == "" {
+			continue
+		}
 		out.Playlists = append(out.Playlists, playlist.PlaylistInfo{
 			ID:         pl.ID,
 			Name:       pl.Name,
@@ -122,7 +157,7 @@ func (p *SpotifyProvider) SearchAll(ctx context.Context, query string, limit int
 			ImageURL:   pickCoverImage(pl.Images),
 		})
 	}
-	return out, nil
+	return out
 }
 
 // friendlySearchError rewrites Spotify's misleading 400 "Invalid limit" reply

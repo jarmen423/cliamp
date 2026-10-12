@@ -126,6 +126,9 @@ func (m *Model) handleSpotTabsKey(msg tea.KeyPressMsg) tea.Cmd {
 			return m.spotFollowFromTab()
 		}
 	case "esc", "backspace":
+		if m.spotSearch.category.ID != "" {
+			return m.spotShowBrowse()
+		}
 		m.spotSearch.screen = spotSearchInput
 		m.spotSearch.err = ""
 	case "ctrl+u":

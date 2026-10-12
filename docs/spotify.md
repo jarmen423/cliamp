@@ -42,7 +42,7 @@ Spotify introduced the current Development Mode restrictions for new apps on Feb
 
 Search remains available in Development Mode, but `/v1/search` accepts at most **10 results per request**. A larger request returns `400 "Invalid limit"`. This does not mean search is blocked. Cliamp uses `offset` to page results in groups of 10. <kbd>Ctrl+F</kbd> asks for 20 results of each kind — albums, tracks, and episodes — so a Development Mode app fetches them as two pages of 10.
 
-Other Development Mode changes remove endpoints such as `/v1/browse/new-releases`. They restrict playlist items to playlists the user owns or collaborates on. `/v1/search` remains available and does not require Extended Quota Mode.
+Other Development Mode changes remove endpoints such as `/v1/browse/new-releases`. They restrict playlist items to playlists the user owns or collaborates on. `/v1/search` remains available and does not require Extended Quota Mode. [Browse](#browse) and opening other people's playlists work around these limits.
 
 ### Alternative: built-in shared client ID
 
@@ -61,9 +61,10 @@ cliamp uses a built-in `client_id`. [librespot](https://github.com/librespot-org
 
 After authentication, Spotify appears in the provider list. Press `Esc`/`b` to open the provider browser and select Spotify.
 
-The provider panel groups your library under four headers:
+The provider panel groups your library under five headers:
 
 - **Library**: `Your Music` (liked songs), `Top Tracks` (roughly the last four weeks of listening, up to 200 tracks), and `Recently Played` (your last 50 plays, deduplicated).
+- **Discover**: `Browse`, the genre, mood, and new-release page (see [Browse](#browse)).
 - **Your playlists**: playlists you own.
 - **Followed playlists**: playlists you've saved from other people.
 - **Saved albums**: albums in your library; each one expands to its track list.
@@ -84,7 +85,7 @@ When focused on the provider panel:
 | `Ctrl+R` | Reload playlists and tracks from Spotify |
 | `N` | Open the library browser (Spotify: artists, albums, and the artist page) |
 | `H` | Open the Home view |
-| `Ctrl+F` | Search Spotify |
+| `Ctrl+F` | Search Spotify. `Enter` on an empty query opens [Browse](#browse). |
 | `D` | Delete (owned) / unfollow (followed) the highlighted playlist, after an inline confirm |
 | `r` | Rename the highlighted playlist you own |
 | `Tab` | Return to playback controls, starting at Source when visible ([navigation](keybindings.md#navigation)) |
@@ -112,16 +113,37 @@ Press `N` at any time (or from the provider panel) to open the full-screen Spoti
 
 Artist discographies include albums and singles only; "appears on" and compilation entries are not listed. Artist rows show no album count because Spotify doesn't report one.
 
-### Browser controls
+The browser menu also has **Browse & discover**, which opens [Browse](#browse).
+
+## Browse
+
+Browse is cliamp's version of the Browse tab in the Spotify apps. Open it from the **Browse** row in the provider panel, from **Browse & discover** in the `N` menu, or by pressing `Enter` on an empty `Ctrl+F` search.
+
+The page lists two groups:
+
+- **For you**: **Made for you** (tracks picked from your top tracks and your top artists' newest albums, plus your top artists) and **New releases** (Spotify's new-release albums).
+- **Genres & moods**: Spotify's own browse categories, such as Pop, Hip-Hop, Chill, and Workout.
+
+Opening an entry shows the same Tracks / Albums / Artists / Playlists tabs as a search, starting on the tab with content (Playlists for a genre or mood, Albums for new releases). Everything you can do on search results works here too: open an album or playlist, open an artist page, play, queue, like, follow, and add to playlists.
+
+| Key | Action |
+|---|---|
+| `Up` `Down` / `j` `k` | Move through the categories |
+| `Enter` / `l` | Open the highlighted category |
+| `/` | Start a search; `Esc` returns to Browse |
+| `Esc` | From a category, back to the list; from the list, close Browse |
+
+Spotify doesn't let developer apps in Development Mode list a category's own playlists, so cliamp fills each category from Spotify search instead. The page shows playlists matching the category, with Spotify's editorial playlists first, plus artists and tracks tagged with that genre. Moods and activities that aren't genres fall back to a plain search.
+
+Spotify also lists its category and new-release endpoints as removed for Development Mode apps, although many apps can still reach them. If the category list is unavailable, Browse shows a built-in list of common genres and moods instead. If new releases are unavailable, that entry reports the error.
+
 ## Playlists and albums
 
 The provider lists both playlists and saved albums in the Spotify library. Playlists include those you created and saved, or followed. If a public playlist is missing, open Spotify and click **Save** first.
 
-Spotify lets apps read the tracks of only the playlists that you own or collaborate on. A followed playlist can fail to open with `403`. To play it, add its tracks to your own playlist in Spotify.
+Spotify's Web API lets apps read the tracks of only the playlists that you own or collaborate on. For any other playlist — one you follow, one from Browse or search, or one of Spotify's editorial playlists — cliamp loads the tracks through Spotify's own playback service instead, the same way Spotify Connect resolves what to play. If that also fails, the playlist reports the Web API error. To play it then, add its tracks to your own playlist in Spotify.
 
 Saved albums appear under a **Saved albums** section, labelled `Artist - Album` and sorted alphabetically by artist. These are the albums in **Your Library**. To add one, open the album in Spotify and click **Save**. Selecting a saved album loads all of its tracks in disc and track order.
-
-Spotify's current API returns a playlist's items only for playlists you own or collaborate on. Opening any other playlist — one you follow, or one found in search results — may fail with an error.
 
 ### Write operations
 

@@ -48,6 +48,7 @@ are in `provider/interfaces.go`.
 | `GenreBrowseRouter` | Route multiple provider-pane entries to distinct category catalogues | `GenreBrowserFor(entryID)` |
 | `GenreFavoriteToggler` | Favorite/unfavorite categories with `f` in the genre browser | `ToggleGenreFavorite(genreID)` |
 | `GenreSearcher` | Search beyond the initially loaded category catalogue | `SearchGenres(ctx, query, limit)` |
+| `CategoryBrowser` | Discovery page (genres, moods, new releases) whose categories open as tabbed multi-type results | `BrowseCategories(ctx)`, `CategoryContent(ctx, category)` returning `SearchResults` |
 | `AlbumBrowser` | Paginated album browsing with sort | `AlbumList(sort, offset, size)`, `AlbumSortTypes()` |
 | `AlbumTrackLoader` | Album track listing | `AlbumTracks(albumID)` |
 | `PlaybackReporter` | Playback reporting at track start and finish | `CanReportPlayback(track)`, `ReportNowPlaying(track, position, canSeek) error`, `ReportScrobble(track, elapsed, duration, canSeek) error` |
@@ -229,6 +230,9 @@ to do the following:
   `GenreFavoriteToggler`, and provider-side category search for `GenreSearcher`
 - Route multiple `BrowseGenres` pane entries to separate catalogues when the
   provider implements `GenreBrowseRouter`
+- Open the Browse page for `CategoryBrowser`: from a `BrowseCategories` pane
+  entry, from the `N` menu, or with `Enter` on an empty search. Each category
+  opens in the multi-type search tabs
 - Show the search overlay ("F") when a registered provider implements `Searcher`
 - Enable add-to-playlist in search results when the searched provider implements `PlaylistWriter`
 - Report playback at track start and finish when `PlaybackReporter` is implemented. Log failures that the provider returns.

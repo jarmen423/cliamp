@@ -636,6 +636,11 @@ func (m *Model) openNavBrowserRoute(prov playlist.Provider, mode provider.Browse
 	if restricted, ok := prov.(provider.BrowseModeProvider); ok && !slices.Contains(restricted.BrowseModes(), mode) {
 		return nil
 	}
+	if mode == provider.BrowseCategories {
+		// The Browse page opens over the hierarchical browser, which stays
+		// underneath when the route came from its menu.
+		return m.openCategoryBrowse(prov)
+	}
 	m.openNavBrowserWith(prov)
 	m.navBrowser.openInPlaylist = openInPlaylist
 	switch mode {

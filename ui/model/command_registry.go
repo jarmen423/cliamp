@@ -420,6 +420,9 @@ var commandRegistry = []commandSpec{
 	{Mode: commandModeFileBrowser, Keys: []string{"D"}, KeyLabel: "D", Label: "Add as dir source", ContextHelp: true, Enabled: func(m Model) bool {
 		return m.fileBrowser.visible && m.fileBrowser.targetPlaylist != ""
 	}},
+	{Mode: commandModeSpotSearch, Keys: []string{"/"}, KeyLabel: "/", Label: "Search", ContextHelp: true, Enabled: func(m Model) bool {
+		return m.spotSearch.screen == spotSearchBrowse
+	}},
 	{Mode: commandModeSpotSearch, Keys: []string{"left", "right", "tab", "shift+tab"}, KeyLabel: "Left Right / Tab", Label: "Switch result tab", Keymap: true, Enabled: func(m Model) bool {
 		return m.spotSearch.multi && m.spotSearch.screen == spotSearchResults
 	}},

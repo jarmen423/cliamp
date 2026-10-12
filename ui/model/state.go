@@ -353,6 +353,7 @@ const (
 	spotSearchResults                              // browsing search results
 	spotSearchPlaylist                             // picking a playlist to add to
 	spotSearchNewName                              // typing new playlist name
+	spotSearchBrowse                               // CategoryBrowser category list
 )
 
 // spotSearchTab identifies a result tab when the searched provider implements
@@ -403,6 +404,15 @@ type spotSearchState struct {
 	resultsAll   provider.SearchResults // multi-type results backing the tab bar
 	tab          spotSearchTab          // active result tab (multi only)
 	drill        []spotDrillLevel       // drill-down stack (multi only)
+
+	// Browse page (provider.CategoryBrowser, spot_browse.go). browsing marks
+	// an overlay that has shown the category list, so Esc from the search
+	// input returns to it; category is the open category, empty on the list.
+	browsing   bool
+	categories []provider.CategoryInfo
+	catCursor  int
+	catScroll  int
+	category   provider.CategoryInfo
 }
 
 // artistSortMode identifies the ordering of the artist screen's Popular

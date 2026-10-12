@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -440,6 +441,46 @@ func TestSongRadioUsesStation(t *testing.T) {
 	}
 	if m.immersive.view != immViewRadio || m.immersive.ctxName != "Seed Radio" {
 		t.Fatalf("view=%d name=%q, want the Seed Radio page", m.immersive.view, m.immersive.ctxName)
+	}
+}
+
+// When the provider says it has no station for the seed, song and
+// collection radio say so and open nothing: recommendations follow the
+// listener's taste, not the seed, so they must not stand in for the radio.
+func TestRadioWithoutStationSaysSo(t *testing.T) {
+	noStation := fmt.Errorf("spotify: radio: spotify:track:x: %w", provider.ErrNoStation)
+	for _, tt := range []struct {
+		name  string
+		start func(m *Model)
+		want  string
+	}{
+		{"song", func(m *Model) {
+			msg, ok := m.startTrackRadio(playlist.Track{Title: "Seed", Artist: "Artist", Path: "/seed"})().(trackRadioMsg)
+			if !ok {
+				t.Fatal("song radio did not produce a trackRadioMsg")
+			}
+			m.handleTrackRadio(msg)
+		}, "stub has no radio for Artist - Seed"},
+		{"artist", func(m *Model) {
+			m.immersive.view, m.immersive.ctxKind, m.immersive.ctxID, m.immersive.ctxName = immViewArtist, immKindArtist, "ar1", "Lizzo"
+			runRadio(t, m, m.immersiveRadio())
+		}, "stub has no radio for Lizzo"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := immersiveMouseModel(t)
+			stub := &stationStub{err: noStation}
+			m.immersive.prov, m.provider = stub, stub
+			tt.start(m)
+			if m.status.text != tt.want {
+				t.Errorf("status = %q, want %q", m.status.text, tt.want)
+			}
+			if len(stub.seeds) != 0 || stub.loads != 0 {
+				t.Errorf("recommender calls=%d loads=%d, want no fallback", len(stub.seeds), stub.loads)
+			}
+			if m.immersive.view == immViewRadio {
+				t.Errorf("view = %d, want no radio page opened", m.immersive.view)
+			}
+		})
 	}
 }
 

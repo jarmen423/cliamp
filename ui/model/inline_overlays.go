@@ -622,11 +622,17 @@ func (m Model) renderNetSearchBody() string {
 func (m Model) spotSearchHeaderLine() string {
 	switch m.spotSearch.screen {
 	case spotSearchResults:
+		label := "Results"
+		if m.spotSearch.category.ID != "" {
+			label = m.spotBrowseCrumb()
+		}
 		if m.spotSearch.multi && len(m.spotSearch.drill) > 0 {
 			lvl := m.spotSearch.drill[len(m.spotSearch.drill)-1]
-			return sepHeaderN("Results", lvl.cursor+1, m.spotDrillCount(lvl))
+			return sepHeaderN(label, lvl.cursor+1, m.spotDrillCount(lvl))
 		}
-		return sepHeaderN("Results", m.spotSearch.cursor+1, m.spotResultsListLen())
+		return sepHeaderN(label, m.spotSearch.cursor+1, m.spotResultsListLen())
+	case spotSearchBrowse:
+		return sepHeaderN(m.spotBrowseCrumb(), m.spotSearch.catCursor+1, len(m.spotSearch.categories))
 	case spotSearchPlaylist:
 		return sepHeaderN("Add to Playlist", m.spotSearch.cursor+1, len(m.spotSearch.playlists)+1)
 	case spotSearchNewName:
@@ -693,10 +699,14 @@ func (m Model) renderSpotSearchBody() string {
 		body = strings.Join([]string{head, list}, "\n")
 	case spotSearchNewName:
 		body = bodyMessage("Enter a name for the new playlist above.", bodyBudget)
+	case spotSearchBrowse:
+		body = m.renderSpotBrowseBody(bodyBudget)
 	default:
 		var lines []string
 		if m.spotSearch.loading {
 			lines = append(lines, loadingLine("Searching "+providerName(m.spotSearch.prov)+"..."))
+		} else if _, ok := m.spotSearch.prov.(provider.CategoryBrowser); ok {
+			lines = append(lines, dimStyle.Render("  Type a query and press Enter to search, or press Enter now to browse."))
 		} else {
 			lines = append(lines, dimStyle.Render("  Type a query and press Enter to search."))
 		}

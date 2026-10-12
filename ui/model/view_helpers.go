@@ -441,46 +441,74 @@ func spotSearchSection(t playlist.Track) string {
 	return "Tracks"
 }
 
-// spotSearchRows walks the search results from scroll, emitting a separator
-// whenever the section changes. The provider returns albums first, so this
-// yields at most two headers, plus a sticky one at the top of the viewport so
-// the section stays named while scrolling through a long run of results.
-func spotSearchRows(results []playlist.Track, scroll int) iter.Seq[spotSearchRow] {
-	return func(yield func(spotSearchRow) bool) {
-		if len(results) == 0 || scroll < 0 || scroll >= len(results) {
+// sectionRow is one rendered row of a sectioned list: a section separator
+// when Index is negative, otherwise the item at Index.
+type sectionRow struct {
+	Index   int
+	Section string
+}
+
+// sectionRows walks items from scroll, emitting a separator whenever the
+// section changes, plus a sticky one at the top of the viewport so the section
+// stays named while scrolling through a long run. Items with an empty section
+// get no separator.
+func sectionRows[T any](items []T, scroll int, section func(T) string) iter.Seq[sectionRow] {
+	return func(yield func(sectionRow) bool) {
+		if scroll < 0 || scroll >= len(items) {
 			return
 		}
-
 		prev := ""
-		for i := scroll; i < len(results); i++ {
-			section := spotSearchSection(results[i])
-			if section != prev {
-				if !yield(spotSearchRow{Index: -1, Section: section}) {
+		for i := scroll; i < len(items); i++ {
+			s := section(items[i])
+			if s != "" && (i == scroll || s != prev) {
+				if !yield(sectionRow{Index: -1, Section: s}) {
 					return
 				}
 			}
-			if !yield(spotSearchRow{Index: i, Track: results[i]}) {
+			if !yield(sectionRow{Index: i}) {
 				return
 			}
-			prev = section
+			prev = s
 		}
 	}
 }
 
-// spotSearchRowsToCursor counts rendered rows from scroll to cursor inclusive,
+// sectionRowsToCursor counts rendered rows from scroll to cursor inclusive,
 // separators included, so scrolling can account for the space they take.
-func spotSearchRowsToCursor(results []playlist.Track, scroll, cursor int) int {
-	if len(results) == 0 || scroll < 0 || cursor < scroll || cursor >= len(results) {
+func sectionRowsToCursor[T any](items []T, scroll, cursor int, section func(T) string) int {
+	if scroll < 0 || cursor < scroll || cursor >= len(items) {
 		return 0
 	}
 	rows := 0
-	for row := range spotSearchRows(results, scroll) {
+	for row := range sectionRows(items, scroll, section) {
 		rows++
 		if row.Index == cursor {
 			break
 		}
 	}
 	return rows
+}
+
+// spotSearchRows walks the search results from scroll as sectioned rows. The
+// provider returns albums first, so this yields at most two headers plus the
+// sticky one.
+func spotSearchRows(results []playlist.Track, scroll int) iter.Seq[spotSearchRow] {
+	return func(yield func(spotSearchRow) bool) {
+		for row := range sectionRows(results, scroll, spotSearchSection) {
+			r := spotSearchRow{Index: row.Index, Section: row.Section}
+			if row.Index >= 0 {
+				r.Track = results[row.Index]
+			}
+			if !yield(r) {
+				return
+			}
+		}
+	}
+}
+
+// spotSearchRowsToCursor counts rendered search rows from scroll to cursor.
+func spotSearchRowsToCursor(results []playlist.Track, scroll, cursor int) int {
+	return sectionRowsToCursor(results, scroll, cursor, spotSearchSection)
 }
 
 // albumSeparatorRows counts rendered rows between scroll and cursor (inclusive)

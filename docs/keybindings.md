@@ -125,7 +125,7 @@ and `Esc` clears it.
 | `Ctrl+F` | Search with the active provider (Podcasts, Spotify, Qobuz, Tidal, Navidrome, Lyrion, Jellyfin, Emby, Plex, Audiobookshelf, Mixcloud, NetEase, Local), or search YouTube. Available in playlist and provider-browser views. The search line names the source. See [Search and filter modes](#search-and-filter-modes). |
 | `u` | Load URL (stream/playlist) |
 | `;` | Open the track context menu on the highlighted track |
-| `W` (`Shift+W`) | Go to song radio: load a radio seeded from the highlighted track as the new queue, the track first (Spotify's own station for the track; other providers with recommendation support use their recommendations). Nothing starts playing until you press `Enter`. In immersive mode the radio opens as a page instead, see [Immersive mode](#immersive-mode-prototype) |
+| `W` (`Shift+W`) | Go to song radio: load a radio seeded from the highlighted track as the new queue, the track first (Spotify's own station for the track; other providers with recommendation support use their recommendations). When Spotify has no station for the track (it withholds radio for some artists), the status line says so and nothing is loaded; artist and album radio do the same. Nothing starts playing until you press `Enter`. In immersive mode the radio opens as a page instead, see [Immersive mode](#immersive-mode-prototype) |
 | `Ctrl+A` | Go to the highlighted track's album |
 | `Ctrl+T` | Go to the highlighted track's artist |
 | `d` | Open the audio device picker |
@@ -360,6 +360,8 @@ For Podcasts, **Browse Categories** opens **Genre**, then **Show**. `Enter` on a
 show replaces the main playlist with its episodes without starting playback.
 Then `Enter` plays an episode and `a` toggles its play-next queue entry.
 
+For Spotify, **Browse & discover** opens the [Browse page](#browse-page).
+
 ## Provider playlist list
 
 The playlists pane appears when the focus is on a provider, such as Spotify,
@@ -384,7 +386,7 @@ Navidrome, Podcasts, or Local Playlists:
 
 Playlist rows show `Name · N tracks · 1h 23m` when the provider returns track
 counts and total duration. The header shows `Provider / Playlists`. The loaded
-playlist has a `▶` prefix. Spotify groups playlists under section headers (`── library ──` with Your Music, Top Tracks, and Recently Played, `── your playlists ──`, `── followed playlists ──`, and `── saved albums ──`). Large Spotify playlists load incrementally: the first tracks appear immediately and the rest stream in behind a "Loading more tracks…" indicator. For configured accounts, Mixcloud shows Your Mixcloud first: Stream, then Favorites. It then
+playlist has a `▶` prefix. Spotify groups playlists under section headers (`── library ──` with Your Music, Top Tracks, and Recently Played, `── discover ──` with Browse, `── your playlists ──`, `── followed playlists ──`, and `── saved albums ──`). Large Spotify playlists load incrementally: the first tracks appear immediately and the rest stream in behind a "Loading more tracks…" indicator. For configured accounts, Mixcloud shows Your Mixcloud first: Stream, then Favorites. It then
 ## Search results overlays
 
 Use these keys when `Ctrl+F` opens provider search or YouTube/SoundCloud network
@@ -401,9 +403,25 @@ search and the results list is open:
 | `f` | In Podcasts, subscribe or unsubscribe from the selected show. On the Artists / Playlists tabs (Spotify), follow/unfollow the highlighted artist or followed playlist — owned playlists are deleted via `D` in the provider pane. |
 | `p` | (Spotify only) Add the selected track to a Spotify playlist |
 | `S` | (Spotify only) Like/unlike the selected track (track tab) |
-| `Esc` `Backspace` | Back to the search input · from a drill-down list, up one level |
+| `Esc` `Backspace` | Back to the search input (or to the Browse list for a Browse category) · from a drill-down list, up one level |
 
 Drill-down lists (album, artist, and playlist tracks) carry the same track actions as the track tab — `Enter` play, `a` append, `q` queue next, `p` add-to-playlist, `S` like — and show a breadcrumb of the drill path above the list. Backing out of the last drill level returns to the tab bar with the previous tab and cursor intact.
+
+### Browse page
+
+Spotify's Browse page lists **For you** (Made for you, New releases) and
+Spotify's genre and mood categories. Open it from the **Browse** row in the
+Spotify provider pane, **Browse & discover** in the `N` menu, or `Enter` on an
+empty `Ctrl+F` query. A category opens in the result tabs above, with the same
+keys.
+
+| Key | Action |
+|---|---|
+| `↑` `↓` / `j` `k` | Move through the categories (wraps) |
+| `Ctrl+U` `Ctrl+D` / `g` `G` | Scroll by page; jump to the top or end |
+| `Enter` / `l` / `→` | Open the highlighted category |
+| `/` | Search; `Esc` from the search input returns to Browse |
+| `Esc` `Backspace` | Close Browse · from a category's results, back to the list |
 Podcasts returns show collections (up to 20), not episodes. `Enter` appends the
 feed's episodes and starts the first; `a` appends them and starts the first if
 the playlist was empty or nothing is playing. `q` appends and queues the

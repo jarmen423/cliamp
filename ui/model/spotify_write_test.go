@@ -181,7 +181,7 @@ func (p *trackSearchProvider) NewStreamer(string) (beep.StreamSeekCloser, beep.F
 	return nil, beep.Format{}, 0, nil
 }
 
-func newSpotifyTestModel(fake *fakeSpotifyLibProvider) Model {
+func newSpotifyTestModel(fake playlist.Provider) Model {
 	player := &playbackFakeEngine{}
 	return Model{
 		player:        player,

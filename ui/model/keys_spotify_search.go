@@ -30,6 +30,8 @@ func (m *Model) handleSpotSearchKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.handleSpotSearchPlaylistKey(msg)
 	case spotSearchNewName:
 		return m.handleSpotSearchNewNameKey(msg)
+	case spotSearchBrowse:
+		return m.handleSpotBrowseKey(msg)
 	}
 	return nil
 }
@@ -38,9 +40,15 @@ func (m *Model) handleSpotSearchKey(msg tea.KeyPressMsg) tea.Cmd {
 func (m *Model) handleSpotSearchInputKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.Code {
 	case tea.KeyEscape:
+		if m.spotSearch.browsing {
+			return m.spotShowBrowse()
+		}
 		m.closeSpotSearch()
 	case tea.KeyEnter:
 		if m.spotSearch.query == "" {
+			if _, ok := m.spotSearch.prov.(provider.CategoryBrowser); ok {
+				return m.spotShowBrowse()
+			}
 			m.setSpotSearchError("Enter a search query.")
 			return nil
 		}
