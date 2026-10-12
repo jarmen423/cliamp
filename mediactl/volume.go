@@ -28,3 +28,4 @@ func linearToDb(v, floor float64) float64 {
 		return floor
 	}
 	return db
+}

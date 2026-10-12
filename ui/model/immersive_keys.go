@@ -205,17 +205,15 @@ func (m *Model) immTogglePlay() tea.Cmd {
 }
 
 func (m *Model) immNext() tea.Cmd {
-	refresh := m.scrobbleCurrent()
 	cmd := m.nextTrack()
 	m.notifyPlaybackChange()
-	return tea.Batch(refresh, cmd)
+	return cmd
 }
 
 func (m *Model) immPrev() tea.Cmd {
-	refresh := m.scrobbleCurrent()
 	cmd := m.prevTrack()
 	m.notifyPlaybackChange()
-	return tea.Batch(refresh, cmd)
+	return cmd
 }
 
 // immCycleShuffle steps the shuffle button off -> shuffle -> Smart Shuffle

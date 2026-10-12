@@ -195,6 +195,24 @@ func (m *Model) searchOverlayResultsVisible() int {
 	return max(0, visible)
 }
 
+func (m *Model) spotSearchResultsVisible() int {
+	visible := m.effectivePlaylistVisible()
+	if m.spotSearch.err != "" {
+		visible--
+	}
+	return max(0, visible)
+}
+
+func (m *Model) spotSearchPlaylistVisible() int {
+	return m.effectivePlaylistVisible()
+}
+
+// navVisible returns the nav-browser list height. The nav browser renders
+// inline in the playlist region, so it shares the playlist's row budget.
+func (m *Model) navVisible() int {
+	return m.effectivePlaylistVisible()
+}
+
 func (m *Model) plMgrListMaybeAdjustScroll(visible int) {
 	clampScroll(&m.plManager.cursor, &m.plManager.scroll, m.plMgrListViewCount(), visible)
 }
