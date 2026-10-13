@@ -20,6 +20,7 @@ import (
 
 	"github.com/bjarneo/cliamp/applog"
 	"github.com/bjarneo/cliamp/config"
+	"github.com/bjarneo/cliamp/external/emby"
 	"github.com/bjarneo/cliamp/external/jellyfin"
 	"github.com/bjarneo/cliamp/external/radio"
 	"github.com/bjarneo/cliamp/external/spotify"
@@ -135,6 +136,27 @@ func streamURLOwnedBy(path, serverURL string) bool {
 		return false
 	}
 	return strings.EqualFold(u.Scheme, b.Scheme) && strings.EqualFold(u.Host, b.Host)
+}
+
+// mediaServerSourceResolver refreshes owned Emby and Jellyfin download URLs.
+// Both providers pass foreign URLs through, so they share the HTTP resolver.
+func mediaServerSourceResolver(jellyProv *jellyfin.Provider, embyProv *emby.Provider) player.SourceResolver {
+	return func(rawURL string) (player.ResolvedSource, error) {
+		var err error
+		if embyProv != nil {
+			rawURL, err = embyProv.ResolveSource(rawURL)
+			if err != nil {
+				return player.ResolvedSource{}, fmt.Errorf("refresh Emby stream: %w", err)
+			}
+		}
+		if jellyProv != nil {
+			rawURL, err = jellyProv.ResolveSource(rawURL)
+			if err != nil {
+				return player.ResolvedSource{}, fmt.Errorf("refresh Jellyfin stream: %w", err)
+			}
+		}
+		return player.ResolvedSource{URL: rawURL}, nil
+	}
 }
 
 // requeueSession re-queues the saved play-next entries: an entry already in

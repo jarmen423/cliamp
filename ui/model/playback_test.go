@@ -196,7 +196,7 @@ func TestStreamPlayedNotifiesOnceWithoutResume(t *testing.T) {
 	m := Model{
 		player:    &playbackFakeEngine{playing: true},
 		playlist:  pl,
-		notifiers: []playback.Notifier{notifier},
+		notifier:  notifier,
 		buffering: true,
 	}
 	m.requests.stream = 1
@@ -251,7 +251,7 @@ func TestStreamPlayedResumeKeepsNextTrackPreload(t *testing.T) {
 	pl.Add(current, next)
 	player := &playbackFakeEngine{playing: true, ytdlSeek: true, seekable: true, duration: time.Hour}
 	notifier := &fakeNotifier{}
-	m := Model{player: player, playlist: pl, notifiers: []playback.Notifier{notifier}, buffering: true}
+	m := Model{player: player, playlist: pl, notifier: notifier, buffering: true}
 	m.SetResume(current.Path, 90)
 	m.requests.stream = 1
 
@@ -348,8 +348,8 @@ func TestQuitResumeSkipsLiveStreams(t *testing.T) {
 			m := Model{player: &engine, playingTrack: tt.track, playingTrackActive: true}
 
 			m.quit()
-			if saved := m.exitResume.path == tt.track.Path && m.exitResume.secs == 42; saved != tt.want {
-				t.Fatalf("exit resume = (%q, %d), want saved %v", m.exitResume.path, m.exitResume.secs, tt.want)
+			if saved := m.exitResume.Path == tt.track.Path && m.exitResume.PositionSec == 42; saved != tt.want {
+				t.Fatalf("exit resume = (%q, %d), want saved %v", m.exitResume.Path, m.exitResume.PositionSec, tt.want)
 			}
 		})
 	}

@@ -38,7 +38,7 @@ func TestAttachNotifierPublishesCurrentPlaybackState(t *testing.T) {
 
 	next, _ := m.Update(AttachNotifier(notifier))
 	nextModel := next.(Model)
-	if len(nextModel.notifiers) != 1 || nextModel.notifiers[0] != notifier {
+	if nextModel.notifier != notifier {
 		t.Fatal("notifier was not attached to model")
 	}
 	if len(notifier.updates) != 1 {
@@ -70,7 +70,7 @@ func TestAttachedNotifiersFanOut(t *testing.T) {
 
 	first, second := &fakeNotifier{}, &fakeNotifier{}
 	m := Model{
-		player:   &fakeEngine{},
+		player:   &playbackFakeEngine{},
 		playlist: pl,
 	}
 

@@ -21,10 +21,35 @@ type playbackNotice struct {
 	state playback.State
 }
 
+// fanOutNotifier forwards playback updates to every attached notifier.
+type fanOutNotifier struct {
+	notifiers []playback.Notifier
+}
+
+func (f fanOutNotifier) Update(state playback.State) {
+	for _, notifier := range f.notifiers {
+		notifier.Update(state)
+	}
+}
+
+func (f fanOutNotifier) Seeked(position time.Duration) {
+	for _, notifier := range f.notifiers {
+		notifier.Seeked(position)
+	}
+}
+
 // attachNotifier sets the media controls notifier. Update then sends it the
 // current state.
 func (m *Model) attachNotifier(notifier playback.Notifier) {
-	m.notifier = notifier
+	switch existing := m.notifier.(type) {
+	case nil:
+		m.notifier = notifier
+	case fanOutNotifier:
+		existing.notifiers = append(existing.notifiers, notifier)
+		m.notifier = existing
+	default:
+		m.notifier = fanOutNotifier{notifiers: []playback.Notifier{existing, notifier}}
+	}
 	m.notice.sent = false
 }
 

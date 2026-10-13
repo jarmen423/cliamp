@@ -42,7 +42,7 @@ func newMockAPI(t *testing.T) *mockAPI {
 		handlers: map[string]func(t *testing.T, query url.Values) string{},
 	}
 	original := http.DefaultTransport
-	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		handler, ok := m.handlers[req.URL.Path]
 		if !ok {
 			return nil, fmt.Errorf("unexpected Spotify API path %q", req.URL.Path)
@@ -67,7 +67,10 @@ func newMockAPI(t *testing.T) *mockAPI {
 			Request:    req,
 		}, nil
 	})
-	t.Cleanup(func() { http.DefaultTransport = original })
+	http.DefaultTransport = rt
+	originalClient := webHTTPClient
+	webHTTPClient = &http.Client{Transport: rt}
+	t.Cleanup(func() { http.DefaultTransport = original; webHTTPClient = originalClient })
 	return m
 }
 

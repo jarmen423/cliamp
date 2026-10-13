@@ -136,7 +136,7 @@ func TestSearchAllLimitClamp(t *testing.T) {
 
 func TestSearchAllDevModeBlocked(t *testing.T) {
 	original := http.DefaultTransport
-	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusBadRequest,
 			Status:     "400 Bad Request",
@@ -145,7 +145,10 @@ func TestSearchAllDevModeBlocked(t *testing.T) {
 			Request:    req,
 		}, nil
 	})
-	t.Cleanup(func() { http.DefaultTransport = original })
+	http.DefaultTransport = rt
+	originalClient := webHTTPClient
+	webHTTPClient = &http.Client{Transport: rt}
+	t.Cleanup(func() { http.DefaultTransport = original; webHTTPClient = originalClient })
 
 	_, err := newTestProvider().SearchAll(t.Context(), "x", 10)
 	if err == nil || !strings.Contains(err.Error(), "search blocked") {

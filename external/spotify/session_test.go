@@ -600,8 +600,12 @@ func TestPerformOAuthReturnsAuthorizationError(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		callback := fmt.Sprintf("http://%s/login?state=%s&error=access_denied",
-			callbackAddress(), url.QueryEscape(parsed.Query().Get("state")))
+		redirectURI := parsed.Query().Get("redirect_uri")
+		if redirectURI == "" {
+			t.Fatalf("%s: auth URL %q has no redirect_uri", attempt, authURL)
+		}
+		callback := fmt.Sprintf("%s?state=%s&error=access_denied",
+			redirectURI, url.QueryEscape(parsed.Query().Get("state")))
 		resp, err := client.Get(callback)
 		if err != nil {
 			t.Fatalf("%s: %v", attempt, err)
