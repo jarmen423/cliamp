@@ -448,8 +448,11 @@ type Model struct {
 	paddingSet      bool // false uses defaultPaddingH and defaultPaddingV
 
 	// Async stream buffering (true while HTTP connect is in progress)
-	buffering   bool
-	bufferingAt time.Time // when buffering started, for elapsed display
+	buffering bool
+	// pauseOnStreamStart pauses the next async start as soon as it plays
+	// (a Spotify Connect transfer that arrived paused).
+	pauseOnStreamStart bool
+	bufferingAt        time.Time // when buffering started, for elapsed display
 
 	// resume holds the path and position to seek to when the matching track
 	// starts playing. Cleared after the seek is performed.

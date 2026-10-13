@@ -208,7 +208,7 @@ func (m *Model) handleTrackMenuKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.trackMenu.visible = false
 			return items[m.trackMenu.cursor].run(m)
 		}
-	default:
+	case "w", "r", "R", "b", "a", "l", "t", "x", "s", "i", "y":
 		for _, item := range items {
 			if item.key == msg.String() {
 				m.trackMenu.visible = false
@@ -262,8 +262,10 @@ func (m *Model) menuRemoveTrack() tea.Cmd {
 // removeQueuedAt drops queue position pos from the play-next queue, with
 // Ctrl+Z undo.
 func (m *Model) removeQueuedAt(pos int) tea.Cmd {
-	m.playlistUndo = playlistUndo{active: true, snapshot: m.playlist.Snapshot(), context: m.playingContext}
+	snapshot := m.playlist.Snapshot()
+	context := m.playingContext
 	m.playlist.RemoveQueueAt(pos)
+	m.recordPlaylistUndo(playlistUndo{snapshot: snapshot, context: context, force: true})
 	m.normalizeQueueOverlay()
 	m.status.Show("Removed queued track (Ctrl+Z to undo)", statusTTLDefault)
 	return m.rearmStalePreload()

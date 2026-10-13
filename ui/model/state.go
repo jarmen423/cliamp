@@ -38,6 +38,10 @@ type playlistUndo struct {
 	persisted bool
 	removed   playlist.Track
 	savedIdx  int
+	// force restores the snapshot even when the queue changed since the
+	// edit: undoing a queue-only removal brings the whole queue back, for
+	// example after a radio replaced it.
+	force bool
 }
 
 // netSearchScreenType identifies which screen of the net search overlay is active.

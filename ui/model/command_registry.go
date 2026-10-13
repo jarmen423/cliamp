@@ -206,7 +206,7 @@ var commandRegistry = []commandSpec{
 	}},
 	{Mode: commandModeTrackMenu, Keys: []string{"up", "down", "j", "k"}, KeyLabel: "Up Down", Label: "Navigate", ContextHelp: true},
 	{Mode: commandModeTrackMenu, Keys: []string{"enter"}, KeyLabel: "Enter", Label: "Run menu item", ContextHelp: true, Primary: true},
-	{Mode: commandModeTrackMenu, Keys: []string{"w", "r", "a", "l", "t", "x", "s", "i", "y"}, KeyLabel: "letter", Label: "Run the matching menu item", ContextHelp: true},
+	{Mode: commandModeTrackMenu, Keys: []string{"w", "r", "R", "b", "a", "l", "t", "x", "s", "i", "y"}, KeyLabel: "letter", Label: "Run the matching menu item", ContextHelp: true},
 	{Mode: commandModeTrackMenu, Keys: []string{"esc", ";", "q"}, KeyLabel: "Esc", Label: "Close", ContextHelp: true, Cancel: true},
 	{Mode: commandModeImmersive, Keys: []string{"space"}, KeyLabel: "Space", Label: "Play / Pause", ContextHelp: true},
 	{Mode: commandModeImmersive, Keys: []string{">", "."}, KeyLabel: "> <", Label: "Next / previous track", ContextHelp: true},

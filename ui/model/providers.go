@@ -688,11 +688,15 @@ func (m *Model) renameLoadedPlaylist(oldName, newName string) {
 }
 
 // clearLoadedPlaylist records that the queue mirrors no list. The undo of
-// the last queue edit goes, because it can write to the list.
+// the last queue edit goes, because it can write to the list — except a
+// forced queue-removal undo, which is not persisted and exists to bring
+// the old queue back after a replacement (see replacePlaylist).
 func (m *Model) clearLoadedPlaylist() {
 	m.loadedPlaylist = ""
 	m.playlistSource = ""
-	m.playlistUndo = playlistUndo{}
+	if !m.playlistUndo.force || m.playlistUndo.persisted {
+		m.playlistUndo = playlistUndo{}
+	}
 }
 
 // setLoadedLocalPlaylist records the list that a provider load put in the

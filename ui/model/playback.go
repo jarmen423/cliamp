@@ -24,11 +24,14 @@ const (
 // feed or file browser replace that is still resolving is dropped. It ends
 // the batch load of a YouTube radio playlist, so no batch appends to the new
 // queue. The undo of the last queue edit goes, because it restores the old
-// queue.
+// queue — except a forced queue-removal undo, which exists to bring the
+// old queue back after a replacement (for example a radio) took over.
 func (m *Model) replacePlaylist(tracks []playlist.Track) {
 	nextRequest(&m.requests.queue)
 	m.resetYTDLBatch()
-	m.playlistUndo = playlistUndo{}
+	if !m.playlistUndo.force {
+		m.playlistUndo = playlistUndo{}
+	}
 	if m.resumeSaver != nil {
 		tracks = playlist.WithPlaybackContext(tracks)
 	}
@@ -253,8 +256,12 @@ func (m *Model) playRemoteTracks(msg playback.PlayTracksMsg) tea.Cmd {
 		m.SetResume(msg.Tracks[idx].Path, int(msg.Position.Seconds()))
 	}
 	cmd := m.playCurrentTrack()
-	if msg.Paused && m.player.IsPlaying() && !m.player.IsPaused() {
-		m.togglePlayerPause()
+	if msg.Paused {
+		if m.buffering {
+			m.pauseOnStreamStart = true
+		} else if m.player.IsPlaying() && !m.player.IsPaused() {
+			m.togglePlayerPause()
+		}
 	}
 	if msg.ContextName != "" {
 		m.status.Showf(statusTTLMedium, "Playing %s", msg.ContextName)
@@ -523,7 +530,7 @@ func (m *Model) undoPlaylistMutation() tea.Cmd {
 		m.status.Warning("Nothing to undo", statusTTLShort)
 		return nil
 	}
-	if undo.revision != m.playlist.Revision() || undo.loaded != m.loadedPlaylist {
+	if !undo.force && (undo.revision != m.playlist.Revision() || undo.loaded != m.loadedPlaylist) {
 		// Restoring the snapshot would drop every change since the edit.
 		m.playlistUndo = playlistUndo{}
 		m.status.Warning("Can't undo: the playlist changed since the edit", statusTTLDefault)
@@ -566,6 +573,7 @@ func (m *Model) undoPlaylistMutation() tea.Cmd {
 // pipeline, such as the yt-dlp | ffmpeg chain for a yt-dlp page URL.
 func (m *Model) playTrack(track playlist.Track) tea.Cmd {
 	m.pausedAt = time.Time{}
+	m.pauseOnStreamStart = false
 	if track.Feed || playlist.IsFeed(track.Path) {
 		m.feedLoading = true
 		m.status.Activity("Loading feed...", statusTTLLong)

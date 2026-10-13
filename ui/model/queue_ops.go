@@ -119,9 +119,20 @@ func (m *Model) removeTrack(idx int, recordUndo bool) (tea.Cmd, error) {
 		return nil, errQueueIndex
 	}
 	m.normalizeQueueOverlay()
+	if idx < m.providerQueueLen {
+		// Local removal inside the mirrored range: the remote playlist
+		// still holds the track, so shrink the mirror rather than resetting
+		// it; the remaining rows still correspond to remote members.
+		m.providerQueueLen--
+		if tracks := m.playlist.Tracks(); m.providerQueueLen > 0 && m.providerQueueLen <= len(tracks) {
+			m.providerQueueLastPath = tracks[m.providerQueueLen-1].Path
+		} else {
+			m.providerQueueLastPath = ""
+		}
+	}
 	undoHint := ""
 	if recordUndo {
-		m.recordPlaylistUndo(playlistUndo{snapshot: snapshot, persisted: persisted, removed: removed, savedIdx: savedIdx})
+		m.recordPlaylistUndo(playlistUndo{snapshot: snapshot, context: m.playingContext, persisted: persisted, removed: removed, savedIdx: savedIdx})
 		undoHint = " (Ctrl+Z to undo)"
 	}
 	if wasActive {

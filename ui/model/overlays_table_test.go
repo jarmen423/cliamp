@@ -13,8 +13,17 @@ import (
 
 // overlayOpeners sets the flag that opens each overlay in overlayStack.
 var overlayOpeners = map[topLevelScreen]func(*Model){
-	screenFullVisualizer:  func(m *Model) { m.fullVis = true },
-	screenKeymap:          func(m *Model) { m.keymap.visible = true },
+	screenFullVisualizer: func(m *Model) { m.fullVis = true },
+	screenKeymap:         func(m *Model) { m.keymap.visible = true },
+	screenCredits:        func(m *Model) { m.credits.visible = true },
+	screenTrackMenu:      func(m *Model) { m.trackMenu.visible = true },
+	screenArtist:         func(m *Model) { m.artist.visible = true },
+	screenSpotSearch:     func(m *Model) { m.spotSearch.visible = true },
+	screenHome:           func(m *Model) { m.home.visible = true },
+	screenImmersive: func(m *Model) {
+		m.width, m.height = immMinWidth, immMinHeight
+		m.immersive.active = true
+	},
 	screenDevicePicker:    func(m *Model) { m.devicePicker.visible = true },
 	screenPlaylistPicker:  func(m *Model) { m.plPicker.visible = true },
 	screenFileBrowser:     func(m *Model) { m.fileBrowser.visible = true },
@@ -126,6 +135,7 @@ func TestOverlayRoutesAgree(t *testing.T) {
 			// The top overlay alone decides the frame, whatever lies under it.
 			alone := Model{width: 80, height: 30}
 			overlayOpeners[want](&alone)
+			alone.width, alone.height = 80, 30
 			m.width, m.height = 80, 30
 			m.recomputeLayout()
 			alone.recomputeLayout()
@@ -262,6 +272,7 @@ func TestGlobalKeysReachEveryOverlay(t *testing.T) {
 		t.Run(fmt.Sprint("ctrl+k ", spec.screen), func(t *testing.T) {
 			m := Model{player: &playbackFakeEngine{}, playlist: playlist.New()}
 			overlayOpeners[spec.screen](&m)
+			m.recomputeLayout()
 			m.handleKey(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
 			if got := m.activeScreen(); got != screenKeymap {
 				t.Fatalf("Ctrl+K over screen %d gave screen %d, want the keymap", spec.screen, got)

@@ -186,10 +186,6 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return spec.key(m, msg)
 	}
 
-	if m.immersiveShown() {
-		return m.handleImmersiveKey(msg)
-	}
-
 	if cmd, handled := m.handleTrackHotkeys(msg); handled {
 		return cmd
 	}
@@ -769,7 +765,6 @@ func (m *Model) handleMainKey(msg tea.KeyPressMsg) tea.Cmd {
 			if cmd, handled := m.removeSelectedRemote(); handled {
 				return cmd
 			}
-			m.keepPlCursorRow(m.removeSelectedFromPlaylist)
 			var cmd tea.Cmd
 			m.keepPlCursorRow(func() { cmd, _ = m.removeTrack(m.plCursor, true) })
 			return cmd

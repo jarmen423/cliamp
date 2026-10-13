@@ -151,7 +151,7 @@ func TestMouseDoubleClickPlaysRow(t *testing.T) {
 	if len(fake.playCalls) != 0 {
 		t.Fatalf("single click played %v", fake.playCalls)
 	}
-	m.handleMouseClick(click)
+	settlePlay(t, &m, m.handleMouseClick(click))
 	if len(fake.playCalls) != 1 || fake.playCalls[0] != "/tc.mp3" {
 		t.Fatalf("playCalls = %v, want [/tc.mp3]", fake.playCalls)
 	}
@@ -169,16 +169,13 @@ func TestMouseClickOnEmptyRowNoop(t *testing.T) {
 // seek bar as the main screen, so its clicks must seek too (geometry used
 // to be skipped for that screen, leaving the bar dead).
 func TestFullVisSeekBarClickSeeks(t *testing.T) {
-	oldPanelWidth := ui.PanelWidth
-	ui.PanelWidth = 60
-	t.Cleanup(func() { ui.PanelWidth = oldPanelWidth })
-
 	m := mouseTestModel(1)
 	m.mouse = &mouseState{seekRow: -1, bodyRow: -1}
 	m.fullVis = true
 	m.width, m.height = 120, 40
 	m.cachedDur = 4 * time.Minute
 	m.vis = ui.NewVisualizer(float64(m.player.(*playbackFakeEngine).SampleRate()))
+	m.recomputeLayout()
 
 	m.View()
 	if m.mouse.seekRow < 0 {

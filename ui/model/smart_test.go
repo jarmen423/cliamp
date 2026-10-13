@@ -474,7 +474,7 @@ func TestSmartHeaderChipAndRowMarker(t *testing.T) {
 		playlist.Track{Title: "Rec", Smart: true},
 		playlist.Track{Title: "Saved rec", Path: "saved.mp3", Smart: true},
 	)
-	m := Model{player: &playbackFakeEngine{}, playlist: p, focus: focusPlaylist, plVisible: 3, favSet: map[string]struct{}{"saved.mp3": {}}}
+	m := Model{player: &playbackFakeEngine{}, playlist: p, focus: focusPlaylist, plVisible: 3, favSet: map[string]struct{}{"saved.mp3": {}}, layout: frameLayout{panelWidth: 80}}
 
 	header := ansi.Strip(m.renderPlaylistHeader())
 	if strings.Contains(header, "Smart") {

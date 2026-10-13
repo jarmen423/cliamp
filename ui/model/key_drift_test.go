@@ -341,6 +341,7 @@ func TestShortcutKeysFollowsTheShortcutHelpers(t *testing.T) {
 // the handler that calls them, such as the text field of an overlay. Any
 // other handler serves the mode of its caller.
 var subKeyHandlers = map[string]commandMode{
+	"handleFullVisualizerKey":        commandModeFullVis,
 	"handleKeymapSearchKey":          commandModeKeymapSearch,
 	"handlePlaylistPickerNewNameKey": commandModePlaylistPickerInput,
 	"handleFileBrowserSearchKey":     commandModeFileBrowserSearch,
@@ -371,7 +372,7 @@ var unlistedKeys = map[string][]string{
 	"handleLyricsKey":               {"y"},
 	"handleNavAlbumListKey":         {"l", "right", "h", "left", "backspace"},
 	"handleNavArtistListKey":        {"l", "right", "h", "left", "backspace"},
-	"handleNavBrowserKey":           {"N", "ctrl+f", "S", "P", "J", "E", "B", "Y", "C", "X", "M", "Q", "T", "L", "O"},
+	"handleNavBrowserKey":           {"N", "ctrl+f", "S", "P", "J", "E", "B", "Y", "C", "X", "M", "Q", "T", "L", "O", "I"},
 	"handleNavGenreListKey":         {"l", "right", "h", "left", "backspace"},
 	"handleNavGenreSortKey":         {"l", "right", "h", "left", "backspace"},
 	"handleNavMenuKey":              {"l", "right", "N", "backspace", "b"},
@@ -380,12 +381,12 @@ var unlistedKeys = map[string][]string{
 	"handlePlMgrDirsKey":            {"y", "Y"},
 	"handlePlMgrFilterKey":          {"backspace"},
 	"handlePlMgrListKey":            {"y", "Y", "/", "l", "right", "r"},
-	"handlePlMgrTracksKey":          {"ctrl+h", "/", "backspace", "h", "left"},
+	"handlePlMgrTracksKey":          {"ctrl+h", "/", "backspace", "h", "left", "n"},
 	"handlePlaylistManagerKey":      {"S", "N", "P", "J", "E", "B", "Y", "C", "X", "M", "Q", "T", "L", "R", "O"},
 	"handlePlaylistPickerKey":       {"backspace"},
 	"handleProvPillKey":             {"left", "h", "right", "l", "space"},
 	"handleProvSearchKey":           {"ctrl+n", "ctrl+p"},
-	"handleProviderPaneKey":         {"y", "Y", "n", "space", "/", "o", "ctrl+j", "ctrl+f", "S", "P", "J", "E", "B", "C", "X", "M", "Q", "T", "L", "R", "O"},
+	"handleProviderPaneKey":         {"y", "Y", "n", "space", "/", "o", "ctrl+j", "ctrl+f", "S", "P", "J", "E", "B", "C", "X", "M", "Q", "T", "L", "R", "O", "H", "I"},
 	"handleQueueKey":                {"A"},
 	"handleSearchKey":               {"ctrl+n", "ctrl+p"},
 	"handleSpeedKey":                {"l", "h", "esc", "backspace"},
@@ -393,6 +394,20 @@ var unlistedKeys = map[string][]string{
 	"handleSubsKey":                 {"?"},
 	"handleThemeKey":                {"t"},
 	"handleVisPickerKey":            {"ctrl+v"},
+	"handleArtistDrillKey":          {"ctrl+p", "ctrl+n", "l", "a", "q", "S", "p", "h", "left"},
+	"handleArtistKey":               {"ctrl+p", "ctrl+n", "l", "a", "q", "S", "p", "h", "left"},
+	"handleCreditsKey":              {"ctrl+p", "ctrl+n"},
+	"handleHomeContentKey":          {"ctrl+p", "ctrl+n", "l", "h", "left"},
+	"handleHomeKey":                 {"I"},
+	"handleHomeSidebarKey":          {"ctrl+p", "ctrl+n", "l", "right", "h", "left"},
+	"handleImmersiveInputKey":       {"esc", "ctrl+n", "ctrl+p"},
+	"handleImmersiveKey":            {"esc", "?", "<", ",", "=", "shift+left", "shift+right", "h", "left", "l", "right", "shift+home"},
+	"handleProvConfirmKey":          {"y", "Y"},
+	"handleSpotBrowseKey":           {"ctrl+p", "ctrl+n", "l"},
+	"handleSpotDrillKey":            {"ctrl+p", "ctrl+n", "l", "a", "q", "p", "h"},
+	"handleSpotSearchResultsKey":    {"ctrl+p", "ctrl+n", "a", "q", "p"},
+	"handleSpotTabsKey":             {"ctrl+p", "ctrl+n", "l", "a", "q", "p"},
+	"handleTrackMenuKey":            {"ctrl+p", "ctrl+n"},
 }
 
 // keyHandlerModes returns the command mode of each handler that an overlay

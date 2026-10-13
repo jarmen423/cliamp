@@ -87,6 +87,7 @@ func TestAttachedNotifiersFanOut(t *testing.T) {
 		t.Fatalf("second notifier updates = %d, want 1", len(second.updates))
 	}
 
+	m.player.(*playbackFakeEngine).playing = true
 	m.notifyPlaybackChange()
 	if len(first.updates) != 3 || len(second.updates) != 2 {
 		t.Fatalf("updates = (%d,%d), want (3,2)", len(first.updates), len(second.updates))

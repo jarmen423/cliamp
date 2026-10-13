@@ -157,6 +157,12 @@ func (m *Model) handleStreamPlayed(msg streamPlayedMsg) tea.Cmd {
 		m.reconnect.attempts = 0
 		m.reconnect.at = time.Time{}
 		resumeCmd = m.applyResume()
+		if m.pauseOnStreamStart {
+			m.pauseOnStreamStart = false
+			if m.player.IsPlaying() && !m.player.IsPaused() {
+				m.togglePlayerPause()
+			}
+		}
 		m.nowPlaying(track)
 		// A local ffmpeg format starts here too, and its decoded
 		// duration can fill the loaded playlist.

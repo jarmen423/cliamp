@@ -1900,6 +1900,9 @@ func TestPlayRemoteTracks(t *testing.T) {
 				tt.setup(&m)
 			}
 			cmd := m.playRemoteTracks(tt.msg)
+			if tt.wantIndex >= 0 {
+				settlePlay(t, &m, cmd)
+			}
 			if tt.wantIndex < 0 {
 				if cmd != nil {
 					t.Fatal("playRemoteTracks() returned a command, want nil")
@@ -1972,7 +1975,7 @@ func TestQueueTrackNextStartsWhenIdle(t *testing.T) {
 	pl.Add(playlist.Track{Path: "/a.mp3"}, playlist.Track{Path: "/b.mp3"})
 	m := Model{player: player, playlist: pl}
 
-	m.queueTrackNext(playlist.Track{Path: "/b.mp3"})
+	settlePlay(t, &m, m.queueTrackNext(playlist.Track{Path: "/b.mp3"}))
 
 	if pl.Len() != 2 || len(player.playCalls) != 1 || player.playCalls[0] != "/b.mp3" {
 		t.Fatalf("len = %d playCalls = %v, want the queued /b.mp3 started in place", pl.Len(), player.playCalls)

@@ -20,6 +20,18 @@ func (m *Model) openProviderSearch() {
 // Falls back to YouTube net search when prov implements neither Searcher nor
 // MultiSearcher.
 func (m *Model) openProviderSearchWith(prov playlist.Provider) {
+	if _, ok := prov.(provider.CatalogSearcher); ok {
+		m.cancelSearchOverlayRequest()
+		nextRequest(&m.requests.searchOverlay)
+		nextRequest(&m.requests.searchOverlayLists)
+		nextRequest(&m.requests.searchOverlayMutation)
+		m.searchOverlay = searchOverlayState{
+			prov:    prov,
+			visible: true,
+			screen:  searchOverlayInput,
+		}
+		return
+	}
 	if _, ok := prov.(provider.Searcher); ok {
 		m.resetSpotSearch(prov, false)
 		return

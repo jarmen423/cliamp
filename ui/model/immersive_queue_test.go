@@ -101,7 +101,7 @@ func TestQueueViewHomeAndWheelSkipHeaders(t *testing.T) {
 func TestQueueViewEnterJumpsAndDequeues(t *testing.T) {
 	m := immQueuePageModel(t)
 	m.immersive.cursor = 3 // D in Next in queue
-	m.immersiveActivate()
+	settlePlay(t, m, m.immersiveActivate())
 	fake := m.player.(*playbackFakeEngine)
 	if len(fake.playCalls) == 0 || fake.playCalls[len(fake.playCalls)-1] != "/d" {
 		t.Fatalf("playCalls = %v, want /d last", fake.playCalls)
@@ -355,7 +355,7 @@ func TestRadioOpensAsPlaylistInCanvas(t *testing.T) {
 
 	// Playing a row makes the radio the queue.
 	m.immersive.cursor = 1
-	m.handleImmersiveKey(keyMsg("enter"))
+	settlePlay(t, m, m.handleImmersiveKey(keyMsg("enter")))
 	if got := playlistPaths(m.playlist); got != "/p1,/r1,/p2,/r2" {
 		t.Fatalf("queue after playing a radio row = %s, want the radio", got)
 	}

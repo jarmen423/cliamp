@@ -354,6 +354,9 @@ func (m *Model) handleTick(msg tickMsg) tea.Cmd {
 	}
 	m.advanceTitleScroll(now)
 	cmds = append(cmds, m.tickPreloadRetry())
+	if cmd := m.smartMaybeFetch(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	m.advanceTerminalTitle()
 	cmds = append(cmds, tickCmdAt(m.tickInterval()))
 	return tea.Batch(cmds...)
