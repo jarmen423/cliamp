@@ -601,6 +601,7 @@ func (m *Model) handleMainKey(msg tea.KeyPressMsg) tea.Cmd {
 		const repeatModes = playlist.RepeatOne + 1
 		return tea.Batch(m.setRepeat((m.playlist.Repeat()+repeatStep+repeatModes)%repeatModes), m.smartMaybeFetch())
 
+	case "z":
 		return tea.Batch(m.setShuffle(!m.playlist.Shuffled()), m.smartMaybeFetch())
 	case "Z":
 		return m.toggleSmartShuffle()

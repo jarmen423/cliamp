@@ -63,6 +63,18 @@ func init() {
 			view: overlayView{(*Model).keymapHeaderLine, (*Model).renderKeymapList},
 		},
 		{
+			screen:  screenCredits,
+			key:     (*Model).handleCreditsKey,
+			context: fixedContext(commandModeCredits, "Credits"),
+			view:    overlayView{(*Model).creditsHeaderLine, (*Model).renderCreditsBody},
+		},
+		{
+			screen:  screenTrackMenu,
+			key:     (*Model).handleTrackMenuKey,
+			context: fixedContext(commandModeTrackMenu, "Track Menu"),
+			view:    overlayView{(*Model).trackMenuHeaderLine, (*Model).renderTrackMenuBody},
+		},
+		{
 			screen:  screenDevicePicker,
 			key:     (*Model).handleDeviceKey,
 			context: fixedContext(commandModeDevicePicker, "Audio Device"),
@@ -101,6 +113,26 @@ func init() {
 				return commandModeFileBrowser, "Files"
 			},
 			view: overlayView{(*Model).fbHeaderLine, (*Model).renderFileBrowserBody},
+		},
+		{
+			screen:  screenArtist,
+			key:     (*Model).handleArtistKey,
+			context: fixedContext(commandModeArtist, "Artist"),
+			view:    overlayView{(*Model).artistHeaderLine, (*Model).renderArtistBody},
+		},
+		{
+			screen: screenSpotSearch,
+			key:    (*Model).handleSpotSearchKey,
+			paste: func(m *Model, s string) {
+				switch m.spotSearch.screen {
+				case spotSearchInput:
+					m.insertText("spot-search", &m.spotSearch.query, s)
+				case spotSearchNewName:
+					m.insertText("spot-playlist-name", &m.spotSearch.newName, s)
+				}
+			},
+			context: fixedContext(commandModeSpotSearch, "Provider Search"),
+			view:    overlayView{(*Model).spotSearchHeaderLine, (*Model).renderSpotSearchBody},
 		},
 		{
 			screen: screenSearchOverlay,
@@ -145,6 +177,20 @@ func init() {
 				return commandModeNavBrowser, "Browse"
 			},
 			view: overlayView{(*Model).navHeaderLine, (*Model).renderNavBody},
+		},
+		{
+			screen: screenHome,
+			key:    (*Model).handleHomeKey,
+			context: func(m *Model) (commandMode, string) {
+				if m.home.filtering {
+					return commandModeHomeFilter, "Home Filter"
+				}
+				if m.home.screen == homeScreenNewName {
+					return commandModeHomeInput, "New Playlist"
+				}
+				return commandModeHome, "Home"
+			},
+			view: overlayView{(*Model).homeHeaderLine, (*Model).renderHomeBody},
 		},
 		{
 			screen: screenThemePicker,
@@ -300,6 +346,16 @@ func (m *Model) overlayOpen(screen topLevelScreen) bool {
 		return m.plPicker.visible
 	case screenFileBrowser:
 		return m.fileBrowser.visible
+	case screenCredits:
+		return m.credits.visible
+	case screenTrackMenu:
+		return m.trackMenu.visible
+	case screenArtist:
+		return m.artist.visible
+	case screenSpotSearch:
+		return m.spotSearch.visible
+	case screenHome:
+		return m.home.visible
 	case screenSearchOverlay:
 		return m.searchOverlay.visible
 	case screenNavBrowser:
@@ -337,13 +393,15 @@ func (m *Model) overlayOpen(screen topLevelScreen) bool {
 // and reads as a view of it.
 func (m *Model) overlayContentFirst(screen topLevelScreen) bool {
 	switch screen {
-	case screenKeymap, screenDevicePicker, screenFileBrowser, screenNavBrowser,
-		screenThemePicker, screenSubs, screenSearch:
+	case screenKeymap, screenDevicePicker, screenFileBrowser, screenArtist, screenNavBrowser,
+		screenThemePicker, screenSubs, screenSearch, screenHome:
 		return true
 	case screenPlaylistPicker:
 		return m.plPicker.screen == plPickerChoose
 	case screenSearchOverlay:
 		return m.searchOverlay.screen == searchOverlayResults || m.searchOverlay.screen == searchOverlayPlaylist
+	case screenSpotSearch:
+		return m.spotSearch.screen == spotSearchResults || m.spotSearch.screen == spotSearchPlaylist
 	case screenPlaylistManager:
 		return m.plManager.screen == plMgrScreenList || m.plManager.screen == plMgrScreenTracks
 	case screenNetSearch:
