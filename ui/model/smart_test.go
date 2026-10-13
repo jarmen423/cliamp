@@ -48,14 +48,34 @@ func (f *fakeRecommenderProvider) RecommendTracks(_ context.Context, seed []play
 	return f.recs[:n], nil
 }
 
-// smartConfigSaver captures configSaver.Save calls.
+// smartConfigSaver captures typed config saver calls.
 type smartConfigSaver struct {
 	pairs [][2]string
 }
 
-func (r *smartConfigSaver) Save(key, value string) error {
+func (r *smartConfigSaver) record(key, value string) error {
 	r.pairs = append(r.pairs, [2]string{key, value})
 	return nil
+}
+
+func (r *smartConfigSaver) SaveString(key, value string) error {
+	return r.record(key, config.QuoteString(value))
+}
+
+func (r *smartConfigSaver) SaveBool(key string, value bool) error {
+	return r.record(key, strconv.FormatBool(value))
+}
+
+func (r *smartConfigSaver) SaveFloat(key string, value float64, prec int) error {
+	return r.record(key, strconv.FormatFloat(value, 'f', prec, 64))
+}
+
+func (r *smartConfigSaver) SaveFloats(key string, values []float64) error {
+	parts := make([]string, len(values))
+	for i, v := range values {
+		parts[i] = strconv.FormatFloat(v, 'f', -1, 64)
+	}
+	return r.record(key, "["+strings.Join(parts, ", ")+"]")
 }
 
 func (r *smartConfigSaver) has(key, value string) bool {
