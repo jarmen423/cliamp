@@ -44,10 +44,6 @@ func (m Model) artistHeaderLine() string {
 	return sepHeaderN("Artist — "+m.artist.info.Name, m.artist.cursor+1, len(m.artistRows()), m.layout.panelWidth)
 }
 
-func (m Model) artistHelpLine() string {
-	return m.commandHelp(commandModeArtist)
-}
-
 // artistSectionLabel names one section header; the Popular header carries the
 // active sort so the `s` cycler state is always visible.
 func (m Model) artistSectionLabel(kind artistRowKind) string {

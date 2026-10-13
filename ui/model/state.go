@@ -475,19 +475,6 @@ type searchOverlayState struct {
 	newName      string                  // new playlist name input
 	err          string
 	cancel       func()
-	multi        bool                   // provider implements MultiSearcher
-	resultsAll   provider.SearchResults // multi-type results backing the tab bar
-	tab          spotSearchTab          // active result tab (multi only)
-	drill        []spotDrillLevel       // drill-down stack (multi only)
-
-	// Browse page (provider.CategoryBrowser, spot_browse.go). browsing marks
-	// an overlay that has shown the category list, so Esc from the search
-	// input returns to it; category is the open category, empty on the list.
-	browsing   bool
-	categories []provider.CategoryInfo
-	catCursor  int
-	catScroll  int
-	category   provider.CategoryInfo
 }
 
 // artistSortMode identifies the ordering of the artist screen's Popular

@@ -98,6 +98,11 @@ func init() {
 			view: overlayView{(*Model).plPickerHeaderLine, (*Model).renderPlaylistPickerBody},
 		},
 		{
+			screen:  screenImmersive,
+			key:     (*Model).handleImmersiveKey,
+			context: fixedContext(commandModeImmersive, "Immersive"),
+		},
+		{
 			screen: screenFileBrowser,
 			key:    (*Model).handleFileBrowserKey,
 			paste: func(m *Model, s string) {
@@ -344,6 +349,8 @@ func (m *Model) overlayOpen(screen topLevelScreen) bool {
 		return m.devicePicker.visible
 	case screenPlaylistPicker:
 		return m.plPicker.visible
+	case screenImmersive:
+		return m.immersiveShown()
 	case screenFileBrowser:
 		return m.fileBrowser.visible
 	case screenCredits:

@@ -625,18 +625,6 @@ func clampInt(v, lo, hi int) int {
 	return v
 }
 
-// boolString persists a bool config value the same way keys.go does.
-func boolString(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
-}
-
-func repeatLabel(mode playlist.RepeatMode) string {
-	return "\"" + mode.String() + "\""
-}
-
 // immersiveOpenTrackMenu opens the track context menu (the `;` / right-click
 // menu) for the focused track: a queue row, a canvas track, or the playing
 // track when the canvas lists collections.

@@ -673,10 +673,6 @@ func (m Model) trackMenuHeaderLine() string {
 	return sepHeaderN("Track — "+name, m.trackMenu.cursor+1, len(m.trackMenuItems()), m.layout.panelWidth)
 }
 
-func (m Model) trackMenuHelpLine() string {
-	return m.commandHelp(commandModeTrackMenu)
-}
-
 func (m Model) renderTrackMenuBody() string {
 	budget := m.effectivePlaylistVisible()
 	if budget <= 0 {
@@ -700,10 +696,6 @@ func (m Model) creditsHeaderLine() string {
 		name = "Track"
 	}
 	return sepHeader("Credits — "+name, m.layout.panelWidth)
-}
-
-func (m Model) creditsHelpLine() string {
-	return m.commandHelp(commandModeCredits)
 }
 
 func (m Model) renderCreditsBody() string {
