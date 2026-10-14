@@ -237,7 +237,7 @@ same protocol but was not tested for this release. Run with
 `cliamp.log` to see what your terminal reported and which backend was used.
 
 `immersive_view` is the canvas view immersive opens in: `"list"` (default),
-`"rows"` or `"grid"`. Pressing `c` in immersive cycles the view and saves it
+`"rows"` or `"grid"`. Pressing `b` in immersive cycles the view and saves it
 here.
 
 `hide_help_bar = true` removes the key-binding hint bar above the status line

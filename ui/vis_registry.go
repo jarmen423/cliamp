@@ -171,8 +171,9 @@ func (v *Visualizer) SetMode(mode VisMode) {
 	v.RequestRefresh()
 }
 
-// CycleMode advances to the next visualizer mode, including Lua visualizers.
-func (v *Visualizer) CycleMode() {
+// CycleMode moves step modes on (back when negative), wrapping around,
+// including Lua visualizers.
+func (v *Visualizer) CycleMode(step int) {
 	total := VisCount + VisMode(len(v.luaVisNames))
-	v.Mode = (v.Mode + 1) % total
+	v.Mode = ((v.Mode+VisMode(step))%total + total) % total
 }

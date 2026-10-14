@@ -106,8 +106,9 @@ list.
 | `e` | Cycle EQ preset, including the saved Custom curve |
 | `t` | Choose theme |
 | `v` | Cycle visualizer and save the choice in `config.toml` |
+| `c` | Cycle visualizer backward and save the choice |
 | `Ctrl+V` | Pick visualizer from a list (live preview) |
-| `V` | Full screen visualizer. Inside it, `v` cycles modes and saves the choice, `<`/`>` change track, `+`/`-` change volume, and `t` hides the episode name, leaving only the bracketed source. `q` or `Esc` exits back to the player; `Ctrl+C` quits. |
+| `V` | Full screen visualizer. Inside it, `v` cycles modes and saves the choice (`c` cycles back), `<`/`>` change track, `+`/`-` change volume, and `t` hides the episode name, leaving only the bracketed source. `q` or `Esc` exits back to the player; `Ctrl+C` quits. |
 | `Ctrl+H` | Toggle album headers |
 | `Ctrl+G` | Toggle the key-binding hint bar (remembered in `hide_help_bar`) |
 | `Ctrl+B` | Open/close the settings pane (remembered in `hide_settings_pane`) |
@@ -468,7 +469,8 @@ cliamp also quits as the `q` key does when it gets `SIGINT`, `SIGTERM` or `SIGHU
 `I` opens the immersive layout (or start in it with `immersive = true` in the
 config). It falls back to the classic layout when the terminal is under
 80x24. Transport keys keep their normal bindings (`Space`, `>`/`<`, `r`, `Z`,
-`+`/`-`, `Shift+Left`/`Shift+Right`, `v` to cycle visualizers); `Ctrl+K` or
+`+`/`-`, `Shift+Left`/`Shift+Right`, `v` to cycle visualizers, `c`
+to cycle back); `Ctrl+K` or
 `?` lists everything below. The immersive-only keys:
 
 | Key | Action |
@@ -483,7 +485,7 @@ config). It falls back to the classic layout when the terminal is under
 | `Alt+Right` | Forward again (the ▶ button) |
 | `Esc` | Leave the settings tab or an opened collection; exits at the root |
 | `g` or `Home` | Jump back to the canvas root |
-| `c` | Cycle the canvas view: list, rows, grid |
+| `b` | Cycle the canvas view: list, rows, grid |
 | `z` | Shuffle button: off, shuffle, Smart Shuffle (✦), off |
 | `;` | Track menu for the focused track (also right-click) |
 | `e` | Toggle the settings tab in the canvas (EQ preset/bands, volume, speed, visualizer) |

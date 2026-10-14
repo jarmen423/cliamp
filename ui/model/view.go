@@ -713,7 +713,7 @@ func (m Model) fullVisualizerSections() []string {
 			sections,
 			"",
 			helpKey("V", "Exit ")+
-				helpKey("v", "Mode:"+m.vis.ModeName()+" ")+
+				helpKey("v c", "Mode:"+m.vis.ModeName()+" ")+
 				helpKey("Spc", "▶❚❚ ")+
 				helpKey("<>", "Trk ")+
 				helpKey("+-", "Vol ")+
