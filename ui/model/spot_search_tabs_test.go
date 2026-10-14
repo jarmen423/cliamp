@@ -262,7 +262,7 @@ func TestSpotSearchFollowPlaylistFromTab(t *testing.T) {
 	fake := &fakeSpotifyLibProvider{name: "Spotify", searchAll: spotSearchAllFixture()}
 	fake.lists = []playlist.PlaylistInfo{{ID: "pl1", Name: "Classic Hits"}}
 	m := newSpotifyTestModel(fake)
-	m.providerLists = fake.lists
+	m.provPane.lists = fake.lists
 	m = openSpotMultiSearch(t, m)
 
 	for range 3 {

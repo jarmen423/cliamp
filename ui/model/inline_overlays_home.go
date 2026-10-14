@@ -32,7 +32,7 @@ func (m Model) homeHeaderLine() string {
 		name = m.home.prov.Name()
 	}
 	rows := m.homeRows()
-	return sepHeaderN("Home — "+name, min(m.home.cursor+1, max(1, len(rows))), len(rows))
+	return sepHeaderN("Home — "+name, min(m.home.cursor+1, max(1, len(rows))), len(rows), m.layout.panelWidth)
 }
 
 // homeRowsTotal counts all selectable sidebar rows ignoring the filter (the

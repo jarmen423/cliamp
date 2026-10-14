@@ -228,7 +228,7 @@ func (m *Model) artistPlayFrom(tracks []playlist.Track, pos int) tea.Cmd {
 		m.status.Showf(statusTTLMedium, "Playing: %s", toAdd[0].DisplayName())
 	}
 	cmd := m.playCurrentTrack()
-	m.notifyPlayback()
+	m.notifyPlaybackChange()
 	return cmd
 }
 

@@ -11,6 +11,14 @@ import (
 	"github.com/bjarneo/cliamp/playlist"
 )
 
+// Entry pairs a display name with a key and provider implementation. The
+// provider list of the UI is a slice of entries in display order.
+type Entry struct {
+	Key      string            // config key: "radio", "navidrome", "spotify"
+	Name     string            // display name: "Radio", "Navidrome", "Spotify"
+	Provider playlist.Provider // nil if not configured
+}
+
 // ArtistInfo describes an artist in a provider's catalog.
 type ArtistInfo struct {
 	ID         string
@@ -105,10 +113,6 @@ const (
 	MetaMixcloudKey = "mixcloud.key"
 	// MetaMixcloudCreator is the profile username that owns a Mixcloud show.
 	MetaMixcloudCreator = "mixcloud.creator"
-	// MetaMixcloudExclusive marks a show that Mixcloud may restrict to
-	// signed-in users or subscribers. The viewer's entitlement is resolved
-	// only during playback, so it is informational rather than Unplayable.
-	MetaMixcloudExclusive = "mixcloud.exclusive"
 
 	MetaAudiobookshelfID      = "audiobookshelf.id"
 	MetaAudiobookshelfEpisode = "audiobookshelf.episode"

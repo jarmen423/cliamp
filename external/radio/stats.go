@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"maps"
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
+
+	"github.com/bjarneo/cliamp/internal/httpclient"
 )
 
 // StatsURL serves live and all-time listener statistics for the cliamp radio
@@ -96,7 +98,7 @@ type TrackListenerCountry struct {
 // FetchTrackStatistics downloads the playlist statistics document.
 func FetchTrackStatistics(ctx context.Context) (TrackStatistics, error) {
 	var stats TrackStatistics
-	if err := getLimitedJSON(ctx, catalogClient, TrackStatsURL, maxStatsBody, &stats); err != nil {
+	if err := getJSON(ctx, catalogClient, TrackStatsURL, maxStatsBody, &stats); err != nil {
 		return TrackStatistics{}, fmt.Errorf("playlist statistics: %w", err)
 	}
 	return stats, nil
@@ -118,7 +120,7 @@ func fetchStatistics(ctx context.Context, client *http.Client, u string) (Statis
 		return Statistics{}, nil, err
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxStatsBody))
+	raw, err := httpclient.ReadBody(resp.Body, maxStatsBody)
 	if err != nil {
 		return Statistics{}, nil, err
 	}
@@ -127,6 +129,51 @@ func fetchStatistics(ctx context.Context, client *http.Client, u string) (Statis
 		return Statistics{}, nil, fmt.Errorf("decode: %w", err)
 	}
 	return stats, raw, nil
+}
+
+// summarizeListenerCounts reduces both statistics documents to live
+// listeners per channel slug. A nil tracks document keeps the live-stream
+// counts. Pure, so the website-identical aggregation is unit-testable.
+func summarizeListenerCounts(main Statistics, tracks *TrackStatistics) map[string]int {
+	sum := main.Summarize(nil)
+	if tracks != nil {
+		sum = sum.WithPlaylists(*tracks, nil)
+	}
+	out := make(map[string]int, len(sum.Channels))
+	for _, c := range sum.Channels {
+		out[c.Slug] = c.Listeners
+	}
+	return out
+}
+
+// FetchListenerCounts downloads both statistics documents concurrently and
+// returns live listeners per channel slug. Fetching in parallel keeps one
+// slow document from delaying the other. A failed playlist document still
+// yields the live-stream counts; an error returns only when the main
+// document fails, and callers treat that as "unknown" rather than zero.
+func FetchListenerCounts(ctx context.Context) (map[string]int, error) {
+	var mainDoc Statistics
+	var mainErr error
+	var tracksDoc TrackStatistics
+	var tracksErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		mainDoc, _, mainErr = FetchStatistics(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		tracksDoc, tracksErr = FetchTrackStatistics(ctx)
+	}()
+	wg.Wait()
+	if mainErr != nil {
+		return nil, mainErr
+	}
+	if tracksErr != nil {
+		return summarizeListenerCounts(mainDoc, nil), nil
+	}
+	return summarizeListenerCounts(mainDoc, &tracksDoc), nil
 }
 
 // Summary is Statistics boiled down to what the statistics views show.

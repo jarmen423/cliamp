@@ -12,8 +12,8 @@ import (
 // seekableOnResume reports whether a saved position means anything for
 // track: local files and finite streams resume where they stopped, while
 // live streams and most yt-dlp sites restart from the beginning.
-func seekableOnResume(track playlist.Track) bool {
-	return !track.IsLive() && (!playlist.IsYTDL(track.Path) || playlist.IsMixcloudURL(track.Path))
+func (m Model) seekableOnResume(track playlist.Track) bool {
+	return !m.currentPlaybackIsLive(track) && (!playlist.IsYTDL(track.Path) || playlist.IsMixcloudURL(track.Path))
 }
 
 // sessionState assembles the checkpoint for track at positionSec, chosen
@@ -21,7 +21,7 @@ func seekableOnResume(track playlist.Track) bool {
 func (m Model) sessionState(track playlist.Track, positionSec int, context []playlist.Track, contextIndex int) resume.State {
 	state := resume.State{Playlist: m.loadedPlaylist, Immersive: m.immersiveResumeView()}
 	if track.Path != "" {
-		if !seekableOnResume(track) {
+		if !m.seekableOnResume(track) {
 			positionSec = 0
 		}
 		state.Path, state.PositionSec = track.Path, positionSec

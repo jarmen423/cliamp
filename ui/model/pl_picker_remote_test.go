@@ -14,7 +14,7 @@ func TestPlaylistPickerRemoteSectionFromActiveProvider(t *testing.T) {
 		{ID: "pl1", Name: "Road Trip", TrackCount: 12},
 	}}
 	m := newSpotifyTestModel(fake)
-	m.providerLists = fake.lists
+	m.provPane.lists = fake.lists
 
 	cmd := m.openPlaylistPicker([]playlist.Track{{Path: "spotify:track:1", Title: "Dreams"}}, "Track: Dreams")
 	if cmd != nil {
@@ -73,7 +73,7 @@ func TestPlaylistPickerRemoteWrite(t *testing.T) {
 	fake := &fakeSpotifyLibProvider{name: "Spotify", lists: []playlist.PlaylistInfo{{ID: "pl1", Name: "Road Trip"}}}
 	m := newSpotifyTestModel(fake)
 	m.localProvider = commandsTestProvider{name: "Local", lists: []playlist.PlaylistInfo{{ID: "mix", Name: "Mix"}}}
-	m.providerLists = fake.lists
+	m.provPane.lists = fake.lists
 	tracks := []playlist.Track{{Path: "spotify:track:1", Title: "Dreams"}}
 	m.openPlaylistPicker(tracks, "Track: Dreams")
 
@@ -103,7 +103,7 @@ func TestPlaylistPickerRemoteWrite(t *testing.T) {
 func TestPlaylistPickerRemoteCreate(t *testing.T) {
 	fake := &fakeSpotifyLibProvider{name: "Spotify", lists: []playlist.PlaylistInfo{{ID: "pl1", Name: "Road Trip"}}}
 	m := newSpotifyTestModel(fake)
-	m.providerLists = fake.lists
+	m.provPane.lists = fake.lists
 	m.openPlaylistPicker([]playlist.Track{{Path: "spotify:track:1"}}, "Track: Dreams")
 
 	// Last selectable row is "+ New Spotify Playlist...".
@@ -136,7 +136,7 @@ func TestPlaylistPickerEscReturnsToOriginatingNewRow(t *testing.T) {
 	fake := &fakeSpotifyLibProvider{name: "Spotify", lists: []playlist.PlaylistInfo{{ID: "pl1", Name: "Road Trip"}}}
 	m := newSpotifyTestModel(fake)
 	m.localProvider = commandsTestProvider{name: "Local", lists: []playlist.PlaylistInfo{{ID: "mix", Name: "Mix"}}}
-	m.providerLists = fake.lists
+	m.provPane.lists = fake.lists
 	m.openPlaylistPicker([]playlist.Track{{Path: "spotify:track:1"}}, "Track: X")
 
 	// Selectable rows: mix (0), +New local (1), pl1 (2), +New remote (3).

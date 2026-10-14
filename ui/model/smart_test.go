@@ -48,14 +48,34 @@ func (f *fakeRecommenderProvider) RecommendTracks(_ context.Context, seed []play
 	return f.recs[:n], nil
 }
 
-// smartConfigSaver captures configSaver.Save calls.
+// smartConfigSaver captures typed config saver calls.
 type smartConfigSaver struct {
 	pairs [][2]string
 }
 
-func (r *smartConfigSaver) Save(key, value string) error {
+func (r *smartConfigSaver) record(key, value string) error {
 	r.pairs = append(r.pairs, [2]string{key, value})
 	return nil
+}
+
+func (r *smartConfigSaver) SaveString(key, value string) error {
+	return r.record(key, config.QuoteString(value))
+}
+
+func (r *smartConfigSaver) SaveBool(key string, value bool) error {
+	return r.record(key, strconv.FormatBool(value))
+}
+
+func (r *smartConfigSaver) SaveFloat(key string, value float64, prec int) error {
+	return r.record(key, strconv.FormatFloat(value, 'f', prec, 64))
+}
+
+func (r *smartConfigSaver) SaveFloats(key string, values []float64) error {
+	parts := make([]string, len(values))
+	for i, v := range values {
+		parts[i] = strconv.FormatFloat(v, 'f', -1, 64)
+	}
+	return r.record(key, "["+strings.Join(parts, ", ")+"]")
 }
 
 func (r *smartConfigSaver) has(key, value string) bool {
@@ -452,9 +472,9 @@ func TestSmartHeaderChipAndRowMarker(t *testing.T) {
 	p.Add(
 		playlist.Track{Title: "Plain"},
 		playlist.Track{Title: "Rec", Smart: true},
-		playlist.Track{Title: "Saved rec", Smart: true, Bookmark: true},
+		playlist.Track{Title: "Saved rec", Path: "saved.mp3", Smart: true},
 	)
-	m := Model{player: &playbackFakeEngine{}, playlist: p, focus: focusPlaylist, plVisible: 3}
+	m := Model{player: &playbackFakeEngine{}, playlist: p, focus: focusPlaylist, plVisible: 3, favSet: map[string]struct{}{"saved.mp3": {}}, layout: frameLayout{panelWidth: 80}}
 
 	header := ansi.Strip(m.renderPlaylistHeader())
 	if strings.Contains(header, "Smart") {
@@ -472,8 +492,8 @@ func TestSmartHeaderChipAndRowMarker(t *testing.T) {
 	if strings.Count(rows, "✚") != 1 {
 		t.Fatalf("rows = %q; want exactly one smart marker", rows)
 	}
-	if !strings.Contains(rows, "★") {
-		t.Fatalf("rows = %q; bookmark must still render", rows)
+	if !strings.Contains(rows, "♥") {
+		t.Fatalf("rows = %q; favorite must still render", rows)
 	}
 }
 

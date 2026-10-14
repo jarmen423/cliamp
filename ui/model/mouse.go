@@ -17,8 +17,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-
-	"github.com/bjarneo/cliamp/ui"
 )
 
 // mouseState is the per-frame hit geometry of the interactive regions:
@@ -79,23 +77,23 @@ func (m *Model) recordMouseGeometry(content string, sections []string, body stri
 	if m.layout.tooSmall() {
 		return
 	}
-	frame := ui.FrameStyle.Render(content)
+	frame := m.layout.frameStyle().Render(content)
 	padTop := max(0, (m.height-lipgloss.Height(frame))/2)
 	padLeft := max(0, (m.width-lipgloss.Width(frame))/2)
-	x := padLeft + ui.PaddingH
-	row := padTop + ui.VerticalPadding()
+	x := padLeft + m.layout.paddingH
+	row := padTop + m.layout.paddingV
 	seekBar := m.renderSeekBar()
 	for _, sec := range sections {
 		switch {
 		case ms.seekRow < 0 && sec == seekBar && seekBar != "":
 			ms.seekRow = row
 			ms.seekX = x
-			ms.seekW = ui.PanelWidth
+			ms.seekW = m.layout.panelWidth
 		case ms.bodyRow < 0 && sec == body && body != "":
 			ms.bodyRow = row
 			ms.bodyRows = strings.Count(body, "\n") + 1
 			ms.bodyX = x
-			ms.bodyW = ui.PanelWidth
+			ms.bodyW = m.layout.panelWidth
 			// The two-column body splits the region: the left playlistWidth
 			// cells hold the track list, then a gutter, then settings.
 			if m.layout.twoColumn {

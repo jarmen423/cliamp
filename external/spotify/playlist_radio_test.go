@@ -16,7 +16,7 @@ import (
 func TestPlaylistTracksRequestRadioIDs(t *testing.T) {
 	original := http.DefaultTransport
 	t.Cleanup(func() { http.DefaultTransport = original })
-	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		fields := req.URL.Query().Get("fields")
 		containsID := func(group string) bool {
 			match := regexp.MustCompile(group + `\(([^)]*)\)`).FindStringSubmatch(fields)
@@ -38,7 +38,8 @@ func TestPlaylistTracksRequestRadioIDs(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header),
 			Body: io.NopCloser(strings.NewReader(string(body))), Request: req}, nil
 	})
-	session := &Session{tokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test-token"})}
+	http.DefaultTransport = rt
+	session := &Session{tokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test-token"}), web: &http.Client{Transport: rt}}
 	p := New(session, "client", 320)
 	tracks, _, err := p.fetchTracksPage(context.Background(), "playlist-id", 0)
 	if err != nil || len(tracks) != 1 {

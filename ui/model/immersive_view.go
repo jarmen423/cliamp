@@ -631,8 +631,8 @@ func (m Model) renderImmCanvasInner(w, rows int) []string {
 		if rows > 1 {
 			lines[1] = dimStyle.Render("  Enter or click here opens the sign-in page in your browser.")
 		}
-		if m.provAuthURL != "" && rows > 3 {
-			lines[3] = dimStyle.Render("  If it did not open: " + m.provAuthURL)
+		if m.provPane.authURL != "" && rows > 3 {
+			lines[3] = dimStyle.Render("  If it did not open: " + m.provPane.authURL)
 		}
 		return lines
 	}

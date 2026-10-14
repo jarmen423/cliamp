@@ -999,7 +999,7 @@ func (r *connectReceiver) enrichBatch(trs []playlist.Track, ids []string, idx []
 		end := min(start+connectEnrichBatch, len(ids))
 		chunk := ids[start:end]
 		q := url.Values{"ids": {strings.Join(chunk, ",")}}
-		resp, err := r.s.webApiWithBody(r.ctx, http.MethodGet, path, q, nil, "")
+		resp, err := r.s.webAPIOnce(r.ctx, http.MethodGet, path, q, nil, "")
 		if err != nil {
 			return
 		}

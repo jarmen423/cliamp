@@ -741,9 +741,6 @@ func trackFromCloudcast(show apiCloudcast) playlist.Track {
 	if validUsername(show.User.Username) {
 		meta[provider.MetaMixcloudCreator] = show.User.Username
 	}
-	if show.IsExclusive {
-		meta[provider.MetaMixcloudExclusive] = "true"
-	}
 	return playlist.Track{
 		Path:         pageURL,
 		Title:        show.Name,
@@ -752,6 +749,7 @@ func trackFromCloudcast(show apiCloudcast) playlist.Track {
 		Year:         year,
 		Stream:       true,
 		DurationSecs: show.AudioLength,
+		Restricted:   show.IsExclusive,
 		AlbumArtURL:  bestPicture(show.Pictures),
 		ProviderMeta: meta,
 	}

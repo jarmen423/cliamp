@@ -8,14 +8,9 @@ import (
 
 	"github.com/bjarneo/cliamp/favorites"
 	"github.com/bjarneo/cliamp/playlist"
-	"github.com/bjarneo/cliamp/ui"
 )
 
 func TestEmptyStatesNameTheNextStep(t *testing.T) {
-	old := ui.PanelWidth
-	ui.PanelWidth = 80
-	t.Cleanup(func() { ui.PanelWidth = old })
-
 	tests := []struct {
 		name   string
 		setup  func(*Model)
@@ -62,7 +57,7 @@ func TestEmptyStatesNameTheNextStep(t *testing.T) {
 				m.plManager = plManagerState{visible: true, screen: plMgrScreenTracks, selPlaylist: favorites.PlaylistName}
 			},
 			body: (*Model).renderPlMgrTracksBody,
-			want: []string{"Press n on a track in the playlist to add it here."},
+			want: []string{"Press f on a track in the playlist to add it here."},
 		},
 		{
 			name: "new playlist name",
@@ -77,6 +72,7 @@ func TestEmptyStatesNameTheNextStep(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := keybindingTestModel()
+			m.layout.panelWidth = 80
 			m.plVisible = 10
 			if tt.setup != nil {
 				tt.setup(&m)
@@ -107,6 +103,11 @@ func TestProviderEmptyStateHints(t *testing.T) {
 		{"Yandex Music", "[yandex] token"},
 		{"Radio", "reload the station directory"},
 		{"Podcasts", "reload the top shows"},
+		{"cliamp radio", "pick another provider"},
+		{"YouTube", "yt-dlp"},
+		{"YouTube (All)", "yt-dlp"},
+		{"YouTube Music", "ytmusic-login"},
+		{"NetEase", "cliamp setup"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.provider, func(t *testing.T) {

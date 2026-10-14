@@ -253,8 +253,8 @@ func (m *Model) openHomeView() tea.Cmd {
 	if _, ok := m.provider.(provider.ArtistBrowser); ok {
 		m.home.loadingArtists = true
 	}
-	if m.isActiveProvider(m.provider.Name()) && !m.provLoading && len(m.providerLists) > 0 {
-		m.home.lists = filterHomePlaylists(m.providerLists)
+	if m.isActiveProvider(m.provider.Name()) && !m.provPane.loading && len(m.provPane.lists) > 0 {
+		m.home.lists = filterHomePlaylists(m.provPane.lists)
 	} else {
 		m.home.loadingLists = true
 	}
@@ -692,7 +692,7 @@ func (m Model) homeQueueConflict(playlistID string) bool {
 	if m.tracksPaging && m.activeProviderPlaylistID == playlistID {
 		return true
 	}
-	return m.provLoading && m.activeProviderPlaylistID == playlistID
+	return m.provPane.loading && m.activeProviderPlaylistID == playlistID
 }
 
 // homeContentPaging reports whether the Home content pane is incrementally

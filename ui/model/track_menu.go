@@ -208,7 +208,7 @@ func (m *Model) handleTrackMenuKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.trackMenu.visible = false
 			return items[m.trackMenu.cursor].run(m)
 		}
-	default:
+	case "w", "r", "R", "b", "a", "l", "t", "x", "s", "i", "y":
 		for _, item := range items {
 			if item.key == msg.String() {
 				m.trackMenu.visible = false
@@ -230,7 +230,7 @@ func (m *Model) menuQueueTrack() tea.Cmd {
 			m.playlist.Queue(tm.removeIdx)
 		}
 		m.normalizeQueueOverlay()
-		return m.rearmPreload()
+		return m.rearmStalePreload()
 	}
 	return m.queueTrackNext(tm.track)
 }
@@ -262,11 +262,13 @@ func (m *Model) menuRemoveTrack() tea.Cmd {
 // removeQueuedAt drops queue position pos from the play-next queue, with
 // Ctrl+Z undo.
 func (m *Model) removeQueuedAt(pos int) tea.Cmd {
-	m.playlistUndo = playlistUndo{active: true, snapshot: m.playlist.Snapshot(), context: m.playingContext}
+	snapshot := m.playlist.Snapshot()
+	context := m.playingContext
 	m.playlist.RemoveQueueAt(pos)
+	m.recordPlaylistUndo(playlistUndo{snapshot: snapshot, context: context, force: true})
 	m.normalizeQueueOverlay()
 	m.status.Show("Removed queued track (Ctrl+Z to undo)", statusTTLDefault)
-	return m.rearmPreload()
+	return m.rearmStalePreload()
 }
 
 // — song radio —
@@ -374,7 +376,7 @@ func (m *Model) openRadio(label, seedName string, tracks []playlist.Track) {
 	m.replacePlayerPlaylist(tracks)
 	m.resetProviderQueueMirror()
 	m.playingContext = name
-	m.notifyAll()
+	m.notifyPlaybackChange()
 }
 
 // — go to artist / album —
@@ -670,11 +672,7 @@ func (m Model) trackMenuHeaderLine() string {
 	if name == "" {
 		name = "Track"
 	}
-	return sepHeaderN("Track — "+name, m.trackMenu.cursor+1, len(m.trackMenuItems()))
-}
-
-func (m Model) trackMenuHelpLine() string {
-	return m.commandHelp(commandModeTrackMenu)
+	return sepHeaderN("Track — "+name, m.trackMenu.cursor+1, len(m.trackMenuItems()), m.layout.panelWidth)
 }
 
 func (m Model) renderTrackMenuBody() string {
@@ -699,11 +697,7 @@ func (m Model) creditsHeaderLine() string {
 	if name == "" {
 		name = "Track"
 	}
-	return sepHeader("Credits — " + name)
-}
-
-func (m Model) creditsHelpLine() string {
-	return m.commandHelp(commandModeCredits)
+	return sepHeader("Credits — "+name, m.layout.panelWidth)
 }
 
 func (m Model) renderCreditsBody() string {

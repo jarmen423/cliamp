@@ -199,6 +199,20 @@ Notes:
 - Incoming "add device" requests over zeroconf are declined; sign-in stays inside cliamp's own OAuth flow.
 - Playback of non-Spotify sources keeps working while the receiver is enabled; when a local track is playing, the device reports itself as active without a Spotify track.
 
+## Favorites and Liked Songs
+
+Press `f` on a Spotify track to toggle its favorite ♥. cliamp saves the favorite
+locally and also saves the track to **Liked Songs**. Press `f` again to remove
+the favorite and remove the track from Liked Songs. The key works in the
+playlist, the Local playlists, and `Ctrl+F` results.
+
+cliamp calls `PUT` and `DELETE /v1/me/library` with the `user-library-modify`
+scope, which cliamp requests at sign-in. The local favorite is the source of
+truth. If Spotify rejects the call, the local favorite stays and the status bar
+shows a warning. To fix a scope error, run `cliamp spotify reset` and sign in
+again. A like that you add in the Spotify app does not appear as a favorite in
+cliamp. Episodes stay local favorites only.
+
 ## Podcasts
 
 Podcast episodes work as tracks. Press `Ctrl+F` to search Spotify. Matching episodes, such as "Joe Rogan", appear with songs. Press `Enter` to play. Playlists can load and play both songs and episodes.
@@ -210,7 +224,7 @@ Podcast episodes work as tracks. Press `Ctrl+F` to search Spotify. Matching epis
 - **Playlist not showing**: Save or follow the playlist in Spotify. The provider lists only library playlists.
 - **Playback issues**: Spotify integration needs a Premium account. Free accounts cannot stream.
 - **Re-authenticate**: When cliamp asks you to sign in, select Spotify and press `Enter`. If the sign-in fails, the prompt stays, so press `Enter` again to retry. To clear stored credentials, run `cliamp spotify reset`. This is the same as deleting `~/.config/cliamp/spotify_credentials.json`.
-- **Expired or revoked authorization**: Web API calls fail with `401 Unauthorized`, and playback asks for a new sign-in. Press `Enter` on the prompt to sign in again. You do not need to restart cliamp.
+- **Expired or revoked authorization**: When Spotify rejects the access token with `401 Unauthorized` or revokes the refresh token, cliamp asks for a new sign-in. The provider list and playback both show the prompt. Press `Enter` on the prompt to sign in again. You do not need to restart cliamp.
 - **`403` when you open a followed playlist**: Spotify lets apps read only the playlists that you own or collaborate on. Add the tracks to your own playlist in Spotify, then open that playlist.
 - **`429 Too Many Requests`, including `rate-limited on /v1/me`**: Spotify accepted the credentials and throttled the *app*, so re-authenticating does not help. With the built-in `client_id`, the quota is shared with librespot- and spotify-player-based clients worldwide, and a busy pool limits every client that uses it. Cliamp retries with exponential backoff, honoring `Retry-After`. If `Retry-After` is longer than 1 minute, cliamp shows the error at once and does not wait. A `Retry-After` of hours (for example `86400`) means the app has no quota left for that window: register a developer app and set `client_id` in `[spotify]`. Your app has a separate quota.
 - **`400 "Invalid limit"` on <kbd>Ctrl+F</kbd>**: Development Mode apps limit `/v1/search` to 10 results per request. Cliamp pages results automatically. This error means the limit is now less than 10. Open an issue.

@@ -32,13 +32,13 @@ func TestAttachNotifierPublishesCurrentPlaybackState(t *testing.T) {
 
 	notifier := &fakeNotifier{}
 	m := Model{
-		player:   &fakeEngine{},
+		player:   &playbackFakeEngine{playing: true, duration: time.Hour},
 		playlist: pl,
 	}
 
 	next, _ := m.Update(AttachNotifier(notifier))
 	nextModel := next.(Model)
-	if len(nextModel.notifiers) != 1 || nextModel.notifiers[0] != notifier {
+	if nextModel.notifier != notifier {
 		t.Fatal("notifier was not attached to model")
 	}
 	if len(notifier.updates) != 1 {
@@ -54,6 +54,7 @@ func TestAttachNotifierPublishesCurrentPlaybackState(t *testing.T) {
 			URL:      "/tmp/song.mp3",
 			Duration: time.Hour,
 		},
+		VolumeMinDB: -50,
 	}
 	if got := notifier.updates[0]; got != want {
 		t.Fatalf("notifier update = %#v, want %#v", got, want)
@@ -69,7 +70,7 @@ func TestAttachedNotifiersFanOut(t *testing.T) {
 
 	first, second := &fakeNotifier{}, &fakeNotifier{}
 	m := Model{
-		player:   &fakeEngine{},
+		player:   &playbackFakeEngine{},
 		playlist: pl,
 	}
 
@@ -86,7 +87,8 @@ func TestAttachedNotifiersFanOut(t *testing.T) {
 		t.Fatalf("second notifier updates = %d, want 1", len(second.updates))
 	}
 
-	m.notifyPlayback()
+	m.player.(*playbackFakeEngine).playing = true
+	m.notifyPlaybackChange()
 	if len(first.updates) != 3 || len(second.updates) != 2 {
 		t.Fatalf("updates = (%d,%d), want (3,2)", len(first.updates), len(second.updates))
 	}

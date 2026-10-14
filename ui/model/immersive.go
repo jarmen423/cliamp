@@ -425,10 +425,10 @@ func (m *Model) startImmersive() tea.Cmd {
 		m.immersive.loadingArtists = true
 	}
 	var restoreCmd tea.Cmd
-	if len(m.providerLists) > 0 {
+	if len(m.provPane.lists) > 0 {
 		// Reuse the already-fetched list; browse-route pseudo rows are
 		// filtered out of the canvas.
-		m.immersive.lists = m.filterImmersivePlaylists(m.providerLists)
+		m.immersive.lists = m.filterImmersivePlaylists(m.provPane.lists)
 		restoreCmd = m.immersiveRestoreListsLoaded(nil) // the provider already answered
 	} else {
 		m.immersive.loadingLists = true
@@ -693,7 +693,7 @@ func (m *Model) immersiveSignIn() tea.Cmd {
 	if !ok || m.provider == nil {
 		return nil
 	}
-	m.provLoading = true // lets ProvAuthURLMsg through for the prompt
+	m.provPane.loading = true // lets ProvAuthURLMsg through for the prompt
 	return authenticateProviderCmd(auth, m.provider.Name(), nextRequest(&m.requests.auth))
 }
 
@@ -898,7 +898,7 @@ func (m *Model) playImmersiveContext(startIdx int) tea.Cmd {
 	m.playlist.SetIndex(startIdx)
 	m.notePlayingContext()
 	cmd := m.playCurrentTrack()
-	m.notifyPlayback()
+	m.notifyPlaybackChange()
 	return cmd
 }
 
@@ -945,7 +945,7 @@ func (m *Model) playImmersiveTrack(index int) tea.Cmd {
 	m.playlist.SetIndex(index)
 	m.notePlayingContext()
 	cmd := m.playCurrentTrack()
-	m.notifyPlayback()
+	m.notifyPlaybackChange()
 	return cmd
 }
 

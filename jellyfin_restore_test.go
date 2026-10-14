@@ -2,16 +2,18 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/bjarneo/cliamp/config"
+	"github.com/bjarneo/cliamp/external/emby"
 	"github.com/bjarneo/cliamp/external/jellyfin"
 	"github.com/bjarneo/cliamp/internal/resume"
 	"github.com/bjarneo/cliamp/playlist"
 	"github.com/bjarneo/cliamp/provider"
 )
 
-func TestRestoreJellyfinContextRestoresAlbumAndActiveTrack(t *testing.T) {
+func TestRestoreServerContextRestoresAlbumAndActiveTrack(t *testing.T) {
 	prov := jellyfin.NewFromConfig(config.JellyfinConfig{
 		URL: "https://jf.example.com", Token: "new-token", UserID: "user-1",
 	})
@@ -26,8 +28,11 @@ func TestRestoreJellyfinContextRestoresAlbumAndActiveTrack(t *testing.T) {
 		ContextIndex: 1,
 	}
 
-	tracks, index, activePath, ok := restoreResumeContext(state, prov.RestoreTrack)
+	tracks, index, activePath, ok := restoreServerContext(state, prov.Provider)
 	if !ok {
+		t.Fatal("restoreServerContext() did not restore saved album")
+	}
+	if _, _, _, ok2 := restoreResumeContext(state, prov.RestoreTrack); !ok2 {
 		t.Fatal("restoreResumeContext() did not restore saved album")
 	}
 	if len(tracks) != 3 || index != 1 || tracks[index].Title != "Two" {
@@ -43,7 +48,32 @@ func TestRestoreJellyfinContextRestoresAlbumAndActiveTrack(t *testing.T) {
 	}
 }
 
-func TestRestoreJellyfinContextRejectsSingularLegacyResume(t *testing.T) {
+// Emby shares the server code with Jellyfin, so an Emby context restores
+// the same way and the tracks carry the Emby item ID.
+func TestRestoreServerContextRestoresEmby(t *testing.T) {
+	prov := emby.NewFromConfig(config.EmbyConfig{
+		URL: "https://emby.example.com", Token: "new-token", UserID: "user-1",
+	})
+	state := resume.State{
+		Path: "https://emby.example.com/Items/two/Download?api_key=old-token",
+		Context: []playlist.Track{
+			{Path: "https://emby.example.com/Items/one/Download?api_key=old-token", Title: "One"},
+			{Path: "https://emby.example.com/Items/two/Download?api_key=old-token", Title: "Two"},
+		},
+		ContextIndex: 1,
+	}
+	tracks, index, activePath, ok := restoreServerContext(state, prov.Provider)
+	if !ok || len(tracks) != 2 || index != 1 || activePath != tracks[1].Path {
+		t.Fatalf("restore = (%+v, %d, %q, %v), want the saved album at track 2", tracks, index, activePath, ok)
+	}
+	for _, track := range tracks {
+		if track.Meta(provider.MetaEmbyID) == "" || !strings.Contains(track.Path, "new-token") {
+			t.Fatalf("restored track has no Emby ID or keeps the old token: %+v", track)
+		}
+	}
+}
+
+func TestRestoreServerContextRejectsSingularLegacyResume(t *testing.T) {
 	prov := jellyfin.NewFromConfig(config.JellyfinConfig{
 		URL: "https://jf.example.com", Token: "token", UserID: "user-1",
 	})
@@ -52,12 +82,15 @@ func TestRestoreJellyfinContextRejectsSingularLegacyResume(t *testing.T) {
 		PositionSec: 95,
 	}
 
+	if tracks, _, _, ok := restoreServerContext(state, prov.Provider); ok || len(tracks) != 0 {
+		t.Fatalf("restoreServerContext() = (%+v, %v), want no singular restore", tracks, ok)
+	}
 	if tracks, _, _, ok := restoreResumeContext(state, prov.RestoreTrack); ok || len(tracks) != 0 {
 		t.Fatalf("restoreResumeContext() = (%+v, %v), want no singular restore", tracks, ok)
 	}
 }
 
-func TestRestoreJellyfinContextPreservesMixedPlaylistAndDuplicate(t *testing.T) {
+func TestRestoreServerContextPreservesMixedPlaylistAndDuplicate(t *testing.T) {
 	prov := jellyfin.NewFromConfig(config.JellyfinConfig{
 		URL: "http://jf.example.com:8096/media", Token: "new-token", UserID: "user-1",
 	})
@@ -68,7 +101,11 @@ func TestRestoreJellyfinContextPreservesMixedPlaylistAndDuplicate(t *testing.T) 
 		Path: path, ContextIndex: 2,
 		Context: []playlist.Track{{Path: path}, local, {Path: path}, foreign},
 	}
-	tracks, index, activePath, ok := restoreResumeContext(state, prov.RestoreTrack)
+	tracks, index, activePath, ok := restoreServerContext(state, prov.Provider)
+	tracks2, index2, activePath2, ok2 := restoreResumeContext(state, prov.RestoreTrack)
+	if !ok2 || len(tracks2) != 4 || index2 != 2 || activePath2 != tracks2[2].Path {
+		t.Fatalf("restoreResumeContext() = (%+v, %d, %q, %v), want mixed playlist and second duplicate", tracks2, index2, activePath2, ok2)
+	}
 	if !ok || len(tracks) != 4 || index != 2 {
 		t.Fatalf("restore = (%+v, %d, %v), want mixed playlist and second duplicate", tracks, index, ok)
 	}
@@ -83,7 +120,7 @@ func TestRestoreJellyfinContextPreservesMixedPlaylistAndDuplicate(t *testing.T) 
 	}
 }
 
-func TestRestoreJellyfinContextValidatesActiveEntry(t *testing.T) {
+func TestRestoreServerContextValidatesActiveEntry(t *testing.T) {
 	prov := jellyfin.NewFromConfig(config.JellyfinConfig{
 		URL: "https://jf.example.com", Token: "token", UserID: "user-1",
 	})
@@ -98,6 +135,9 @@ func TestRestoreJellyfinContextValidatesActiveEntry(t *testing.T) {
 		{name: "foreign active server", state: resume.State{Path: "/music/local.mp3", Context: []playlist.Track{{Path: "/music/local.mp3"}, {Path: path}}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			if _, _, _, ok := restoreServerContext(tt.state, prov.Provider); ok != tt.want {
+				t.Fatalf("restored = %v, want %v", ok, tt.want)
+			}
 			if _, _, _, ok := restoreResumeContext(tt.state, prov.RestoreTrack); ok != tt.want {
 				t.Fatalf("restored = %v, want %v", ok, tt.want)
 			}

@@ -151,10 +151,10 @@ func (m *Model) startProviderUnfollow() {
 	if _, ok := m.provider.(provider.PlaylistFollower); !ok {
 		return
 	}
-	if m.provCursor < 0 || m.provCursor >= len(m.providerLists) {
+	if m.provPane.cursor < 0 || m.provPane.cursor >= len(m.provPane.lists) {
 		return
 	}
-	pl := m.providerLists[m.provCursor]
+	pl := m.provPane.lists[m.provPane.cursor]
 	if isSyntheticProviderRow(pl.ID) {
 		return // Library rows are not real playlists; nothing to unfollow
 	}
@@ -185,10 +185,10 @@ func (m *Model) startProviderRename() {
 	if _, ok := m.provider.(provider.RemotePlaylistRenamer); !ok {
 		return
 	}
-	if m.provCursor < 0 || m.provCursor >= len(m.providerLists) {
+	if m.provPane.cursor < 0 || m.provPane.cursor >= len(m.provPane.lists) {
 		return
 	}
-	pl := m.providerLists[m.provCursor]
+	pl := m.provPane.lists[m.provPane.cursor]
 	if !pl.Owned {
 		m.status.Show("Only playlists you own can be renamed", statusTTLDefault)
 		return

@@ -117,7 +117,7 @@ func TestImmersiveCanvasClickPlaysTrack(t *testing.T) {
 	if len(fake.playCalls) != 0 || m.immersive.cursor != 1 {
 		t.Fatalf("single click: playCalls = %v cursor = %d, want selection only", fake.playCalls, m.immersive.cursor)
 	}
-	immClickAt(m, it.box.X+1, it.box.Y, tea.MouseLeft)
+	settlePlay(t, m, immClickAt(m, it.box.X+1, it.box.Y, tea.MouseLeft))
 	if len(fake.playCalls) != 1 || fake.playCalls[0] != "/2" {
 		t.Fatalf("double click: playCalls = %v, want [/2]", fake.playCalls)
 	}
@@ -249,7 +249,7 @@ func TestImmersiveQueueClickJumps(t *testing.T) {
 	if len(fake.playCalls) != 0 || m.immersive.queueCursor != 1 {
 		t.Fatalf("single click: playCalls = %v queueCursor = %d, want selection only", fake.playCalls, m.immersive.queueCursor)
 	}
-	immClickAt(m, 2, im.queueY0+1, tea.MouseLeft)
+	settlePlay(t, m, immClickAt(m, 2, im.queueY0+1, tea.MouseLeft))
 	if len(fake.playCalls) == 0 {
 		t.Fatal("queue double click did not play")
 	}
