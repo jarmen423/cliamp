@@ -1,6 +1,9 @@
 package ui
 
-import "time"
+import (
+	"image"
+	"time"
+)
 
 const (
 	DefaultSpectrumBands = 10
@@ -42,7 +45,9 @@ type Visualizer struct {
 	sampleBuf       []float64 // reusable buffer for reading audio tap samples
 	drivers         [VisCount]visModeDriver
 	activeMode      VisMode
-	pixelText       *PixelVis // text-resolution renderer for the pixel modes
+	pixelText       *PixelVis      // text-resolution renderer for the pixel modes
+	pixelImg        *image.RGBA    // its frame, kept between renders
+	scene           *sceneAnalyzer // drum and note analysis of the pixel scenes
 	activeModeSet   bool
 	refreshPending  bool
 	luaVisNames     []string

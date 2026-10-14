@@ -93,7 +93,7 @@ func visGoldenHash(mode VisMode, cols, rows int) uint64 {
 	v.Cols = cols
 	v.Rows = rows
 
-	samples := make([]float64, 2*defaultFFTSize)
+	samples := make([]float64, noteFFTSize) // the largest window a mode asks for
 	h := fnv.New64a()
 	now := time.Unix(1_700_000_000, 0)
 	for frame := range visGoldenFrames {

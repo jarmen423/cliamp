@@ -169,7 +169,7 @@ func TestTapRingFramesLeavesRoomForTheAnalysisWindow(t *testing.T) {
 	}{
 		{name: "250ms at 44.1kHz", speakerFrames: 11025, want: 11025 + maxAnalysisWindow},
 		{name: "50ms at 44.1kHz", speakerFrames: 2205, want: 2205 + maxAnalysisWindow},
-		{name: "none", speakerFrames: 0, want: 4096},
+		{name: "none", speakerFrames: 0, want: maxAnalysisWindow},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tapRingFrames(tc.speakerFrames); got != tc.want {

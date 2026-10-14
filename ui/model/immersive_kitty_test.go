@@ -313,3 +313,44 @@ func TestKittyStaleEncodeIsDropped(t *testing.T) {
 		t.Fatalf("stale encodes were transmitted: %d bytes", out.Len())
 	}
 }
+
+// The full-screen visualizer shows a pixel mode as the kitty image's
+// placeholder cells, sized to the visualizer, at the origin a Sixel frame
+// would use. A text mode stays text.
+func TestFullVisKittyPixelVis(t *testing.T) {
+	setImageEnv(t, nil)
+	m := newLayoutTestModel(120, 40)
+	m.SetImageLayer(termimg.NewLayer())
+	m.SetImageOutput(&bytes.Buffer{})
+	m.SetImageMode("kitty")
+	m.vis.Mode = ui.VisEventHorizon
+	m.fullVis = true
+	m.recomputeLayout()
+	if kind := m.fullVisPixelOn(); kind != artKitty {
+		t.Fatalf("pixel vis kind %d, want kitty", kind)
+	}
+	rows := m.vis.Rows
+	want := strings.Join(termimg.KittyPlaceholders(kittyVisID, ui.PanelWidth, rows), "\n")
+	if got := m.fullVisSpectrum(); got != want {
+		t.Fatal("full-screen visualizer is not the image's placeholders")
+	}
+
+	sections := m.fullVisualizerSections()
+	framed := m.layout.frameStyle().Render(strings.Join(sections, "\n"))
+	x, y := m.fullVisOrigin(framed, renderedRows(m.fullVisHead()))
+	lines := strings.Split(ansi.Strip(m.View().Content), "\n")
+	if y >= len(lines) {
+		t.Fatalf("origin row %d is past the %d-row view", y, len(lines))
+	}
+	if col := strings.IndexRune(lines[y], kitty.Placeholder); col < 0 || ansi.StringWidth(lines[y][:col]) != x {
+		t.Fatalf("first placeholder of row %d not at column %d: %q", y, x, lines[y])
+	}
+	if y > 0 && strings.ContainsRune(lines[y-1], kitty.Placeholder) {
+		t.Fatalf("row %d above the origin holds placeholders", y-1)
+	}
+
+	m.vis.Mode = ui.VisBars
+	if kind := m.fullVisPixelOn(); kind != artNone {
+		t.Fatalf("Bars kind %d, want text", kind)
+	}
+}

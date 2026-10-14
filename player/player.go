@@ -95,9 +95,9 @@ type Player struct {
 type StreamMetadataResolver func(streamURL string) (fetch func(ctx context.Context) (string, error), interval time.Duration, ok bool)
 
 // maxAnalysisWindow is the largest window the visualizer asks for in one read
-// (the classic peak meter's 4096-sample FFT). The package cannot import ui, so
-// the value is duplicated here; it only needs to be an upper bound.
-const maxAnalysisWindow = 4096
+// (the pixel scenes' 8192-sample note analysis). The package cannot import ui,
+// so the value is duplicated here; it only needs to be an upper bound.
+const maxAnalysisWindow = 8192
 
 // tapRingFrames sizes the tap's ring buffer. The waveform read position sits
 // speakerFrames behind the newest frame — that is where audio is actually

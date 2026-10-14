@@ -12,7 +12,7 @@ func TestPixelVisDrawsSomething(t *testing.T) {
 	for _, mode := range []VisMode{VisAurora, VisPhosphor} {
 		pv := NewPixelVis(mode)
 		img := image.NewRGBA(image.Rect(0, 0, 60, 30))
-		pv.Draw(img, bands, wave)
+		pv.Draw(img, PixelFrame{Bands: bands, Wave: wave})
 		lit := 0
 		for i := 0; i < len(img.Pix); i += 4 {
 			if img.Pix[i]|img.Pix[i+1]|img.Pix[i+2] != 0 {
@@ -23,12 +23,12 @@ func TestPixelVisDrawsSomething(t *testing.T) {
 			t.Fatalf("%s drew a black frame", visModes[mode].name)
 		}
 		// A size change resets the trails instead of indexing out of range.
-		pv.Draw(image.NewRGBA(image.Rect(0, 0, 20, 10)), bands, wave)
+		pv.Draw(image.NewRGBA(image.Rect(0, 0, 20, 10)), PixelFrame{Bands: bands, Wave: wave})
 	}
 }
 
 func TestPixelModesRenderAsTextFallback(t *testing.T) {
-	for _, mode := range []VisMode{VisAurora, VisPhosphor} {
+	for _, mode := range []VisMode{VisAurora, VisPhosphor, VisRidgeline, VisEventHorizon, VisStage} {
 		v := NewVisualizer(44100)
 		v.Rows = 4
 		defer WithPanelWidth(30)()
@@ -38,7 +38,7 @@ func TestPixelModesRenderAsTextFallback(t *testing.T) {
 			t.Fatalf("%s text fallback: %d lines, first has %d cells", visModes[mode].name, len(lines), strings.Count(lines[0], "▀"))
 		}
 	}
-	if !IsPixelMode(VisAurora) || !IsPixelMode(VisPhosphor) || IsPixelMode(VisBars) {
+	if !IsPixelMode(VisAurora) || !IsPixelMode(VisPhosphor) || !IsPixelMode(VisStage) || IsPixelMode(VisBars) {
 		t.Fatal("IsPixelMode misclassifies modes")
 	}
 }
