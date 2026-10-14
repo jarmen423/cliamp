@@ -60,8 +60,11 @@ type KittyEncoder struct {
 }
 
 // KittyTransmit returns the sequences that store img under id as a virtual
-// placement of cols x rows cells, replacing any image with that id. The
-// terminal scales the image into those cells; sizing img to cols x rows
+// placement of cols x rows cells, replacing any image with that id and its
+// placement. The placement has a fixed ID: without one, terminals that keep
+// an image's placements when it is retransmitted (Ghostty 1.3) gain one per
+// frame and show whichever their lookup meets first, stale sizes included.
+// The terminal scales the image into those cells; sizing img to cols x rows
 // cells of pixels keeps it sharp. Pixels are sent as zlib-compressed RGB in
 // chunks of at most 4096 base64 bytes. With tmux set, every chunk is wrapped
 // for tmux passthrough.
@@ -93,7 +96,7 @@ func (e *KittyEncoder) Encode(id uint32, img *image.RGBA, cols, rows int, tmux b
 	base64.StdEncoding.Encode(e.b64, e.z.Bytes())
 
 	e.out.Reset()
-	opts := "a=T,U=1,f=24,o=z,q=2,i=" + strconv.FormatUint(uint64(id), 10) +
+	opts := "a=T,U=1,f=24,o=z,q=2,p=1,i=" + strconv.FormatUint(uint64(id), 10) +
 		",s=" + strconv.Itoa(w) + ",v=" + strconv.Itoa(h) +
 		",c=" + strconv.Itoa(cols) + ",r=" + strconv.Itoa(rows)
 	payload, first := e.b64, true
