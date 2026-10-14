@@ -246,9 +246,11 @@ func (m Model) View() tea.View {
 	}
 
 	var content string
+	visAbove := 0 // rows above the full-screen visualizer's spectrum
 	switch screen {
 	case screenFullVisualizer:
 		sections := m.fullVisualizerSections()
+		visAbove = renderedRows(m.fullVisHead())
 		content = strings.Join(sections, "\n")
 		m.recordMouseGeometry(content, sections, "")
 	case screenImmersive:
@@ -273,11 +275,19 @@ func (m Model) View() tea.View {
 		rendered = m.immPadFrame(content)
 		m.imgLayer.Set(m.immArtPlacements())
 		m.touchChangedRows(rendered)
-		m.feedPixelVis()
+		m.feedImmPixelVis()
 	} else {
-		m.clearImages()
-		rendered = m.centerFrame(m.layout.frameStyle().Render(content))
+		framed := m.layout.frameStyle().Render(content)
+		rendered = m.centerFrame(framed)
 		rendered = ui.FitRect(rendered, m.layout.frameWidth, max(1, m.height))
+		if kind := m.fullVisPixelOn(); kind != artNone {
+			m.imgLayer.Set(nil)
+			m.touchChangedRows(rendered)
+			x, y := m.fullVisOrigin(framed, visAbove)
+			m.feedPixelVis(kind, x, y, ui.PanelWidth, m.vis.Rows)
+		} else {
+			m.clearImages()
+		}
 	}
 
 	view := tea.NewView(rendered)
@@ -578,11 +588,13 @@ func (m Model) renderCompactSource() string {
 }
 
 // centerFrame centers a pre-rendered frame in the terminal.
+// frameOffset is where centerFrame puts frame: its left and top padding.
+func (m Model) frameOffset(frame string) (left, top int) {
+	return max(0, (m.width-lipgloss.Width(frame))/2), max(0, (m.height-lipgloss.Height(frame))/2)
+}
+
 func (m Model) centerFrame(frame string) string {
-	frameW := lipgloss.Width(frame)
-	frameH := lipgloss.Height(frame)
-	padLeft := max(0, (m.width-frameW)/2)
-	padTop := max(0, (m.height-frameH)/2)
+	padLeft, padTop := m.frameOffset(frame)
 
 	if padLeft == 0 {
 		return strings.Repeat("\n", padTop) + frame
@@ -668,22 +680,40 @@ func (m Model) renderSpectrum() string {
 	return m.vis.Render()
 }
 
+// fullVisOrigin is the screen cell of the full-screen visualizer's top-left
+// corner: the frame is centered and padded, and the spectrum sits below the
+// above rows of the sections before it.
+func (m Model) fullVisOrigin(framed string, above int) (x, y int) {
+	left, top := m.frameOffset(framed)
+	return left + m.layout.paddingH, top + m.layout.paddingV + above
+}
+
+// fullVisHead is the rows of the full-screen visualizer above the spectrum.
+func (m Model) fullVisHead() []string {
+	return []string{m.fullVisTopLine(), m.renderTimeStatus(), ""}
+}
+
+// fullVisSpectrum is the full-screen visualizer: an image's cells when a
+// pixel mode shows as one, the text rendition otherwise.
+func (m Model) fullVisSpectrum() string {
+	if m.vis != nil {
+		if cells, ok := m.pixelVisCells(m.fullVisPixelOn(), ui.PanelWidth, m.vis.Rows); ok {
+			return strings.Join(cells, "\n")
+		}
+	}
+	return m.renderSpectrum()
+}
+
 // fullVisualizerSections builds the fullscreen visualizer screen: the
 // visualizer with minimal track info and a seek bar.
 func (m Model) fullVisualizerSections() []string {
-	sections := []string{
-		m.fullVisTopLine(),
-		m.renderTimeStatus(),
-		"",
-		m.renderSpectrum(),
-		m.renderSeekBar(),
-	}
+	sections := append(m.fullVisHead(), m.fullVisSpectrum(), m.renderSeekBar())
 	if !m.hideHelpBar {
 		sections = append(
 			sections,
 			"",
 			helpKey("V", "Exit ")+
-				helpKey("v", "Mode:"+m.vis.ModeName()+" ")+
+				helpKey("v c", "Mode:"+m.vis.ModeName()+" ")+
 				helpKey("Spc", "▶❚❚ ")+
 				helpKey("<>", "Trk ")+
 				helpKey("+-", "Vol ")+

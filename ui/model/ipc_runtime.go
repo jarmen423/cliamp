@@ -367,7 +367,7 @@ func (m *Model) handleV2Visualizer(jobs *ipc.JobStore, jobID string, request ipc
 		return nil
 	}
 	if strings.EqualFold(request.Name, "next") {
-		if err := m.cycleVisualizer(); err != nil {
+		if err := m.cycleVisualizer(1); err != nil {
 			m.failV2Job(jobs, jobID, v2InternalError())
 			return nil
 		}

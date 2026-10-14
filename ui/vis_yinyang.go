@@ -96,38 +96,6 @@ type yinYangSwirl struct {
 	life              int
 }
 
-// yinYangOnset finds a sudden rise across a range of bands, judged against
-// how much those bands usually rise in this song.
-type yinYangOnset struct {
-	from, to   float64
-	k, floor   float64
-	gap, since int
-	mean, dev  float64
-}
-
-func (o *yinYangOnset) reset() {
-	o.mean, o.dev, o.since = 0.03, 0.02, o.gap
-}
-
-// step reports a hit and its strength, 1 at the threshold.
-func (o *yinYangOnset) step(bands, prev []float64) (bool, float64) {
-	n := len(bands)
-	flux := 0.0
-	for i := int(o.from * float64(n)); i < int(o.to*float64(n)) && i < len(prev); i++ {
-		flux += max(0, bands[i]-prev[i])
-	}
-	threshold := max(o.mean+o.k*o.dev, o.floor)
-	hit := flux > threshold && o.since >= o.gap
-	o.mean = o.mean*0.92 + flux*0.08
-	o.dev = o.dev*0.92 + math.Abs(flux-o.mean)*0.08
-	if hit {
-		o.since = 0
-	} else {
-		o.since++
-	}
-	return hit, flux / threshold
-}
-
 type yinYangDriver struct {
 	spectrumDriverBase
 
@@ -148,7 +116,7 @@ type yinYangDriver struct {
 	pending             time.Duration
 
 	lo, hi, prev     []float64
-	kick, snare, hat yinYangOnset
+	kick, snare, hat bandOnset
 
 	koi    [2]yinYangKoi
 	swirls []yinYangSwirl
@@ -158,9 +126,9 @@ type yinYangDriver struct {
 
 func newYinYangDriver() visModeDriver {
 	d := &yinYangDriver{
-		kick:  yinYangOnset{from: 0, to: 0.3, k: 2.0, floor: 0.05, gap: 6},
-		snare: yinYangOnset{from: 0.3, to: 0.6, k: 2.0, floor: 0.04, gap: 5},
-		hat:   yinYangOnset{from: 0.6, to: 1, k: 1.8, floor: 0.025, gap: 4},
+		kick:  bandOnset{from: 0, to: 0.3, k: 2.0, floor: 0.05, gap: 6},
+		snare: bandOnset{from: 0.3, to: 0.6, k: 2.0, floor: 0.04, gap: 5},
+		hat:   bandOnset{from: 0.6, to: 1, k: 1.8, floor: 0.025, gap: 4},
 	}
 	d.OnEnter(nil)
 	return d
@@ -327,7 +295,7 @@ func (d *yinYangDriver) advance(bands []float64, playing bool) {
 	// kick flicks the red koi's.
 	if d.prev != nil {
 		for _, drum := range [3]struct {
-			onset *yinYangOnset
+			onset *bandOnset
 			koi   int
 			here  bool
 		}{{&d.kick, 0, d.strip}, {&d.snare, 0, !d.strip}, {&d.hat, 1, true}} {

@@ -51,14 +51,23 @@ func (m *Model) setRepeat(mode playlist.RepeatMode) tea.Cmd {
 	return m.rearmStalePreload()
 }
 
-// cycleVisualizer switches to the next visualizer mode, fits the layout to
-// it and saves the choice. It returns the error of the config save.
-func (m *Model) cycleVisualizer() error {
-	m.vis.CycleMode()
+// cycleVisualizer switches step visualizer modes on (back when negative),
+// fits the layout to it and saves the choice. It returns the error of the
+// config save.
+func (m *Model) cycleVisualizer(step int) error {
+	m.vis.CycleMode(step)
 	m.vis.RequestRefresh()
 	m.applyHeightMode()
 	m.adjustScroll()
 	return m.saveVisualizerChoice()
+}
+
+// visStep is the visualizer cycle direction of a key: v goes on, c back.
+func visStep(key string) int {
+	if key == "v" {
+		return 1
+	}
+	return -1
 }
 
 // setVolume sets the volume in dB. The player clamps db to its range.

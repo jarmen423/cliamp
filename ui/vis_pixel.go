@@ -1,10 +1,11 @@
 package ui
 
-// vis_pixel.go holds the pixel visualizers, Aurora and Phosphor. They draw
-// into an RGBA canvas at any resolution: pixel-exact through Sixel where the
-// immersive layout can place images, and at half-block resolution as text
-// everywhere else (their regular Render output), so both look the same, one
-// sharper than the other.
+// vis_pixel.go holds the pixel visualizers: Aurora and Phosphor, and the
+// scenes Ridgeline, EventHorizon and Stage (vis_scene*.go). They draw into an
+// RGBA canvas at any resolution: pixel-exact through kitty graphics or Sixel
+// where the immersive band or the full-screen visualizer can place images,
+// and at half-block resolution as text everywhere else (their regular Render
+// output), so both look the same, one sharper than the other.
 
 import (
 	"image"
@@ -17,7 +18,7 @@ import (
 
 // IsPixelMode reports whether mode is drawn by a PixelVis.
 func IsPixelMode(mode VisMode) bool {
-	return mode == VisAurora || mode == VisPhosphor
+	return mode == VisAurora || mode == VisPhosphor || isSceneMode(mode)
 }
 
 // PixelVis renders one pixel visualizer. It keeps a float accumulation
@@ -29,6 +30,18 @@ type PixelVis struct {
 	acc    []float32 // RGB, 0..1, decayed every frame
 	frame  uint64
 	colors *PixelColors
+
+	// The scenes draw on their own canvas from a sceneCtx.
+	scene pixelScene
+	sc    sceneCtx
+	cv    canvas
+}
+
+// PixelFrame is what a PixelVis draws one frame from. Aurora reads the
+// spectrum, Phosphor the waveform, and the scenes the SceneFrame.
+type PixelFrame struct {
+	Bands, Wave []float64
+	Scene       SceneFrame
 }
 
 // PixelColors is the spectrum palette a PixelVis draws with. Snapshot it on
@@ -43,6 +56,14 @@ func CurrentPixelColors() PixelColors {
 // SetColors pins the palette; without it Draw reads the live theme.
 func (p *PixelVis) SetColors(c PixelColors) { p.colors = &c }
 
+// palette is the pinned palette, or the live theme's.
+func (p *PixelVis) palette() PixelColors {
+	if p.colors != nil {
+		return *p.colors
+	}
+	return CurrentPixelColors() // UI goroutine only; workers pin colors
+}
+
 // Mode is the visualizer mode p draws.
 func (p *PixelVis) Mode() VisMode { return p.mode }
 
@@ -50,33 +71,49 @@ func (p *PixelVis) Mode() VisMode { return p.mode }
 func NewPixelVis(mode VisMode) *PixelVis { return &PixelVis{mode: mode} }
 
 // PixelInput snapshots what the pixel visualizers draw from: the smoothed
-// spectrum and the raw waveform. The slices are copies, safe to hand to
-// another goroutine.
-func (v *Visualizer) PixelInput() (bands, wave []float64) {
+// spectrum, the raw waveform and the scene analysis. The slices are copies,
+// safe to hand to another goroutine.
+func (v *Visualizer) PixelInput() PixelFrame {
 	if v == nil {
-		return nil, nil
+		return PixelFrame{Scene: SceneFrame{BassNote: -1}}
 	}
-	return append([]float64(nil), v.SmoothedBands()...), append([]float64(nil), v.waveBuf...)
+	in := v.pixelFrame()
+	in.Bands = append([]float64(nil), in.Bands...)
+	in.Wave = append([]float64(nil), in.Wave...)
+	return in
+}
+
+// pixelFrame is PixelInput without the copies, for drawing on the UI
+// goroutine.
+func (v *Visualizer) pixelFrame() PixelFrame {
+	in := PixelFrame{Bands: v.SmoothedBands(), Wave: v.waveBuf, Scene: SceneFrame{BassNote: -1}}
+	if v.scene != nil {
+		in.Scene = v.scene.frame
+		if len(in.Bands) == SceneBands {
+			copy(in.Scene.Bands[:], in.Bands) // eased between analysis ticks
+		}
+	}
+	return in
 }
 
 // Draw renders the next frame into dst (its size may change between calls,
 // which resets the trails).
-func (p *PixelVis) Draw(dst *image.RGBA, bands, wave []float64) {
+func (p *PixelVis) Draw(dst *image.RGBA, in PixelFrame) {
 	w, h := dst.Rect.Dx(), dst.Rect.Dy()
 	if w <= 0 || h <= 0 {
 		return
 	}
+	if isSceneMode(p.mode) {
+		p.drawScene(dst, in.Scene)
+		return
+	}
+	bands, wave := in.Bands, in.Wave
 	if w != p.w || h != p.h {
 		p.w, p.h = w, h
 		p.acc = make([]float32, w*h*3)
 	}
 	p.frame++
-	var cs PixelColors
-	if p.colors != nil {
-		cs = *p.colors
-	} else {
-		cs = CurrentPixelColors() // UI goroutine only; workers pin colors
-	}
+	cs := p.palette()
 	low, mid, high := rgbf(cs.Low), rgbf(cs.Mid), rgbf(cs.High)
 	switch p.mode {
 	case VisPhosphor:
@@ -274,6 +311,24 @@ func PixelPalette(cs PixelColors) []color.RGBA {
 	return append(pal, color.RGBA{255, 255, 255, 255})
 }
 
+// drawScene renders a scene at its canvas size and scales it into dst.
+func (p *PixelVis) drawScene(dst *image.RGBA, f SceneFrame) {
+	w, h := sceneCanvasSize(dst.Rect.Dx(), dst.Rect.Dy())
+	if p.scene == nil {
+		p.scene = newScene(p.mode)
+	}
+	if p.cv.resize(w, h) {
+		p.scene.reset(w, h)
+		p.sc.started = false
+	} else if p.sc.started && f.T == p.sc.lastT {
+		p.cv.copyTo(dst) // the same snapshot again: the frame cannot change
+		return
+	}
+	p.sc.advance(f, p.palette())
+	p.scene.draw(&p.cv, &p.sc)
+	p.cv.copyTo(dst)
+}
+
 // renderPixelText is the text rendition of a pixel mode: the same renderer
 // at half-block resolution (two pixel rows per cell).
 func (v *Visualizer) renderPixelText(mode VisMode) string {
@@ -284,8 +339,9 @@ func (v *Visualizer) renderPixelText(mode VisMode) string {
 	if v.pixelText == nil || v.pixelText.mode != mode {
 		v.pixelText = NewPixelVis(mode)
 	}
-	img := image.NewRGBA(image.Rect(0, 0, cols, rows*2))
-	bands, wave := v.SmoothedBands(), v.waveBuf
-	v.pixelText.Draw(img, bands, wave)
-	return strings.Join(termimg.HalfBlocks(img), "\n")
+	if v.pixelImg == nil || v.pixelImg.Rect.Dx() != cols || v.pixelImg.Rect.Dy() != rows*2 {
+		v.pixelImg = image.NewRGBA(image.Rect(0, 0, cols, rows*2))
+	}
+	v.pixelText.Draw(v.pixelImg, v.pixelFrame())
+	return strings.Join(termimg.HalfBlocks(v.pixelImg), "\n")
 }

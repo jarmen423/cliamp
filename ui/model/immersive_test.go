@@ -167,7 +167,7 @@ func TestImmersiveModeCycles(t *testing.T) {
 		if m.immersive.mode != want {
 			t.Fatalf("step %d: mode = %d, want %d", i, m.immersive.mode, want)
 		}
-		m.handleImmersiveKey(keyMsg("c"))
+		m.handleImmersiveKey(keyMsg("b"))
 	}
 }
 

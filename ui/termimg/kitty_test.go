@@ -84,7 +84,7 @@ func TestKittyTransmit(t *testing.T) {
 				t.Fatalf("%d chunks, want multi=%v", len(opts), tt.multi)
 			}
 			w, h := tt.img.Rect.Dx(), tt.img.Rect.Dy()
-			first := "a=T,U=1,f=24,o=z,q=2,i=33554449,s=" + strconv.Itoa(w) + ",v=" + strconv.Itoa(h) + ",c=7,r=3"
+			first := "a=T,U=1,f=24,o=z,q=2,p=1,i=33554449,s=" + strconv.Itoa(w) + ",v=" + strconv.Itoa(h) + ",c=7,r=3"
 			if !strings.HasPrefix(opts[0], first) {
 				t.Errorf("first chunk options %q, want prefix %q", opts[0], first)
 			}

@@ -1,18 +1,19 @@
 package model
 
-// immersive_pixvis.go drives the pixel visualizers (Aurora, Phosphor) as
-// images in the immersive visualizer band. View hands the worker a snapshot
-// of the spectrum and waveform each frame; the worker renders and encodes
-// off the UI goroutine. With Sixel it publishes the result as the layer's
-// live placement, which the output pump draws between Bubbletea frames, and
-// the band renders as blank cells. With kitty graphics it retransmits one
-// image ID each frame and the band renders as that image's placeholder
-// cells, which never change.
+// immersive_pixvis.go drives the pixel visualizers (Aurora, Phosphor and
+// the scenes) as images: in the immersive visualizer band and in the
+// full-screen visualizer. View hands the worker a snapshot of the analysis
+// each frame; the worker renders and encodes off the UI goroutine. With
+// Sixel it publishes the result as the layer's live placement, which the
+// output pump draws between Bubbletea frames, and the area renders as blank
+// cells. With kitty graphics it retransmits one image ID each frame and the
+// area renders as that image's placeholder cells, which never change.
 
 import (
 	"image"
 	"image/color"
 	"io"
+	"math"
 	"slices"
 	"strconv"
 	"sync"
@@ -27,15 +28,20 @@ import (
 // smooth motion, and it keeps the terminal's Sixel decoding light.
 const pixVisFrame = 40 * time.Millisecond
 
+// pixVisKittyMaxPixels caps a kitty frame. The terminal scales the image to
+// its cells, so a full-screen frame can be sent smaller than the screen and
+// keep the pipe light.
+const pixVisKittyMaxPixels = 700_000
+
 // pixVisJob is one frame request, in screen cells and pixels.
 type pixVisJob struct {
-	mode        ui.VisMode
-	colors      ui.PixelColors
-	bands, wave []float64
-	x, y, w, h  int       // cells
-	pw, ph      int       // pixels
-	kitty       io.Writer // kitty output; nil for Sixel
-	tmux        bool
+	mode       ui.VisMode
+	colors     ui.PixelColors
+	in         ui.PixelFrame
+	x, y, w, h int       // cells
+	pw, ph     int       // pixels
+	kitty      io.Writer // kitty output; nil for Sixel
+	tmux       bool
 }
 
 // pixVisWorker renders the pixel visualizer frames. Requests arriving while
@@ -93,7 +99,7 @@ func (w *pixVisWorker) run() {
 		if img == nil || img.Rect.Dx() != job.pw || img.Rect.Dy() != job.ph {
 			img = image.NewRGBA(image.Rect(0, 0, job.pw, job.ph))
 		}
-		pv.Draw(img, job.bands, job.wave)
+		pv.Draw(img, job.in)
 		if job.kitty != nil {
 			changed := !kenc.Unchanged(img)
 			if w.resend.Swap(false) || changed {
@@ -117,24 +123,55 @@ func (w *pixVisWorker) run() {
 // this frame: artSixel, artKitty, or artNone when the text renderer draws it
 // (pixel modes included).
 func (m Model) immPixelVisOn() artKind {
-	if m.pixVis == nil || m.vis == nil || !ui.IsPixelMode(m.vis.Mode) ||
-		m.visualizerDisabled() || m.activeScreen() != screenImmersive {
+	if m.activeScreen() != screenImmersive {
+		return artNone
+	}
+	g := m.immGeom()
+	return m.pixelVisKind(g.w, g.visH)
+}
+
+// fullVisPixelOn is immPixelVisOn for the full-screen visualizer, whose
+// visualizer is PanelWidth by vis.Rows cells.
+func (m Model) fullVisPixelOn() artKind {
+	if m.activeScreen() != screenFullVisualizer || m.vis == nil {
+		return artNone
+	}
+	return m.pixelVisKind(ui.PanelWidth, m.vis.Rows)
+}
+
+// pixelVisKind reports how a w by h cell area can show the pixel
+// visualizer as an image.
+func (m Model) pixelVisKind(w, h int) artKind {
+	if m.pixVis == nil || m.vis == nil || !ui.IsPixelMode(m.vis.Mode) || m.visualizerDisabled() || w <= 0 || h <= 0 {
 		return artNone
 	}
 	switch kind := m.artKindNow(); kind {
 	case artSixel:
 		return kind
 	case artKitty:
-		if g := m.immGeom(); m.imgOut != nil && g.w <= termimg.KittyMaxCells && g.visH <= termimg.KittyMaxCells {
+		if m.imgOut != nil && w <= termimg.KittyMaxCells && h <= termimg.KittyMaxCells {
 			return kind
 		}
 	}
 	return artNone
 }
 
-// immKittyVisCells is the band's placeholder cells, rebuilt only when the
-// band's size changes.
-func (m Model) immKittyVisCells(w, rows int) []string {
+// pixelVisCells is the text under a kind image of the pixel visualizer in a
+// w by rows cell area: the kitty image's placeholder cells, or blank cells
+// under the Sixel frames. It reports false for artNone.
+func (m Model) pixelVisCells(kind artKind, w, rows int) ([]string, bool) {
+	switch kind {
+	case artKitty:
+		return m.kittyVisCells(w, rows), true
+	case artSixel:
+		return padPane(nil, w, rows), true
+	}
+	return nil, false
+}
+
+// kittyVisCells is the pixel visualizer's placeholder cells, rebuilt only
+// when the area's size changes.
+func (m Model) kittyVisCells(w, rows int) []string {
 	v := m.pixVis
 	if len(v.kittyCells) != rows || v.kittyW != w {
 		v.kittyCells, v.kittyW = termimg.KittyPlaceholders(kittyVisID, w, rows), w
@@ -142,13 +179,12 @@ func (m Model) immKittyVisCells(w, rows int) []string {
 	return v.kittyCells
 }
 
-// feedPixelVis requests the next band frame. The Sixel live image is armed
-// only while the band shows a Sixel visualizer.
-func (m Model) feedPixelVis() {
-	kind := m.immPixelVisOn()
-	g := m.immGeom()
+// feedPixelVis requests the next frame of the pixel visualizer shown as a
+// kind image in the w by h cell area at (x, y) on screen. The Sixel live
+// image is armed only while the area shows a Sixel visualizer.
+func (m Model) feedPixelVis(kind artKind, x, y, w, h int) {
 	if kind == artSixel {
-		m.imgLayer.ArmLive(m.layout.paddingH, m.layout.paddingV, g.w, g.visH)
+		m.imgLayer.ArmLive(x, y, w, h)
 	} else {
 		m.imgLayer.ArmLive(0, 0, 0, 0) // kitty frames bypass the layer
 	}
@@ -158,13 +194,23 @@ func (m Model) feedPixelVis() {
 	cw, ch := m.cellPx()
 	job := pixVisJob{
 		mode: m.vis.Mode, colors: ui.CurrentPixelColors(),
-		x: m.layout.paddingH, y: m.layout.paddingV, w: g.w, h: g.visH,
-		pw: g.w * cw, ph: g.visH * ch,
+		x: x, y: y, w: w, h: h,
+		pw: w * cw, ph: h * ch,
 		tmux: m.imgTmux,
 	}
 	if kind == artKitty {
 		job.kitty = m.imgOut
+		if a := job.pw * job.ph; a > pixVisKittyMaxPixels {
+			k := math.Sqrt(float64(pixVisKittyMaxPixels) / float64(a))
+			job.pw, job.ph = max(1, int(float64(job.pw)*k)), max(1, int(float64(job.ph)*k))
+		}
 	}
-	job.bands, job.wave = m.vis.PixelInput()
+	job.in = m.vis.PixelInput()
 	m.pixVis.submit(job)
+}
+
+// feedImmPixelVis feeds the immersive band.
+func (m Model) feedImmPixelVis() {
+	g := m.immGeom()
+	m.feedPixelVis(m.immPixelVisOn(), m.layout.paddingH, m.layout.paddingV, g.w, g.visH)
 }

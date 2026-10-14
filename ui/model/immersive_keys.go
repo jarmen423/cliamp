@@ -120,10 +120,10 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	// — canvas —
-	case "v":
-		m.immCycleVisualizer()
+	case "v", "c":
+		m.immCycleVisualizer(visStep(msg.String()))
 		return nil
-	case "c":
+	case "b":
 		m.immersive.mode = immCanvasMode((int(m.immersive.mode) + 1) % int(immCanvasModeCount))
 		m.immersive.scroll = 0
 		m.immCanvasPref = m.immersive.mode
@@ -237,12 +237,13 @@ func (m *Model) immCycleShuffle() tea.Cmd {
 	return m.rearmStalePreload()
 }
 
-// immCycleVisualizer is the classic `v`: next visualizer mode, persisted.
-func (m *Model) immCycleVisualizer() {
+// immCycleVisualizer is the classic `v`: step visualizer modes on (back
+// when negative), persisted.
+func (m *Model) immCycleVisualizer(step int) {
 	if m.vis == nil || m.simplified {
 		return
 	}
-	m.vis.CycleMode()
+	m.vis.CycleMode(step)
 	m.vis.RequestRefresh()
 	_ = m.saveConfigString("visualizer", m.vis.ModeName())
 }
@@ -435,7 +436,7 @@ func (m *Model) immersiveAdjustSetting(row, dir int) {
 		m.changeSpeed(0.25 * float64(dir))
 	case row == immSetVis:
 		if m.vis != nil {
-			m.vis.CycleMode()
+			m.vis.CycleMode(dir)
 		}
 	}
 }

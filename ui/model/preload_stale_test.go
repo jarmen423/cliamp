@@ -338,6 +338,9 @@ func TestVerbEntryPointsReachTheSameState(t *testing.T) {
 		{name: "cycleVisualizer", entries: map[string]tea.Msg{
 			"key": key("v"), "full-screen key": fullVis("v"), "V2": v2("vis", ipc.Request{Name: "next"}),
 		}, done: func(s verbState) bool { return s.vis == "BarsDot" && s.saved == `map[visualizer:"BarsDot"]` }},
+		{name: "cycleVisualizer back", entries: map[string]tea.Msg{
+			"key": key("c"), "full-screen key": fullVis("c"),
+		}, done: func(s verbState) bool { return s.vis == "None" && s.saved == `map[visualizer:"None"]` }},
 		{name: "adjustVolume", notifies: true, entries: map[string]tea.Msg{
 			"key": key("+"), "full-screen key": fullVis("+"), "V2": v2("volume.adjust", ipc.Request{Value: 1}),
 		}, done: func(s verbState) bool { return s.volume == 1 }},

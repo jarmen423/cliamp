@@ -16,7 +16,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 )
 
 // mouseState is the per-frame hit geometry of the interactive regions:
@@ -78,8 +77,7 @@ func (m *Model) recordMouseGeometry(content string, sections []string, body stri
 		return
 	}
 	frame := m.layout.frameStyle().Render(content)
-	padTop := max(0, (m.height-lipgloss.Height(frame))/2)
-	padLeft := max(0, (m.width-lipgloss.Width(frame))/2)
+	padLeft, padTop := m.frameOffset(frame)
 	x := padLeft + m.layout.paddingH
 	row := padTop + m.layout.paddingV
 	seekBar := m.renderSeekBar()

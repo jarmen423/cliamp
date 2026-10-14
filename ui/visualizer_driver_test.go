@@ -615,11 +615,14 @@ func TestSpectrumDriverBaseDefaults(t *testing.T) {
 // no longer checks for a mode by name.
 func TestModesDeclareTapAndCadence(t *testing.T) {
 	audible := map[VisMode]bool{
-		VisClassicPeak: true,
-		VisWave:        true,
-		VisScope:       true,
-		VisHeartbeat:   true,
-		VisPhosphor:    true,
+		VisClassicPeak:  true,
+		VisWave:         true,
+		VisScope:        true,
+		VisHeartbeat:    true,
+		VisPhosphor:     true,
+		VisRidgeline:    true,
+		VisEventHorizon: true,
+		VisStage:        true,
 	}
 	for mode := range VisCount {
 		t.Run(visModes[mode].name, func(t *testing.T) {

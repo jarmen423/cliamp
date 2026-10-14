@@ -734,11 +734,11 @@ func (m *Model) handleMainKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.toggleSettingsPane()
 		m.adjustScroll()
 
-	case "v":
+	case "v", "c":
 		if m.simplified {
 			break
 		}
-		_ = m.cycleVisualizer()
+		_ = m.cycleVisualizer(visStep(msg.String()))
 
 	case "ctrl+v":
 		if m.simplified {
@@ -883,8 +883,8 @@ func (m *Model) handleFullVisualizerKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.adjustVolume(1)
 	case "-":
 		m.adjustVolume(-1)
-	case "v":
-		_ = m.cycleVisualizer()
+	case "v", "c":
+		_ = m.cycleVisualizer(visStep(msg.String()))
 	case "t":
 		// Hide the episode name so the full-screen visualizer can be put on a
 		// shared screen without naming what is playing.

@@ -233,11 +233,8 @@ func (m Model) renderImmersive() string {
 // — visualizer band —
 
 func (m Model) renderImmVis(w, rows int) []string {
-	switch m.immPixelVisOn() {
-	case artKitty:
-		return m.immKittyVisCells(w, rows)
-	case artSixel:
-		return padPane(nil, w, rows) // blank cells under the Sixel frames
+	if cells, ok := m.pixelVisCells(m.immPixelVisOn(), w, rows); ok {
+		return cells
 	}
 	if m.vis == nil || m.vis.Mode == ui.VisNone || m.visualizerDisabled() {
 		lines := padPane(nil, w, rows)

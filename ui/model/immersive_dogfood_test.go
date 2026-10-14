@@ -70,7 +70,7 @@ func TestImmersiveKeymapOpensOverImmersive(t *testing.T) {
 	}
 }
 
-func TestImmersiveVCyclesVisualizerAndCCyclesCanvas(t *testing.T) {
+func TestImmersiveVAndCCycleVisualizerAndBCyclesCanvas(t *testing.T) {
 	m := immersiveModel(t)
 	m.vis = ui.NewVisualizer(44100)
 	before := m.vis.Mode
@@ -78,12 +78,16 @@ func TestImmersiveVCyclesVisualizerAndCCyclesCanvas(t *testing.T) {
 	if m.vis.Mode == before {
 		t.Fatal("v did not change the visualizer mode")
 	}
-	if m.immersive.mode != immCanvasList {
-		t.Fatal("v must not change the canvas view")
-	}
 	m.handleImmersiveKey(keyMsg("c"))
+	if m.vis.Mode != before {
+		t.Fatalf("c: visualizer mode = %d, want %d back", m.vis.Mode, before)
+	}
+	if m.immersive.mode != immCanvasList {
+		t.Fatal("v and c must not change the canvas view")
+	}
+	m.handleImmersiveKey(keyMsg("b"))
 	if m.immersive.mode != immCanvasRows {
-		t.Fatalf("c: canvas mode = %d, want rows", m.immersive.mode)
+		t.Fatalf("b: canvas mode = %d, want rows", m.immersive.mode)
 	}
 }
 
