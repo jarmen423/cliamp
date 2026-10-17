@@ -51,9 +51,9 @@ func TestSignalQuitsThroughTheModel(t *testing.T) {
 	}
 	var cases []signalCase
 	for _, mode := range []signalCase{
-		{name: "headless", options: programOptions(true, false)},
-		{name: "TUI", options: append(programOptions(false, false), noTerminal...)},
-		{name: "low-power TUI", options: append(programOptions(false, true), noTerminal...)},
+		{name: "headless", options: programOptions(true, false, nil)},
+		{name: "TUI", options: append(programOptions(false, false, nil), noTerminal...)},
+		{name: "low-power TUI", options: append(programOptions(false, true, nil), noTerminal...)},
 	} {
 		for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP} {
 			cases = append(cases, signalCase{name: mode.name + " " + sig.String(), options: mode.options, sig: sig})

@@ -338,7 +338,7 @@ func run(overrides config.Overrides, positional []string, headless, visualizer60
 	if cfg.AutoPlay && !restoredSession {
 		m.SetAutoPlay(true)
 	}
-	configureModel(&m, cfg, headless, visualizer60FPS)
+	imgOut := configureModel(&m, cfg, headless, visualizer60FPS)
 
 	if resumeState.Path != "" && resumeState.PositionSec > 0 {
 		// Jellyfin and Emby resume the restored context above. Mixcloud is also commonly
@@ -352,7 +352,7 @@ func run(overrides config.Overrides, positional []string, headless, visualizer60
 		}
 	}
 
-	prog := tea.NewProgram(m, programOptions(headless, cfg.LowPower)...)
+	prog := tea.NewProgram(m, programOptions(headless, cfg.LowPower, imgOut)...)
 	if cfg.Spotify.ConnectEnabled {
 		for _, e := range providers.entries {
 			if sp, ok := e.Provider.(*spotify.SpotifyProvider); ok {
@@ -478,8 +478,9 @@ func newPlayer(cfg config.Config) (p *player.Player, closePlayer func(), err err
 }
 
 // configureModel applies the settings of cfg to m. Headless mode has no
-// screen, so the view settings do not apply there.
-func configureModel(m *model.Model, cfg config.Config, headless, visualizer60FPS bool) {
+// screen, so the view settings do not apply there. It returns the output
+// writer for programOptions, or nil in headless mode.
+func configureModel(m *model.Model, cfg config.Config, headless, visualizer60FPS bool) io.Writer {
 	m.SetCustomEQBands(cfg.EQ)
 	m.SetPadding(cfg.PaddingH, cfg.PaddingV)
 	m.SetVisVolumeLinked(cfg.VisVolumeLinked)
@@ -496,7 +497,7 @@ func configureModel(m *model.Model, cfg config.Config, headless, visualizer60FPS
 	if headless {
 		// The default visualizer stays, because it serves spectrum.get.
 		m.SetHeadless(true)
-		return
+		return nil
 	}
 	m.SetVisRows(cfg.VisRows)
 	m.SetVisualizer60FPS(visualizer60FPS)
@@ -533,6 +534,7 @@ func configureModel(m *model.Model, cfg config.Config, headless, visualizer60FPS
 	if cfg.Expanded {
 		m.SetExpanded(true)
 	}
+	return imgOut
 }
 
 // startIPC serves the socket and sends its requests to the program through
@@ -621,14 +623,21 @@ func saveExitResume(path string, secs int, playlistName string, resumeContext fu
 
 // programOptions returns the Bubbletea options of the TUI, or of headless
 // mode. run handles the signals itself in both modes, see quitOnSignals.
-func programOptions(headless, lowPower bool) []tea.ProgramOption {
-	switch {
-	case headless:
+// out is the TUI output: the termimg Writer, which splices Sixel images
+// between frames. Nil keeps the default output.
+func programOptions(headless, lowPower bool, out io.Writer) []tea.ProgramOption {
+	if headless {
 		return headlessProgramOptions()
-	case lowPower:
-		return []tea.ProgramOption{tea.WithFPS(lowPowerUIFPS), tea.WithoutSignalHandler()}
 	}
-	return []tea.ProgramOption{tea.WithFPS(defaultUIFPS), tea.WithoutSignalHandler()}
+	fps := defaultUIFPS
+	if lowPower {
+		fps = lowPowerUIFPS
+	}
+	opts := []tea.ProgramOption{tea.WithFPS(fps), tea.WithoutSignalHandler()}
+	if out != nil {
+		opts = append(opts, tea.WithOutput(out))
+	}
+	return opts
 }
 
 // headlessProgramOptions build a program with no terminal: no renderer, no
