@@ -556,6 +556,11 @@ type ytdlBatchState struct {
 // drained yt-dlp live stream before playback advances.
 const ytdlLiveDrainRestarts = 3
 
+// streamRefusedSkips bounds the consecutive tracks skipped because their
+// service refused to stream them. An account that is refused every track
+// then stops instead of cycling a repeating queue.
+const streamRefusedSkips = 5
+
 type reconnectState struct {
 	attempts int
 	at       time.Time
@@ -566,6 +571,9 @@ type reconnectState struct {
 	ytdlLiveDrain bool
 	// notice is the "reconnecting in" error shown while a restart waits.
 	notice error
+	// refusedSkips counts the consecutive tracks skipped after a
+	// *playlist.StreamRefusedError. A track that starts resets it.
+	refusedSkips int
 }
 
 // devicePickerState holds state for the audio device picker overlay.

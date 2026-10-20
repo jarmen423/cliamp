@@ -354,6 +354,39 @@ func isSessionLost(err error) bool {
 	return errors.Is(err, ap.ErrAccesspointClosed)
 }
 
+// keyRefusedWindow is how long after a reconnect that did not stop Spotify
+// refusing an audio key a later refusal skips the reconnect. Skipping through
+// refused tracks would otherwise reconnect once per track.
+const keyRefusedWindow = 2 * time.Minute
+
+// audioKeyRefused wraps a key error that a successful silent reconnect did
+// not cure. The session is valid: Spotify refuses this track's key at the
+// account level (go-librespot issues #222, #235, #279 and #317), so the error
+// is not ErrNeedsAuth and signing in again would not help.
+func audioKeyRefused(err error) error {
+	return &playlist.StreamRefusedError{
+		Reason: "Spotify refused the audio key (account-level restriction)",
+		Err:    err,
+	}
+}
+
+// errAfterReconnect classifies a stream error that persists after a
+// successful silent reconnect.
+func errAfterReconnect(err error) error {
+	if isAuthError(err) {
+		return audioKeyRefused(err)
+	}
+	return fmt.Errorf("spotify: new stream after silent reconnect: %w", err)
+}
+
+// keyRefusedRecently reports whether a reconnect within keyRefusedWindow
+// before now left Spotify still refusing an audio key.
+func (p *SpotifyProvider) keyRefusedRecently(now time.Time) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return !p.keyRefusedAt.IsZero() && now.Sub(p.keyRefusedAt) < keyRefusedWindow
+}
+
 // URISchemes returns the URI prefixes handled by this provider.
 // Implements provider.CustomStreamer.
 func (p *SpotifyProvider) URISchemes() []string { return []string{"spotify:"} }
@@ -362,8 +395,10 @@ func (p *SpotifyProvider) URISchemes() []string { return []string{"spotify:"} }
 // episode).
 // If the stream fails due to an auth error (e.g. expired session, AES key
 // rejection), the player tries a silent reconnect from cached credentials.
-// If that fails — or the retry still hits an auth error — the streamer
-// surfaces playlist.ErrNeedsAuth so the UI can prompt the user to sign in.
+// If that fails, the streamer surfaces playlist.ErrNeedsAuth so the UI can
+// prompt the user to sign in. If it succeeds but Spotify still refuses the
+// key, the streamer returns a *playlist.StreamRefusedError instead (see
+// audioKeyRefused), and refusals within keyRefusedWindow skip the reconnect.
 // A closed access point (see isSessionLost) gets the same silent reconnect,
 // but a failed reconnect returns its own error rather than ErrNeedsAuth, so
 // a network that is still down does not ask for sign-in and the next track
@@ -413,6 +448,11 @@ func (p *SpotifyProvider) NewStreamer(uri string) (beep.StreamSeekCloser, beep.F
 	if !lost && !isAuthError(err) {
 		return nil, beep.Format{}, 0, fmt.Errorf("spotify: new stream: %w", err)
 	}
+	if !lost && p.keyRefusedRecently(time.Now()) {
+		// A reconnect moments ago did not stop the refusals; another one
+		// would not either.
+		return nil, beep.Format{}, 0, audioKeyRefused(err)
+	}
 
 	// Lost connection or auth error — try a silent reconnect from cached credentials.
 	if lost {
@@ -441,12 +481,11 @@ func (p *SpotifyProvider) NewStreamer(uri string) (beep.StreamSeekCloser, beep.F
 	if err == nil {
 		return s, s.Format(), s.Duration(), nil
 	}
-	if !isAuthError(err) {
-		return nil, beep.Format{}, 0, fmt.Errorf("spotify: new stream after silent reconnect: %w", err)
+	if isAuthError(err) {
+		p.mu.Lock()
+		p.keyRefusedAt = time.Now()
+		p.mu.Unlock()
+		applog.UserWarn("spotify: audio key still refused after re-authenticating (%v); skipping the track, sign-in will not help", err)
 	}
-
-	// Still failing after a silent reconnect — surface ErrNeedsAuth so the
-	// UI can prompt the user to sign in. Do NOT open a browser from here.
-	applog.UserWarn("spotify: stream still failing after silent reconnect (%v); sign-in required", err)
-	return nil, beep.Format{}, 0, fmt.Errorf("spotify: stream auth error after silent reconnect: %w", playlist.ErrNeedsAuth)
+	return nil, beep.Format{}, 0, errAfterReconnect(err)
 }

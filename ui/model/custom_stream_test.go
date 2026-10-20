@@ -295,6 +295,68 @@ func TestStreamPlayedNeedsAuthAsksForSignIn(t *testing.T) {
 	}
 }
 
+// TestStreamPlayedRefusedSkipsTrack checks that a track the service refused
+// over a valid session skips to the next track without asking for sign-in,
+// and stops once there is no next track or too many tracks were refused.
+func TestStreamPlayedRefusedSkipsTrack(t *testing.T) {
+	refused := &playlist.StreamRefusedError{
+		Reason: "Spotify refused the audio key (account-level restriction)",
+		Err:    errors.New("failed retrieving aes key with code 1"),
+	}
+	tests := []struct {
+		name         string
+		onlyTrack    bool
+		priorSkips   int
+		wantSkip     bool
+		wantStatus   string
+		wantSkipsNow int
+	}{
+		{name: "next track exists", wantSkip: true, wantStatus: "Skipped Song: Spotify refused the audio key", wantSkipsNow: 1},
+		{name: "last track", onlyTrack: true, wantStatus: "Couldn't play Song: Spotify refused the audio key"},
+		{name: "too many refusals in a row", priorSkips: streamRefusedSkips, wantStatus: "Couldn't play Song"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			player := &playbackFakeEngine{}
+			m := newCustomStreamModel(player)
+			if tt.onlyTrack {
+				m.playlist.Replace([]playlist.Track{{Title: "Song", Path: "spotify:track:abc", DurationSecs: 200}})
+				m.playlist.SetIndex(0)
+			}
+			m.reconnect.refusedSkips = tt.priorSkips
+			track, _ := m.playlist.Current()
+			m.playTrack(track)
+
+			updated, cmd := m.Update(streamPlayedMsg{
+				path: track.Path,
+				gen:  m.requests.stream,
+				err:  fmt.Errorf("spotify: %w", refused),
+			})
+			m = updated.(Model)
+
+			if m.provPane.signIn {
+				t.Fatal("provPane.signIn = true, want no sign-in prompt for a refused track")
+			}
+			if m.err != nil {
+				t.Fatalf("err = %v, want nil", m.err)
+			}
+			if !strings.Contains(m.status.text, tt.wantStatus) {
+				t.Fatalf("status = %q, want it to contain %q", m.status.text, tt.wantStatus)
+			}
+			_, idx := m.playlist.Current()
+			if skipped := idx == 1; skipped != tt.wantSkip {
+				t.Fatalf("skipped to the next track = %v, want %v", skipped, tt.wantSkip)
+			}
+			if tt.wantSkip && cmd == nil {
+				t.Fatal("skip returned no command to start the next track")
+			}
+			if m.reconnect.refusedSkips != tt.wantSkipsNow {
+				t.Fatalf("refusedSkips = %d, want %d", m.reconnect.refusedSkips, tt.wantSkipsNow)
+			}
+		})
+	}
+}
+
 // TestStreamPlayedFailureStatus checks that a failed start shows the gated
 // hint only for a source that can gate a track.
 func TestStreamPlayedFailureStatus(t *testing.T) {
