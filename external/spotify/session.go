@@ -620,13 +620,12 @@ func newInteractiveSession(ctx context.Context, clientID string) (*Session, erro
 func (s *Session) initPlayer() error {
 	// go-librespot uses this for media restriction checks but Premium
 	// accounts can play all tracks regardless.
-	countryCode := "US"
 	p, err := librespotPlayer.NewPlayer(&librespotPlayer.Options{
 		Spclient:             s.sess.Spclient(),
 		AudioKey:             s.sess.AudioKey(),
 		Events:               s.sess.Events(),
 		Log:                  &librespot.NullLogger{},
-		CountryCode:          &countryCode,
+		CountryCode:          func() string { return "US" },
 		NormalisationEnabled: true,
 		AudioBackend:         "pipe",
 		AudioOutputPipe:      os.DevNull,
