@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	librespot "github.com/devgianlu/go-librespot"
 	"github.com/devgianlu/go-librespot/ap"
 	"github.com/devgianlu/go-librespot/audio"
+
+	"github.com/bjarneo/cliamp/playlist"
 )
 
 // TestIsAuthError pins down which errors trigger Spotify re-authentication.
@@ -68,5 +71,60 @@ func TestClosedAccesspointIsSessionLost(t *testing.T) {
 	}
 	if isSessionLost(fmt.Errorf("failed retrieving audio key: %w", context.DeadlineExceeded)) {
 		t.Fatal("a key request timeout must not rebuild the session")
+	}
+}
+
+// TestErrAfterReconnect pins down the error a stream failure gets once a
+// silent reconnect succeeded. A refused audio key then means Spotify refuses
+// the track for the account, so it must not ask for sign-in again.
+func TestErrAfterReconnect(t *testing.T) {
+	keyErr := fmt.Errorf("failed retrieving audio key: %w", &audio.KeyProviderError{Code: 1})
+	tests := []struct {
+		name        string
+		err         error
+		wantRefused bool
+	}{
+		{"refused audio key", keyErr, true},
+		{"network error", errors.New("connection reset by peer"), false},
+		{"timeout", fmt.Errorf("fetch chunk: %w", context.DeadlineExceeded), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := errAfterReconnect(tt.err)
+			if errors.Is(got, playlist.ErrNeedsAuth) {
+				t.Fatalf("errAfterReconnect(%v) = %v, want no ErrNeedsAuth after a successful reconnect", tt.err, got)
+			}
+			if !errors.Is(got, tt.err) {
+				t.Fatalf("errAfterReconnect(%v) = %v, want it to wrap the stream error", tt.err, got)
+			}
+			var refused *playlist.StreamRefusedError
+			if isRefused := errors.As(got, &refused); isRefused != tt.wantRefused {
+				t.Fatalf("errAfterReconnect(%v) is StreamRefusedError = %v, want %v", tt.err, isRefused, tt.wantRefused)
+			}
+		})
+	}
+}
+
+// TestKeyRefusedRecently checks that refusals soon after a reconnect that did
+// not help skip the next reconnect, and later ones try again.
+func TestKeyRefusedRecently(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name         string
+		keyRefusedAt time.Time
+		want         bool
+	}{
+		{"never refused", time.Time{}, false},
+		{"refused just now", now.Add(-time.Second), true},
+		{"refused at the window edge", now.Add(-keyRefusedWindow), false},
+		{"refused long ago", now.Add(-time.Hour), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &SpotifyProvider{keyRefusedAt: tt.keyRefusedAt}
+			if got := p.keyRefusedRecently(now); got != tt.want {
+				t.Fatalf("keyRefusedRecently() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

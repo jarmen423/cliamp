@@ -130,12 +130,26 @@ func (m *Model) handleStreamPlayed(msg streamPlayedMsg) tea.Cmd {
 		return m.nextTrack()
 	}
 	var resumeCmd, backfillCmd tea.Cmd
+	var refused *playlist.StreamRefusedError
 	if errors.Is(msg.err, playlist.ErrNeedsAuth) {
 		// The provider session went stale, for example after Spotify
 		// rejected the stream keys. Ask for sign-in, not a raw error.
 		m.provPane.signIn = true
 		m.err = nil
 		m.status.Warningf(statusTTLLong, "Sign-in required to play %s.", track.DisplayName())
+	} else if errors.As(msg.err, &refused) {
+		// The session is valid but the service refused this track, for
+		// example Spotify refusing its audio key. Sign-in would not help,
+		// so skip it rather than stall the queue.
+		applog.Warn("play %q: %v", msg.path, msg.err)
+		m.err = nil
+		if _, ok := m.playlist.PeekNext(); ok && m.reconnect.refusedSkips < streamRefusedSkips {
+			m.reconnect.refusedSkips++
+			m.status.Warningf(statusTTLLong, "Skipped %s: %s.", track.DisplayName(), refused.Reason)
+			return m.nextTrack()
+		}
+		m.reconnect.refusedSkips = 0
+		m.status.Warningf(statusTTLLong, "Couldn't play %s: %s.", track.DisplayName(), refused.Reason)
 	} else if msg.err != nil {
 		applog.Warn("play %q: %v", msg.path, msg.err)
 		// An unavailable YouTube video must not stall the queue. A live
@@ -156,6 +170,7 @@ func (m *Model) handleStreamPlayed(msg streamPlayedMsg) tea.Cmd {
 		m.err = nil
 		m.reconnect.attempts = 0
 		m.reconnect.at = time.Time{}
+		m.reconnect.refusedSkips = 0
 		resumeCmd = m.applyResume()
 		if m.pauseOnStreamStart {
 			m.pauseOnStreamStart = false

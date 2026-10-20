@@ -6,6 +6,25 @@ import "errors"
 // before they can be used.
 var ErrNeedsAuth = errors.New("sign-in required")
 
+// StreamRefusedError is returned by a provider when its service refuses to
+// stream one track over a session that is still valid. Signing in again does
+// not help, so the UI skips the track instead of asking for sign-in.
+type StreamRefusedError struct {
+	// Reason is the user-facing cause, for example "Spotify refused the
+	// audio key (account-level restriction)".
+	Reason string
+	Err    error
+}
+
+func (e *StreamRefusedError) Error() string {
+	if e.Err == nil {
+		return e.Reason
+	}
+	return e.Reason + ": " + e.Err.Error()
+}
+
+func (e *StreamRefusedError) Unwrap() error { return e.Err }
+
 // ErrListChanged is returned when a list changed underneath a load that was
 // reading it in pages, so the pages already read can no longer be combined
 // into one coherent result. Reopening the list starts a clean load.

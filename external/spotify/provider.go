@@ -38,6 +38,10 @@ type SpotifyProvider struct {
 	authCancel context.CancelFunc // cancels any in-progress OAuth flow
 	authGen    uint64             // counts sign-ins, so a call clears only its own authCancel
 
+	// keyRefusedAt is when a successful silent reconnect last left Spotify
+	// still refusing an audio key (see keyRefusedRecently).
+	keyRefusedAt time.Time
+
 	// Playlist list cache to avoid redundant API calls on provider switch.
 	listCache   []playlist.PlaylistInfo
 	listCacheAt time.Time
