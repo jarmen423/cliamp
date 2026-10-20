@@ -471,7 +471,7 @@ func (m Model) hasProvider(key string) bool {
 func unconfiguredProviderHint(key string) string {
 	switch key {
 	case "yt", "youtube", "ytmusic":
-		return "YouTube not configured — run `cliamp ytmusic-login` (needs yt-dlp)"
+		return "YouTube not configured — set [ytmusic] cookies_from or run `cliamp setup` (needs yt-dlp)"
 	case "spotify":
 		return "Spotify not configured — run `cliamp setup` to sign in"
 	case "local":
