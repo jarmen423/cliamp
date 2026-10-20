@@ -151,6 +151,7 @@ like. See issue [#541](https://github.com/bjarneo/cliamp/issues/541).
   - **Outdated yt-dlp**: Update it with `yt-dlp -U`, or reinstall from the [official repo](https://github.com/yt-dlp/yt-dlp). Distro and winget builds are often stale and can fail when YouTube changes.
   - **Bot detection**: YouTube blocks anonymous requests. Set `cookies_from` so yt-dlp uses the signed-in browser session. For Zen browser, use `cookies_from = "firefox:~/.config/zen"`.
   - **Wrong `cookies_from` value**: Install the browser, sign in to YouTube, and use the correct profile path.
+  - **No JavaScript challenge solver**: The log shows `Requested format is not available`, and yt-dlp itself warns `n challenge solving failed` or `Only images are available`. Signed-in requests through `cookies_from` need the yt-dlp EJS solver and a JavaScript runtime. Install a yt-dlp that includes the solver, such as `pip install -U "yt-dlp[default]"` or the official release binary. Distro packages can lack it. yt-dlp uses Deno by default. To use Node or Bun instead, add `--js-runtimes node` or `--js-runtimes bun` to `~/.config/yt-dlp/config`.
 - **"OAuth failed"**: Ensure that the Google Cloud project has YouTube Data API v3 enabled and uses OAuth client type "Desktop app".
 - **"Access blocked"**: While the app is in "Testing" status, only added test users can sign in. Add the Google account as a test user in OAuth consent screen settings.
 - **Playlist not showing**: The provider lists only library playlists. Save or follow a playlist in YouTube Music for it to appear.
