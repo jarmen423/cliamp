@@ -60,6 +60,10 @@ const (
 	connectDealerRetryInterval = 30 * time.Second
 	// connectEnrichBatch is the /v1/tracks page size for metadata enrichment.
 	connectEnrichBatch = 50
+	// connectMaxContextTracks bounds how many tracks loadTrackList pulls out
+	// of a context. It is Spotify's playlist size limit, and it stops the walk
+	// of a generated context (a station), whose pages never run out.
+	connectMaxContextTracks = 10000
 )
 
 // ConnectConfig configures the Spotify Connect receiver. Send forwards
@@ -565,7 +569,7 @@ func (r *connectReceiver) cmdPlay(sess *session.Session, req dealer.RequestPaylo
 // tracks and hands it to the TUI via PlayTracksMsg.
 func (r *connectReceiver) loadTrackList(sess *session.Session, tl *tracks.List, cur *connectpb.ProvidedTrack, queueCtx []*connectpb.ContextTrack, position time.Duration, paused bool) {
 	typ := librespot.InferSpotifyIdTypeFromContextUri(r.ctxURI)
-	provided := tl.AllTracks(r.ctx)
+	provided := allContextTracks(r.ctx, tl, connectMaxContextTracks)
 
 	curIdx := 0
 	if cur != nil {
@@ -607,6 +611,22 @@ func (r *connectReceiver) loadTrackList(sess *session.Session, tl *tracks.List, 
 		Queue:       queue,
 		ContextName: r.ctxMeta["context_description"],
 	})
+}
+
+// allContextTracks returns every track of the context, at most limit of them,
+// fetching the pages that are not loaded yet. tracks.List.AllTracks returns
+// only the loaded pages, so it would cut a large context short. The walk moves
+// the list's position, so tl must not be used for playback afterwards. A
+// cancelled ctx or a failed page fetch ends the walk with the tracks so far.
+func allContextTracks(ctx context.Context, tl *tracks.List, limit int) []*connectpb.ProvidedTrack {
+	if !tl.GoStart(ctx) {
+		return nil
+	}
+	out := []*connectpb.ProvidedTrack{tl.CurrentTrack()}
+	for len(out) < limit && ctx.Err() == nil && tl.GoNext(ctx) {
+		out = append(out, tl.CurrentTrack())
+	}
+	return out
 }
 
 func (r *connectReceiver) cmdSeek(req dealer.RequestPayload) bool {
