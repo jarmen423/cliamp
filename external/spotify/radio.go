@@ -3,14 +3,13 @@ package spotify
 // radio.go builds radio stations: the tracks Spotify itself plays around a
 // track, artist, album or playlist. The Web API has no station endpoint, so
 // the station comes from the session's context resolver (the one autoplay
-// uses), which lists track URIs only; the Web API then fills in the tracks.
+// uses), which lists track URIs only; spclient's extended metadata then fills
+// in the tracks.
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
-	"slices"
 	"strings"
 
 	playerpb "github.com/devgianlu/go-librespot/proto/spotify/player"
@@ -130,40 +129,33 @@ func (p *SpotifyProvider) RadioTracks(ctx context.Context, seed provider.RadioSe
 		return nil, fmt.Errorf("spotify: radio: %s: empty station: %w", contextURI, provider.ErrNoStation)
 	}
 
-	ids := make([]string, 0, limit)
-	for _, uri := range uris {
-		if len(ids) == limit {
-			break
-		}
-		if typ, id, ok := splitSpotifyURI(uri); ok && typ == "track" && !slices.Contains(ids, id) {
-			ids = append(ids, id)
-		}
+	uris = stationTracks(uris, limit)
+	byURI, err := itemMetadata(sess, ctx, uris)
+	if err != nil {
+		return nil, fmt.Errorf("spotify: radio: %w", err)
 	}
-	return p.tracksByID(ctx, ids)
-}
-
-// tracksByID loads full track objects for ids, in order, skipping any the
-// catalog no longer has.
-func (p *SpotifyProvider) tracksByID(ctx context.Context, ids []string) ([]playlist.Track, error) {
-	tracks := make([]playlist.Track, 0, len(ids))
-	for start := 0; start < len(ids); start += connectEnrichBatch {
-		chunk := ids[start:min(start+connectEnrichBatch, len(ids))]
-		resp, err := p.webAPI(ctx, "GET", "/v1/tracks", url.Values{"ids": {strings.Join(chunk, ",")}})
-		if err != nil {
-			return nil, fmt.Errorf("spotify: tracks: %w", err)
-		}
-		var result struct {
-			Tracks []*spotifyItem `json:"tracks"`
-		}
-		if err := decodeBody(resp, &result); err != nil {
-			return nil, fmt.Errorf("spotify: parse tracks: %w", err)
-		}
-		for _, item := range result.Tracks {
-			if item == nil || item.ID == "" {
-				continue
-			}
-			tracks = append(tracks, trackFromItem(item))
+	tracks := make([]playlist.Track, 0, len(uris))
+	for _, uri := range uris {
+		if t, ok := byURI[uri]; ok { // the catalog may no longer have it
+			tracks = append(tracks, t)
 		}
 	}
 	return tracks, nil
+}
+
+// stationTracks keeps the first limit distinct track URIs of a station,
+// in order, dropping episodes and anything else that is not a track.
+func stationTracks(uris []string, limit int) []string {
+	seen := make(map[string]bool, limit)
+	out := make([]string, 0, limit)
+	for _, uri := range uris {
+		if len(out) == limit {
+			break
+		}
+		if typ, _, ok := splitSpotifyURI(uri); ok && typ == "track" && !seen[uri] {
+			seen[uri] = true
+			out = append(out, uri)
+		}
+	}
+	return out
 }
