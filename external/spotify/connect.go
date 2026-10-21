@@ -18,13 +18,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"net"
-	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,8 +55,6 @@ const (
 	// after it dies on its own: the dealer's internal backoff gives up after
 	// ~15min, after which nothing else would revive the connection.
 	connectDealerRetryInterval = 30 * time.Second
-	// connectEnrichBatch is the /v1/tracks page size for metadata enrichment.
-	connectEnrichBatch = 50
 	// connectMaxContextTracks bounds how many tracks loadTrackList pulls out
 	// of a context. It is Spotify's playlist size limit, and it stops the walk
 	// of a generated context (a station), whose pages never run out.
@@ -988,76 +983,55 @@ func providedToPlaylist(t *connectpb.ProvidedTrack) playlist.Track {
 }
 
 // enrichTracks fills missing title/artist/album for spotify: tracks and
-// episodes via the Web API (which the dealer context pages omit). Best-effort:
-// on failure the tracks stay playable, just sparse.
+// episodes, which the dealer context pages omit. Best-effort: on failure the
+// tracks stay playable, just sparse.
 func (r *connectReceiver) enrichTracks(trs []playlist.Track) {
-	var trackIDs, epIDs []string
-	var trackIdx, epIdx []int
-	for i := range trs {
-		if trs[i].Title != "" {
+	var uris []string
+	for _, t := range trs {
+		if t.Title != "" {
 			continue
 		}
-		typ, id, ok := splitSpotifyURI(trs[i].Path)
+		if typ, _, ok := splitSpotifyURI(t.Path); ok && (typ == "track" || typ == "episode") {
+			uris = append(uris, t.Path)
+		}
+	}
+	if len(uris) == 0 {
+		return
+	}
+	byURI, err := itemMetadata(r.s, r.ctx, uris)
+	if err != nil {
+		applog.Warn("spotify: connect: track metadata: %v", err)
+		return
+	}
+	for i := range trs {
+		t, ok := byURI[trs[i].Path]
 		if !ok {
 			continue
 		}
-		switch typ {
-		case "track":
-			trackIDs = append(trackIDs, id)
-			trackIdx = append(trackIdx, i)
-		case "episode":
-			epIDs = append(epIDs, id)
-			epIdx = append(epIdx, i)
+		dst := &trs[i]
+		if dst.Title == "" {
+			dst.Title = t.Title
 		}
-	}
-	r.enrichBatch(trs, trackIDs, trackIdx, "/v1/tracks", "tracks")
-	r.enrichBatch(trs, epIDs, epIdx, "/v1/episodes", "episodes")
-}
-
-func (r *connectReceiver) enrichBatch(trs []playlist.Track, ids []string, idx []int, path, key string) {
-	for start := 0; start < len(ids); start += connectEnrichBatch {
-		end := min(start+connectEnrichBatch, len(ids))
-		chunk := ids[start:end]
-		q := url.Values{"ids": {strings.Join(chunk, ",")}}
-		resp, err := r.s.webAPIOnce(r.ctx, http.MethodGet, path, q, nil, "")
-		if err != nil {
-			return
+		if dst.Artist == "" {
+			dst.Artist = t.Artist
 		}
-		var out map[string][]*spotifyItem
-		err = json.NewDecoder(http.MaxBytesReader(nil, resp.Body, maxResponseBody)).Decode(&out)
-		resp.Body.Close()
-		if err != nil {
-			return
+		if dst.Album == "" {
+			dst.Album = t.Album
 		}
-		byID := map[string]playlist.Track{}
-		for _, item := range out[key] {
-			if item == nil {
-				continue
-			}
-			byID[item.ID] = trackFromItem(item)
+		if dst.AlbumArtURL == "" {
+			dst.AlbumArtURL = t.AlbumArtURL
 		}
-		for j, id := range chunk {
-			t, ok := byID[id]
-			if !ok {
-				continue
-			}
-			dst := &trs[idx[start+j]]
-			if dst.Title == "" {
-				dst.Title = t.Title
-			}
-			if dst.Artist == "" {
-				dst.Artist = t.Artist
-			}
-			if dst.Album == "" {
-				dst.Album = t.Album
-			}
-			if dst.AlbumArtURL == "" {
-				dst.AlbumArtURL = t.AlbumArtURL
-			}
-			if dst.DurationSecs == 0 {
-				dst.DurationSecs = t.DurationSecs
-			}
-			dst.Unplayable = dst.Unplayable || t.Unplayable
+		if dst.DurationSecs == 0 {
+			dst.DurationSecs = t.DurationSecs
+		}
+		if dst.Year == 0 {
+			dst.Year = t.Year
+		}
+		if dst.TrackNumber == 0 {
+			dst.TrackNumber = t.TrackNumber
+		}
+		if dst.ProviderMeta == nil {
+			dst.ProviderMeta = t.ProviderMeta
 		}
 	}
 }

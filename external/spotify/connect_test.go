@@ -2,6 +2,8 @@ package spotify
 
 import (
 	"encoding/json"
+	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -85,6 +87,46 @@ func TestProvidedToPlaylistUnplayable(t *testing.T) {
 	got := providedToPlaylist(&connectpb.ProvidedTrack{Uri: "spotify:track:x", Removed: []string{"x"}})
 	if !got.Unplayable {
 		t.Fatal("removed track should map to Unplayable")
+	}
+}
+
+func TestEnrichTracksFillsMissingMetadata(t *testing.T) {
+	r := newTestReceiver(func(any) {})
+	asked := stubItemMetadata(t, map[string]playlist.Track{
+		"spotify:track:a":   {Title: "A", Artist: "Artist A", Album: "Album A", DurationSecs: 200, ProviderMeta: map[string]string{playlist.MetaAlbumID: "alb"}},
+		"spotify:episode:e": {Title: "Ep", Artist: "Show", Album: "Show"},
+	}, nil)
+	trs := []playlist.Track{
+		{Path: "spotify:track:a"},
+		{Path: "spotify:track:named", Title: "Kept"},
+		{Path: "spotify:episode:e"},
+		{Path: "spotify:track:gone"},
+		{Path: "/music/local.mp3"},
+	}
+
+	r.enrichTracks(trs)
+
+	if want := []string{"spotify:track:a", "spotify:episode:e", "spotify:track:gone"}; len(*asked) != 1 || !slices.Equal((*asked)[0], want) {
+		t.Fatalf("looked up %v, want %v", *asked, want)
+	}
+	if got := trs[0]; got.Title != "A" || got.Artist != "Artist A" || got.Album != "Album A" ||
+		got.DurationSecs != 200 || got.AlbumID() != "alb" {
+		t.Fatalf("track = %+v", got)
+	}
+	if trs[1].Title != "Kept" || trs[2].Title != "Ep" || trs[2].Artist != "Show" || trs[3].Title != "" {
+		t.Fatalf("tracks = %+v", trs)
+	}
+}
+
+func TestEnrichTracksLookupFailureKeepsTracks(t *testing.T) {
+	r := newTestReceiver(func(any) {})
+	stubItemMetadata(t, nil, errors.New("offline"))
+	trs := []playlist.Track{{Path: "spotify:track:a"}}
+
+	r.enrichTracks(trs)
+
+	if trs[0].Path != "spotify:track:a" || trs[0].Title != "" {
+		t.Fatalf("track = %+v", trs[0])
 	}
 }
 

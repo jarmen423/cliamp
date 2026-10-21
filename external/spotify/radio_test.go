@@ -3,10 +3,7 @@ package spotify
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net/url"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/bjarneo/cliamp/playlist"
@@ -24,6 +21,29 @@ func stubStation(t *testing.T, uris []string, err error) (contextURI *string, re
 		return uris, err
 	}
 	return contextURI, recent
+}
+
+// stubItemMetadata replaces the spclient metadata lookup with a fixed
+// catalog, recording the URIs each call asked for.
+func stubItemMetadata(t *testing.T, catalog map[string]playlist.Track, err error) *[][]string {
+	t.Helper()
+	original := itemMetadata
+	t.Cleanup(func() { itemMetadata = original })
+	asked := new([][]string)
+	itemMetadata = func(_ *Session, _ context.Context, uris []string) (map[string]playlist.Track, error) {
+		*asked = append(*asked, uris)
+		if err != nil {
+			return nil, err
+		}
+		out := map[string]playlist.Track{}
+		for _, u := range uris {
+			if tr, ok := catalog[u]; ok {
+				out[u] = tr
+			}
+		}
+		return out, nil
+	}
+	return asked
 }
 
 func TestStationContextURI(t *testing.T) {
@@ -55,26 +75,27 @@ func TestRadioTracksLoadsStationInOrder(t *testing.T) {
 		"spotify:episode:e1", // not a track
 		"spotify:track:t3", "spotify:track:t4",
 	}, nil)
-	m := newMockAPI(t)
-	m.handlers["/v1/tracks"] = func(t *testing.T, query url.Values) string {
-		ids := strings.Split(query.Get("ids"), ",")
-		if want := []string{"t2", "t1", "t3"}; !slices.Equal(ids, want) {
-			t.Errorf("ids = %v, want %v (deduped tracks, capped at the limit)", ids, want)
-		}
-		// The API omits tracks it no longer has, as null.
-		return fmt.Sprintf(`{"tracks":[%s,null,%s]}`, trackJSON("t2"), trackJSON("t3"))
-	}
+	newMockAPI(t) // no handlers: the Web API must not be reached
+	// The catalog no longer has t1, so its lookup comes back without it.
+	asked := stubItemMetadata(t, map[string]playlist.Track{
+		"spotify:track:t2": {Path: "spotify:track:t2", Title: "Track t2", Artist: "Ringo, Guest"},
+		"spotify:track:t3": {Path: "spotify:track:t3", Title: "Track t3"},
+	}, nil)
 
 	seed := playlist.Track{Path: "spotify:track:seed"}
 	got, err := newTestProvider().RadioTracks(t.Context(), provider.RadioSeed{Tracks: []playlist.Track{seed}}, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
+	want := []string{"spotify:track:t2", "spotify:track:t1", "spotify:track:t3"}
+	if len(*asked) != 1 || !slices.Equal((*asked)[0], want) {
+		t.Errorf("looked up %v, want %v (deduped tracks, capped at the limit)", *asked, want)
+	}
 	if len(got) != 2 || got[0].Path != "spotify:track:t2" || got[1].Path != "spotify:track:t3" {
 		t.Fatalf("tracks = %v, want t2 then t3 in station order", got)
 	}
 	if got[0].Title != "Track t2" || got[0].Artist != "Ringo, Guest" {
-		t.Errorf("track = %+v, want full metadata from the Web API", got[0])
+		t.Errorf("track = %+v, want full metadata", got[0])
 	}
 	if *contextURI != seed.Path || !slices.Equal(*recent, []string{seed.Path}) {
 		t.Errorf("station asked for %q with recent %v, want the seed track", *contextURI, *recent)
@@ -92,6 +113,16 @@ func TestRadioTracksErrors(t *testing.T) {
 	}
 	if _, err := p.RadioTracks(t.Context(), provider.RadioSeed{}, 10); !errors.Is(err, errNoStationSeed) {
 		t.Errorf("err = %v, want errNoStationSeed for an empty seed", err)
+	}
+}
+
+func TestRadioTracksMetadataFailure(t *testing.T) {
+	stubStation(t, []string{"spotify:track:t1"}, nil)
+	lookupErr := errors.New("spclient down")
+	stubItemMetadata(t, nil, lookupErr)
+	seed := provider.RadioSeed{Tracks: []playlist.Track{{Path: "spotify:track:seed"}}}
+	if _, err := newTestProvider().RadioTracks(t.Context(), seed, 10); !errors.Is(err, lookupErr) {
+		t.Errorf("err = %v, want the metadata failure", err)
 	}
 }
 

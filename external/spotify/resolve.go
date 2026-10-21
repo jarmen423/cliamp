@@ -138,9 +138,40 @@ func loadContextPage(ctx context.Context, sp *spclient.Spclient, hmURL string) (
 	return &page, nil
 }
 
+// itemMetadata looks up tracks and episodes by URI. The Web API's batch
+// /v1/tracks and /v1/episodes lookups are gone for Development Mode apps
+// since February 2026, so callers go through spclient instead. A var so
+// tests can stand in for the live session.
+var itemMetadata = (*Session).lookupItemMetadata
+
+// lookupItemMetadata is fetchItemMetadataByURI over the session's spclient.
+func (s *Session) lookupItemMetadata(ctx context.Context, uris []string) (map[string]playlist.Track, error) {
+	sess := s.innerSession()
+	if sess == nil {
+		return nil, fmt.Errorf("spotify: item metadata: %w", playlist.ErrNeedsAuth)
+	}
+	return fetchItemMetadataByURI(ctx, sess.Spclient(), uris)
+}
+
 // fetchItemMetadata looks up tracks and episodes in batches and returns them
 // in uris order. Items whose metadata is unavailable are dropped.
 func fetchItemMetadata(ctx context.Context, sp *spclient.Spclient, uris []string) ([]playlist.Track, error) {
+	byURI, err := fetchItemMetadataByURI(ctx, sp, uris)
+	if err != nil {
+		return nil, err
+	}
+	tracks := make([]playlist.Track, 0, len(byURI))
+	for _, u := range uris {
+		if t, ok := byURI[u]; ok {
+			tracks = append(tracks, t)
+		}
+	}
+	return tracks, nil
+}
+
+// fetchItemMetadataByURI looks up tracks and episodes in batches, keyed by
+// URI. It errors when none of the requested items came back.
+func fetchItemMetadataByURI(ctx context.Context, sp *spclient.Spclient, uris []string) (map[string]playlist.Track, error) {
 	byURI := make(map[string]playlist.Track, len(uris))
 	for start := 0; start < len(uris); start += extMetadataBatch {
 		chunk := uris[start:min(start+extMetadataBatch, len(uris))]
@@ -170,13 +201,7 @@ func fetchItemMetadata(ctx context.Context, sp *spclient.Spclient, uris []string
 	if len(uris) > 0 && len(byURI) == 0 {
 		return nil, errors.New("spotify: extended metadata returned no items")
 	}
-	tracks := make([]playlist.Track, 0, len(byURI))
-	for _, u := range uris {
-		if t, ok := byURI[u]; ok {
-			tracks = append(tracks, t)
-		}
-	}
-	return tracks, nil
+	return byURI, nil
 }
 
 // trackFromExtension decodes one extended-metadata entry into a track.
