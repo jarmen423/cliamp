@@ -159,7 +159,7 @@ func TestScenesDraw(t *testing.T) {
 		{480, 320}, // full screen
 		{40, 8},    // half-block text
 	}
-	for _, mode := range []VisMode{VisRidgeline, VisEventHorizon, VisStage} {
+	for _, mode := range []VisMode{VisRidgeline, VisEventHorizon, VisStage, VisEncore} {
 		for _, sz := range sizes {
 			t.Run(visModes[mode].name, func(t *testing.T) {
 				render := func() (*image.RGBA, *PixelVis) {
@@ -251,7 +251,7 @@ func TestSceneDriverReadsTheNoteWindow(t *testing.T) {
 // size and at a full-screen size. The pixel worker has 40 ms per frame.
 func BenchmarkSceneDraw(b *testing.B) {
 	colors := PixelColors{Low: SpectrumLow, Mid: SpectrumMid, High: SpectrumHigh}
-	for _, mode := range []VisMode{VisRidgeline, VisEventHorizon, VisStage} {
+	for _, mode := range []VisMode{VisRidgeline, VisEventHorizon, VisStage, VisEncore} {
 		for _, sz := range []struct {
 			name string
 			w, h int

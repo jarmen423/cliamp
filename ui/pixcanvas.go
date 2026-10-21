@@ -108,9 +108,7 @@ func (c *canvas) disc(cx, cy, r float64, col [3]float32, a float32, op blendOp) 
 			continue
 		}
 		s := math.Sqrt(hw)
-		for x := int(math.Ceil(cx - s - 0.5)); x <= int(math.Floor(cx+s-0.5)); x++ {
-			c.plot(x, y, col, a, op)
-		}
+		c.rect(int(math.Ceil(cx-s-0.5)), y, int(math.Floor(cx+s-0.5))+1, y+1, col, a, op)
 	}
 }
 

@@ -44,6 +44,7 @@ const (
 	VisRidgeline                   // pixel scene: spectrum ridges running back to a striped sun
 	VisEventHorizon                // pixel scene: a galaxy turning around a black hole
 	VisStage                       // pixel scene: a pixel-art band playing along
+	VisEncore                      // pixel scene: an arena crowd holding up phone lights
 	VisNone                        // hidden — no visualizer
 	VisCount                       // sentinel for cycling
 )
@@ -95,6 +96,7 @@ var visModes = [VisCount]visEntry{
 	VisRidgeline:    {"Ridgeline", newSceneDriver(VisRidgeline)},
 	VisEventHorizon: {"EventHorizon", newSceneDriver(VisEventHorizon)},
 	VisStage:        {"Stage", newSceneDriver(VisStage)},
+	VisEncore:       {"Encore", newSceneDriver(VisEncore)},
 	VisNone:         {"None", newNoOpDriver},
 }
 

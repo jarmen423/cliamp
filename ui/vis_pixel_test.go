@@ -28,7 +28,7 @@ func TestPixelVisDrawsSomething(t *testing.T) {
 }
 
 func TestPixelModesRenderAsTextFallback(t *testing.T) {
-	for _, mode := range []VisMode{VisAurora, VisPhosphor, VisRidgeline, VisEventHorizon, VisStage} {
+	for _, mode := range []VisMode{VisAurora, VisPhosphor, VisRidgeline, VisEventHorizon, VisStage, VisEncore} {
 		v := NewVisualizer(44100)
 		v.Rows = 4
 		defer WithPanelWidth(30)()

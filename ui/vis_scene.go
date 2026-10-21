@@ -1,7 +1,7 @@
 package ui
 
-// vis_scene.go holds what the pixel scenes (Ridgeline, EventHorizon, Stage)
-// share: the per-frame context they draw from and the canvas sizing.
+// vis_scene.go holds what the pixel scenes (Ridgeline, EventHorizon, Stage,
+// Encore) share: the per-frame context they draw from and the canvas sizing.
 
 import (
 	"math"
@@ -16,7 +16,7 @@ type pixelScene interface {
 }
 
 func isSceneMode(mode VisMode) bool {
-	return mode == VisRidgeline || mode == VisEventHorizon || mode == VisStage
+	return mode == VisRidgeline || mode == VisEventHorizon || mode == VisStage || mode == VisEncore
 }
 
 func newScene(mode VisMode) pixelScene {
@@ -25,6 +25,8 @@ func newScene(mode VisMode) pixelScene {
 		return &horizonScene{}
 	case VisStage:
 		return &stageScene{}
+	case VisEncore:
+		return &encoreScene{}
 	default:
 		return &ridgeScene{}
 	}

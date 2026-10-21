@@ -77,19 +77,22 @@ eq = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 # keeps it available, and both values are restored after restart.
 
 # Visualizer mode (leave empty for default Bars)
-# Options: Bars, BarsDot, Rain, BarsOutline, Bricks, Columns, ClassicPeak, Wave, Scatter, Flame, Retro, Pulse, Matrix, Binary, Sakura, Firework, Bubbles, Logo, Terrain, Scope, Heartbeat, Butterfly, Ascii, Firefly, Mosaic, Sand, Geyser, ClassicLED, Stereo, Mirror, Omarchy, RedSector, YinYang, Aurora, Phosphor, Ridgeline, EventHorizon, Stage, None
+# Options: Bars, BarsDot, Rain, BarsOutline, Bricks, Columns, ClassicPeak, Wave, Scatter, Flame, Retro, Pulse, Matrix, Binary, Sakura, Firework, Bubbles, Logo, Terrain, Scope, Heartbeat, Butterfly, Ascii, Firefly, Mosaic, Sand, Geyser, ClassicLED, Stereo, Mirror, Omarchy, RedSector, YinYang, Aurora, Phosphor, Ridgeline, EventHorizon, Stage, Encore, None
 # Mirror draws tapered Braille bars around a persistent horizontal center axis.
 # ClassicPeak uses smooth bars and floating peak caps, with sampling aligned
 # to audible playback and adaptive redraws for smooth motion.
 # ClassicLED redraws at 30 FPS during playback, like the Winamp LED meter.
 # Neighboring bands are averaged into each bar.
-# Aurora, Phosphor, Ridgeline, EventHorizon and Stage are pixel visualizers:
-# real images (kitty graphics or Sixel) in the immersive band and the
-# full-screen visualizer on terminals that support them, half-block text
-# everywhere else. Ridgeline runs spectrum ridges back to a striped sun.
+# Aurora, Phosphor, Ridgeline, EventHorizon, Stage and Encore are pixel
+# visualizers: real images (kitty graphics or Sixel) in the immersive band
+# and the full-screen visualizer on terminals that support them, half-block
+# text everywhere else. Ridgeline runs spectrum ridges back to a striped sun.
 # EventHorizon turns a galaxy around a black hole: bass feeds the accretion
 # disk, kicks send shockwaves and a drop fires the jets. Stage is a pixel-art
 # band whose drums, bass and keys follow the drum hits and notes it hears.
+# Encore looks out from the stage at an arena of phone lights: the crowd
+# sways with the bass, kicks send raised arms to the back wall, snares fire
+# camera flashes and a drop starts a Mexican wave.
 # YinYang koi chase each other across a wide strip, leaving on the right and
 # coming back on the left. Taller panels have them circle a lily pad whose
 # lotus follows recent bass levels, including after silence or time in the strip.

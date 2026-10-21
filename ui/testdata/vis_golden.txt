@@ -152,6 +152,10 @@ Stage 48x9 59a53fd44ecdb07d
 Stage 13x3 e5911a90e1632643
 Stage 40x1 7922ea4293f03eb3
 Stage 140x16 ecca487c4b49c1e0
+Encore 48x9 631023c6424f0568
+Encore 13x3 00edbf476f10a351
+Encore 40x1 1db6ec04ebcbdc4f
+Encore 140x16 1390c222a561db54
 None 48x9 a09d945a1cd8d6e5
 None 13x3 a09d945a1cd8d6e5
 None 40x1 a09d945a1cd8d6e5
