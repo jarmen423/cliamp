@@ -245,14 +245,14 @@ func (m Model) View() tea.View {
 		m.refreshVisualizerIfPending()
 	}
 
-	var content string
+	var content, body string
+	var sections []string
 	visAbove := 0 // rows above the full-screen visualizer's spectrum
 	switch screen {
 	case screenFullVisualizer:
-		sections := m.fullVisualizerSections()
+		sections = m.fullVisualizerSections()
 		visAbove = renderedRows(m.fullVisHead())
 		content = strings.Join(sections, "\n")
-		m.recordMouseGeometry(content, sections, "")
 	case screenImmersive:
 		content = m.renderImmersive()
 		m.recordImmersiveMouseGeometry(content)
@@ -261,10 +261,9 @@ func (m Model) View() tea.View {
 		// header/help supplied by renderPlaylistHeader / renderHelp. List-heavy
 		// tasks collapse to a compact now-playing summary so they can use the
 		// reclaimed rows for browsing.
-		body := m.renderBodyRegion()
-		sections := m.mainSections(body, true, contentFirst)
+		body = m.renderBodyRegion()
+		sections = m.mainSections(body, true, contentFirst)
 		content = strings.Join(sections, "\n")
-		m.recordMouseGeometry(content, sections, body)
 	}
 
 	// Every screen now renders within the main frame, so frame and center
@@ -278,6 +277,7 @@ func (m Model) View() tea.View {
 		m.feedImmPixelVis()
 	} else {
 		framed := m.layout.frameStyle().Render(content)
+		m.recordMouseGeometry(framed, sections, body)
 		rendered = m.centerFrame(framed)
 		rendered = ui.FitRect(rendered, m.layout.frameWidth, max(1, m.height))
 		if kind := m.fullVisPixelOn(); kind != artNone {

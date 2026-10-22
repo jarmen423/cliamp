@@ -214,20 +214,25 @@ func TestLayerLiveFrames(t *testing.T) {
 	frame := func(key string) Placement {
 		return Placement{Key: key, X: 0, Y: 0, W: 10, H: 2, Data: []byte("<" + key + ">")}
 	}
+	live := func() []byte {
+		var b bytes.Buffer
+		l.renderLive(&b)
+		return b.Bytes()
+	}
 	l.SetLive(frame("early"))
 	if _, post := l.render(false); len(post) != 0 {
 		t.Fatalf("live frame accepted before its rect was armed: %q", post)
 	}
 	l.ArmLive(0, 0, 10, 2)
 	l.SetLive(frame("v1"))
-	if got := l.renderLive(); got != nil {
+	if got := live(); len(got) != 0 {
 		t.Fatalf("live frame drawn before a text frame blanked its cells: %q", got)
 	}
 	if _, post := l.render(false); !bytes.Contains(post, []byte("<v1>")) {
 		t.Fatalf("frame did not draw the live placement: %q", post)
 	}
 	l.SetLive(frame("v2"))
-	if got := l.renderLive(); !bytes.Contains(got, []byte("<v2>")) {
+	if got := live(); !bytes.Contains(got, []byte("<v2>")) {
 		t.Fatalf("next live frame not drawn between frames: %q", got)
 	}
 	if pre, _ := l.render(false); len(pre) != 0 {
@@ -235,7 +240,7 @@ func TestLayerLiveFrames(t *testing.T) {
 	}
 	l.ArmLive(0, 0, 0, 0)
 	l.SetLive(frame("late")) // a worker finishing after the UI moved on
-	if got := l.renderLive(); got != nil {
+	if got := live(); len(got) != 0 {
 		t.Fatalf("late live frame drawn after disarm: %q", got)
 	}
 	if pre, _ := l.render(false); !bytes.Contains(pre, []byte("\x1b[10X")) {
