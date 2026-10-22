@@ -27,6 +27,10 @@ type SixelEncoder struct {
 
 	idx     []uint8
 	workers []*bandWorker
+
+	small  []uint8 // EncodeScaled's indices at the source size
+	xs     []int   // EncodeScaled's source column per destination column
+	xsFrom int     // the source width xs maps from
 }
 
 type bandWorker struct {
@@ -66,11 +70,13 @@ func NewSixelEncoder(pal []color.RGBA, dither int) *SixelEncoder {
 
 func clamp8(v int) int { return max(0, min(255, v)) }
 
-func (e *SixelEncoder) quantizeRows(img *image.RGBA, y0, y1 int) {
+// quantizeRows maps rows [y0, y1) of img to palette indices in idx, which
+// holds img's width per row.
+func (e *SixelEncoder) quantizeRows(img *image.RGBA, y0, y1 int, idx []uint8) {
 	w := img.Rect.Dx()
 	for y := y0; y < y1; y++ {
 		row := img.Pix[y*img.Stride:]
-		out := e.idx[y*w : (y+1)*w]
+		out := idx[y*w : (y+1)*w]
 		for x := range out {
 			p := row[x*4:]
 			r, g, b := int(p[0]), int(p[1]), int(p[2])
@@ -168,6 +174,52 @@ func sixelRun(b *bytes.Buffer, n int, v byte) {
 // Encode returns a complete Sixel DCS sequence for img.
 func (e *SixelEncoder) Encode(img *image.RGBA) []byte {
 	w, h := img.Rect.Dx(), img.Rect.Dy()
+	return e.encode(w, h, func(y0, y1 int) { e.quantizeRows(img, y0, y1, e.idx) })
+}
+
+// EncodeScaled is Encode of src scaled up to dw x dh by nearest neighbor,
+// the mapping canvas copies use, without building the large image: src is
+// quantized at its own size and the palette indices are what get repeated.
+// A src larger than dw x dh in either direction is encoded as it is.
+func (e *SixelEncoder) EncodeScaled(src *image.RGBA, dw, dh int) []byte {
+	sw, sh := src.Rect.Dx(), src.Rect.Dy()
+	if sw <= 0 || sh <= 0 || sw > dw || sh > dh || sw == dw && sh == dh {
+		return e.Encode(src)
+	}
+	if cap(e.small) < sw*sh {
+		e.small = make([]uint8, sw*sh)
+	}
+	small := e.small[:sw*sh]
+	e.quantizeRows(src, 0, sh, small)
+	if len(e.xs) != dw || e.xsFrom != sw {
+		e.xs, e.xsFrom = make([]int, dw), sw
+		for x := range e.xs {
+			e.xs[x] = x * sw / dw
+		}
+	}
+	xs := e.xs
+	return e.encode(dw, dh, func(y0, y1 int) {
+		prevSy := -1
+		var prev []uint8
+		for y := y0; y < y1; y++ {
+			row := e.idx[y*dw : (y+1)*dw]
+			sy := y * sh / dh
+			if sy == prevSy {
+				copy(row, prev)
+				continue
+			}
+			srow := small[sy*sw : (sy+1)*sw]
+			for x, sx := range xs {
+				row[x] = srow[sx]
+			}
+			prevSy, prev = sy, row
+		}
+	})
+}
+
+// encode writes a w x h image whose palette indices prep fills in e.idx, one
+// range of rows per worker, as a complete Sixel DCS sequence.
+func (e *SixelEncoder) encode(w, h int, prep func(y0, y1 int)) []byte {
 	if w <= 0 || h <= 0 {
 		return nil
 	}
@@ -190,7 +242,7 @@ func (e *SixelEncoder) Encode(img *image.RGBA) []byte {
 			continue
 		}
 		wg.Go(func() {
-			e.quantizeRows(img, y0, y1)
+			prep(y0, y1)
 			e.encodeBands(ws[i], w, y0, y1)
 		})
 	}

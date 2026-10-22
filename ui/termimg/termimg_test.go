@@ -486,7 +486,7 @@ func TestSixelEncodeRoundTrips(t *testing.T) {
 			img.SetRGBA(i%tc.w, i/tc.w, p)
 		}
 		enc := string(e.Encode(img))
-		e.quantizeRows(img, 0, tc.h) // the reference indices, from the same LUT
+		e.quantizeRows(img, 0, tc.h, e.idx) // the reference indices, from the same LUT
 		for i, v := range e.idx[:len(want)] {
 			want[i] = int(v)
 		}
@@ -494,6 +494,41 @@ func TestSixelEncodeRoundTrips(t *testing.T) {
 		for i := range want {
 			if got[i] != want[i] {
 				t.Fatalf("%s: pixel (%d,%d) decodes to color %d, want %d", tc.name, i%tc.w, i/tc.w, got[i], want[i])
+			}
+		}
+	}
+}
+
+func TestSixelEncodeScaledMatchesEncodeOfScaledImage(t *testing.T) {
+	pal := make([]color.RGBA, 32)
+	for i := range pal {
+		pal[i] = color.RGBA{uint8(i * 8), uint8(i * 5), uint8(255 - i*8), 255}
+	}
+	for _, tc := range []struct{ sw, sh, dw, dh int }{
+		{10, 7, 25, 18}, // non-integer both ways
+		{9, 6, 18, 6},   // wide only
+		{8, 8, 8, 20},   // tall only
+		{12, 9, 12, 9},  // same size
+		{20, 10, 15, 9}, // larger source: encoded as it is
+	} {
+		src := image.NewRGBA(image.Rect(0, 0, tc.sw, tc.sh))
+		for i := range src.Pix {
+			src.Pix[i] = uint8(i * 37 % 251)
+		}
+		big := src
+		if tc.sw <= tc.dw && tc.sh <= tc.dh {
+			big = image.NewRGBA(image.Rect(0, 0, tc.dw, tc.dh))
+			for y := range tc.dh {
+				for x := range tc.dw {
+					big.SetRGBA(x, y, src.RGBAAt(x*tc.sw/tc.dw, y*tc.sh/tc.dh))
+				}
+			}
+		}
+		e := NewSixelEncoder(pal, 0)
+		want := string(NewSixelEncoder(pal, 0).Encode(big))
+		for range 2 { // the second call reuses the cached columns and indices
+			if got := string(e.EncodeScaled(src, tc.dw, tc.dh)); got != want {
+				t.Fatalf("%dx%d -> %dx%d: EncodeScaled differs from Encode of the scaled image", tc.sw, tc.sh, tc.dw, tc.dh)
 			}
 		}
 	}

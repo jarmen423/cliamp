@@ -35,6 +35,8 @@ type PixelVis struct {
 	scene pixelScene
 	sc    sceneCtx
 	cv    canvas
+
+	native *image.RGBA // DrawNative's frame
 }
 
 // PixelFrame is what a PixelVis draws one frame from. Aurora reads the
@@ -314,6 +316,12 @@ func PixelPalette(cs PixelColors) []color.RGBA {
 // drawScene renders a scene at its canvas size and scales it into dst.
 func (p *PixelVis) drawScene(dst *image.RGBA, f SceneFrame) {
 	w, h := sceneCanvasSize(dst.Rect.Dx(), dst.Rect.Dy())
+	p.renderScene(w, h, f)
+	p.cv.copyTo(dst)
+}
+
+// renderScene draws the next frame of the scene on a w by h canvas.
+func (p *PixelVis) renderScene(w, h int, f SceneFrame) {
 	if p.scene == nil {
 		p.scene = newScene(p.mode)
 	}
@@ -321,12 +329,35 @@ func (p *PixelVis) drawScene(dst *image.RGBA, f SceneFrame) {
 		p.scene.reset(w, h)
 		p.sc.started = false
 	} else if p.sc.started && f.T == p.sc.lastT {
-		p.cv.copyTo(dst) // the same snapshot again: the frame cannot change
-		return
+		return // the same snapshot again: the frame cannot change
 	}
 	p.sc.advance(f, p.palette())
 	p.scene.draw(&p.cv, &p.sc)
-	p.cv.copyTo(dst)
+}
+
+// DrawNative renders the next frame for a w by h image at the size it is
+// drawn at, and returns it (reused by the next call): a scene's canvas when
+// that is no larger than w by h, w by h otherwise. Scaling the result up by
+// nearest neighbor gives what Draw would have drawn, so an encoder that can
+// repeat pixels itself (termimg's EncodeScaled) skips the large image.
+func (p *PixelVis) DrawNative(w, h int, in PixelFrame) *image.RGBA {
+	nw, nh := w, h
+	native := false
+	if isSceneMode(p.mode) {
+		if cw, ch := sceneCanvasSize(w, h); cw <= w && ch <= h {
+			nw, nh, native = cw, ch, true
+		}
+	}
+	if p.native == nil || p.native.Rect.Dx() != nw || p.native.Rect.Dy() != nh {
+		p.native = image.NewRGBA(image.Rect(0, 0, nw, nh))
+	}
+	if !native {
+		p.Draw(p.native, in)
+		return p.native
+	}
+	p.renderScene(nw, nh, in.Scene)
+	p.cv.copyTo(p.native)
+	return p.native
 }
 
 // renderPixelText is the text rendition of a pixel mode: the same renderer
