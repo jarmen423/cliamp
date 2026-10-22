@@ -500,6 +500,7 @@ to cycle back); `Ctrl+K` or
 | `Q` | Queue page in the canvas: Now playing, Next in queue, and Next up from the playing context (in shuffled order when shuffle is on). `Enter` jumps there, `x` removes a queued track, `Shift+Up`/`Shift+Down` move it, `;` opens the track menu, `Q` or `Esc` goes back |
 | `R` | Radio: in an open playlist, album or artist, radio for that collection; in a list, radio for the focused artist, album or playlist, or song radio for a focused track. The radio opens in the canvas as a new playlist page and the queue is left alone: `Enter` or `p` plays it, the Queue panel then shows it as "Next from … Radio", and `Backspace` returns to where you were. On Spotify it is Spotify's station for the seed; other providers with recommendations mix a spread of the collection's tracks with them |
 | `V` | Full-screen visualizer |
+| `S`, `L`, `O`, `P`, `Y`, … | Switch provider with the same Shift+letter keys as the classic layout, staying in immersive mode: the frame reopens on the new provider's Playlists. `Q` and `R` keep their immersive meaning (queue page, radio) |
 | `I` or `Esc` | Exit immersive mode |
 
 Mouse: click pills to switch, click a playlist, album or artist to open it,

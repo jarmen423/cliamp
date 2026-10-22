@@ -192,8 +192,23 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "shift+home":
 		m.immersiveCursorHome()
 		return nil
+
+	// — providers —
+	default:
+		// The Shift+letter provider switches work as in the classic layout,
+		// but the frame stays: it reopens on the new provider. Q and R keep
+		// their immersive meaning above.
+		if key := providerKeyForShortcut(msg.String()); key != "" && key == m.activeProviderKey() {
+			return nil
+		}
+		prev := m.provPillIdx
+		cmd, ok := m.providerShortcut(msg.String())
+		if !ok || m.provPillIdx == prev {
+			return cmd // not a shortcut, or the provider is not configured
+		}
+		m.exitImmersive()
+		return tea.Batch(cmd, m.startImmersive())
 	}
-	return nil
 }
 
 // Playback verbs shared by the key handler and the controls-row click

@@ -237,6 +237,7 @@ var commandRegistry = []commandSpec{
 	{Mode: commandModeImmersive, Keys: []string{"R"}, KeyLabel: "R", Label: "Radio: open list, or focused artist / album / playlist / track", ContextHelp: true},
 	{Mode: commandModeImmersive, Keys: []string{"x"}, KeyLabel: "x", Label: "Queue page: remove queued track", ContextHelp: true},
 	{Mode: commandModeImmersive, Keys: []string{"shift+up", "shift+down"}, KeyLabel: "Shift+Up/Down", Label: "Queue page: move queued track", ContextHelp: true},
+	{Mode: commandModeImmersive, Keys: []string{"S", "P", "J", "E", "B", "Y", "C", "X", "M", "T", "L", "O"}, KeyLabel: "S L O …", Label: "Switch provider (Spotify, Local, Podcasts, …), staying immersive", ContextHelp: true},
 	{Mode: commandModeImmersive, Keys: []string{"I"}, KeyLabel: "I", Label: "Leave immersive", ContextHelp: true},
 	{Mode: commandModeCredits, Keys: []string{"up", "down", "j", "k", "ctrl+u", "ctrl+d"}, KeyLabel: "Up Down", Label: "Scroll", ContextHelp: true},
 	{Mode: commandModeCredits, Keys: []string{"esc", "i", "q"}, KeyLabel: "Esc", Label: "Close", ContextHelp: true, Cancel: true},
