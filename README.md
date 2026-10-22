@@ -1,67 +1,84 @@
-[![Docs on contextowl.co](https://contextowl.co/uploads/_brand/badge-docs.svg)](https://contextowl.co)
+# cliamp (jarmen423 fork)
 
-A retro terminal music player inspired by Winamp. Play local files, streams, podcasts, YouTube, YouTube Music, SoundCloud, Mixcloud, Bilibili, Spotify, Qobuz, Tidal, NetEase Cloud Music, Yandex Music, Xiaoyuzhou (小宇宙), Navidrome, Lyrion, Plex, Jellyfin, Emby, and Audiobookshelf. Use the spectrum visualizer, parametric EQ, and playlists.
+This is my fork of [bjarneo/cliamp](https://github.com/bjarneo/cliamp), the retro
+terminal music player inspired by Winamp. cliamp is bjarneo's project; this fork
+tracks upstream and adds the features below. Releases from this fork are at
+[jarmen423/cliamp/releases](https://github.com/jarmen423/cliamp/releases).
 
-**[cliamp.stream](https://cliamp.stream)** | **[docs](https://whiterose.org.contextowl.co/docs/cliamp)** | **[android](https://github.com/cliamp/cliamp-mobile)** | **[discord](https://discord.gg/4VpCzXPuj2)**
-
-On a phone, run [cliamp mobile](https://github.com/cliamp/cliamp-mobile). It is a native Android client for radio, podcasts, and the same servers this player talks to.
+cliamp plays local files, streams, podcasts, YouTube, YouTube Music, SoundCloud, Mixcloud, Bilibili, Spotify, Qobuz, Tidal, NetEase Cloud Music, Yandex Music, Xiaoyuzhou (小宇宙), Navidrome, Lyrion, Plex, Jellyfin, Emby, and Audiobookshelf. It has a spectrum visualizer, parametric EQ, and playlists.
 
 cliamp uses [Bubbletea](https://github.com/charmbracelet/bubbletea), [Lip Gloss](https://github.com/charmbracelet/lipgloss), [Beep](https://github.com/gopxl/beep), and [go-librespot](https://github.com/devgianlu/go-librespot).
 
 https://github.com/user-attachments/assets/55e251f2-e13b-43d9-bb6a-7b1960e7d7d0
 
-<div align="center">
-  <a href="https://contextowl.co"><img src="https://contextowl.co/uploads/_brand/sponsor-dark.svg" alt="Proudly sponsored by contextowl.co" width="400"></a>
-</div>
+## What this fork adds
+
+- **Immersive mode (prototype).** Press `I` for a full-screen layout: visualizer band,
+  Now Playing and Queue column, and a list, rows or grid canvas with cover art.
+  Cover art renders as real images over kitty graphics or Sixel, with a
+  block-character fallback. See
+  [Immersive mode](docs/keybindings.md#immersive-mode-prototype) and the
+  `images` setting in [docs/configuration.md](docs/configuration.md).
+- **Pixel visualizers.** Aurora and Phosphor, plus the Ridgeline,
+  EventHorizon, Stage and Encore scenes. In the immersive band and the
+  full-screen visualizer they draw real images on terminals with kitty
+  graphics or Sixel, and half-block text everywhere else. Encore looks out
+  from the stage at an arena of phone lights that react to the music.
+- **Spotify.** A [Browse](docs/spotify.md#browse) page for genres, moods and
+  new releases; a library browser and artist pages; smart shuffle; playlist
+  write operations; and [Spotify Connect](docs/spotify.md#spotify-connect)
+  receiver mode, so the Spotify apps can play through cliamp.
+- **Radio.** Song, artist, album and playlist radio seeded from Spotify
+  stations, opened as a playlist without starting playback. When Spotify has
+  no station for a track, cliamp says so.
+- **Resume.** cliamp reopens the last session for every provider, including the
+  queue and the page you were on.
+- **Mouse.** Click the timeline to seek, including in the fullscreen
+  visualizer, and right-click a track for a context menu.
+- **Windows.** A single static `cliamp.exe` with Spotify support, credentials
+  stored with DPAPI, and Spotify sign-in over a free local port.
+
+Upstream links: [cliamp.stream](https://cliamp.stream) (upstream's site),
+[hosted docs](https://whiterose.org.contextowl.co/docs/cliamp),
+[cliamp mobile](https://github.com/cliamp/cliamp-mobile) for Android, and the
+[Discord](https://discord.gg/4VpCzXPuj2). They describe upstream cliamp, so the
+fork's features above are not in them.
 
 ## Install
 
-```sh
-curl -fsSL https://cliamp.stream/install.sh | sh
-```
-
-**Homebrew**
+macOS, Linux, and Windows (Git Bash):
 
 ```sh
-brew install bjarneo/cliamp/cliamp
+curl -fsSL https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.sh | sh
 ```
 
-The formula installs all required runtime libraries.
+The script downloads the latest release of this fork, checks it against the
+release's `checksums.txt`, and installs it to `~/.local/bin` (or
+`/usr/local/bin` when `~/.local/bin` is not on `PATH`). Set `INSTALL_DIR` to
+choose another directory.
 
-**Arch Linux (AUR)**
+The `cliamp.stream/install.sh` script, Homebrew (`bjarneo/cliamp/cliamp`), the
+AUR package, `nix run github:bjarneo/cliamp` and
+`go install github.com/bjarneo/cliamp` all install upstream cliamp, without this
+fork's features.
 
-```sh
-yay -S cliamp
-```
-
-**Nix**
-
-```sh
-nix run github:bjarneo/cliamp
-```
-
-For a declarative NixOS configuration, add `github:bjarneo/cliamp` as a flake
-input. Install its default package:
-
-```nix
-inputs.cliamp.url = "github:bjarneo/cliamp";
-
-environment.systemPackages = [
-  inputs.cliamp.packages.${pkgs.stdenv.hostPlatform.system}.default
-];
-```
-
-**Go**
-
-```sh
-go install github.com/bjarneo/cliamp@latest
-```
-
-Install ALSA development headers before you build on Linux. See [Building from source](#building-from-source).
+> **Upgrading:** `cliamp upgrade` downloads upstream's latest release and
+> replaces this fork with it, even when upstream's version number is lower. To
+> update the fork, run the install script again.
 
 **Pre-built binaries**
 
-Download from [GitHub Releases](https://github.com/bjarneo/cliamp/releases/latest).
+Download the file for your platform from
+[Releases](https://github.com/jarmen423/cliamp/releases/latest):
+`cliamp-linux-amd64`, `cliamp-linux-arm64`, `cliamp-darwin-amd64`,
+`cliamp-darwin-arm64`, `cliamp-windows-amd64.exe`, or
+`cliamp-windows-amd64.zip`. On macOS and Linux, make the file executable and
+move it onto your `PATH`:
+
+```sh
+chmod +x cliamp-linux-amd64
+mv cliamp-linux-amd64 ~/.local/bin/cliamp
+```
 
 > **macOS:** Pre-built binaries link dynamically to FLAC, Vorbis, Ogg, and mpg123
 > from Homebrew. If you download from Releases or use `install.sh`, install these
@@ -72,15 +89,14 @@ Download from [GitHub Releases](https://github.com/bjarneo/cliamp/releases/lates
 > brew install flac libvorbis libogg mpg123
 > ```
 >
-> `brew install bjarneo/cliamp/cliamp` installs these libraries.
->
 > **Linux:** Pre-built binaries link FLAC, Vorbis, Ogg, and mpg123 statically. No
 > extra codec packages are required. You can still need an ALSA bridge for your
 > sound server. See [Troubleshooting](#troubleshooting).
 >
-> **Windows:** Download and extract `cliamp-windows-amd64.zip` from Releases. It
-> includes the codec DLLs that Spotify requires. On Windows, cliamp stores
-> its config under `%APPDATA%\cliamp` unless `HOME` names another directory.
+> **Windows:** `cliamp-windows-amd64.exe` is a single file that imports only
+> Windows system DLLs, Spotify included. `cliamp-windows-amd64.zip` holds the
+> same program. On Windows, cliamp stores its config under `%APPDATA%\cliamp`
+> unless `HOME` names another directory.
 
 **Optional runtime dependencies** for all platforms and install methods:
 
@@ -94,8 +110,11 @@ On Windows, install `ffmpeg` and `yt-dlp` with your package manager. Keep both o
 **Build from source**
 
 ```sh
-git clone https://github.com/bjarneo/cliamp.git && cd cliamp && go build -o cliamp .
+git clone https://github.com/jarmen423/cliamp.git && cd cliamp && go build -o cliamp .
 ```
+
+Install ALSA development headers before you build on Linux. See
+[Building from source](#building-from-source).
 
 ## Quick Start
 
@@ -163,7 +182,7 @@ To host a radio station, use [cliamp-server](https://github.com/bjarneo/cliamp-s
 
 **Prerequisites:**
 
-- [Go](https://go.dev/dl/) 1.26.9 or later
+- [Go](https://go.dev/dl/) 1.26.10 or later
 - ALSA development headers (Linux only, required by the audio backend)
 
 **Linux (Debian/Ubuntu):**
@@ -231,7 +250,7 @@ Spotify support uses `go-librespot`. It needs CGO and a MinGW toolchain, and lin
 **Clone and build:**
 
 ```sh
-git clone https://github.com/bjarneo/cliamp.git
+git clone https://github.com/jarmen423/cliamp.git
 cd cliamp
 make && make install
 ```
@@ -244,7 +263,9 @@ A source build uses the same optional runtime dependencies as the other install 
 
 ## Docs
 
-Full documentation is hosted at **[whiterose.org.contextowl.co/docs/cliamp](https://whiterose.org.contextowl.co/docs/cliamp)**.
+The docs for this fork are in [docs/](docs/). Upstream's hosted docs at
+[whiterose.org.contextowl.co/docs/cliamp](https://whiterose.org.contextowl.co/docs/cliamp)
+cover upstream cliamp only.
 
 ## Troubleshooting
 
@@ -276,9 +297,13 @@ sudo apt install libasound2-plugins
 On WSL2 see [WSL2 setup](docs/configuration.md#wsl2-windows-subsystem-for-linux)
 for the extra ALSA routing step.
 
-## Author
+## Credits
 
-[x.com/iamdothash](https://x.com/iamdothash)
+cliamp is created by bjarneo ([GitHub](https://github.com/bjarneo),
+[x.com/iamdothash](https://x.com/iamdothash)). This fork is maintained by
+[jarmen423](https://github.com/jarmen423). Report problems with the fork's
+features in [jarmen423/cliamp issues](https://github.com/jarmen423/cliamp/issues),
+not upstream.
 
 ## Disclaimer
 
