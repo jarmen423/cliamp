@@ -59,6 +59,9 @@ const (
 	// of a context. It is Spotify's playlist size limit, and it stops the walk
 	// of a generated context (a station), whose pages never run out.
 	connectMaxContextTracks = 10000
+	// connectAutoplayTracks bounds the station that follows a song played on
+	// its own: one station page.
+	connectAutoplayTracks = 50
 )
 
 // ConnectConfig configures the Spotify Connect receiver. Send forwards
@@ -587,6 +590,7 @@ func (r *connectReceiver) loadTrackList(sess *session.Session, tl *tracks.List, 
 	for i, pt := range provided {
 		trs[i] = providedToPlaylist(pt)
 	}
+	trs = r.withAutoplay(trs)
 	queue := make([]playlist.Track, 0, len(queueCtx))
 	for _, t := range queueCtx {
 		queue = append(queue, providedToPlaylist(librespot.ContextTrackToProvidedTrack(typ, t)))
@@ -606,6 +610,28 @@ func (r *connectReceiver) loadTrackList(sess *session.Session, tl *tracks.List, 
 		Queue:       queue,
 		ContextName: r.ctxMeta["context_description"],
 	})
+}
+
+// withAutoplay follows a song played on its own (from search, say: the
+// context is the bare track) with Spotify's station around it, as Spotify's
+// apps autoplay similar songs once it ends. Any other context is returned
+// as is. Best-effort: on failure the song plays alone.
+func (r *connectReceiver) withAutoplay(trs []playlist.Track) []playlist.Track {
+	if typ, _, ok := splitSpotifyURI(r.ctxURI); !ok || typ != "track" || len(trs) != 1 {
+		return trs
+	}
+	seed := trs[0].Path
+	uris, err := stationTrackURIs(r.ctx, r.s, seed, []string{seed})
+	if err != nil {
+		applog.Warn("spotify: connect: autoplay: %v", err)
+		return trs
+	}
+	for _, uri := range stationTracks(uris, connectAutoplayTracks) {
+		if uri != seed {
+			trs = append(trs, playlist.Track{Path: uri})
+		}
+	}
+	return trs
 }
 
 // allContextTracks returns every track of the context, at most limit of them,
