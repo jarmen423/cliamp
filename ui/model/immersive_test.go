@@ -454,3 +454,65 @@ func TestImmersiveQueuePanelShowsUpcoming(t *testing.T) {
 		t.Fatalf("jump to an upcoming row played %q, want Two", cur.Title)
 	}
 }
+
+// immersiveProvidersModel is immersiveModel with Radio active and Spotify
+// registered, the providers a Shift+letter switch moves between.
+func immersiveProvidersModel(t *testing.T) *Model {
+	t.Helper()
+	m := immersiveModel(t)
+	radio := commandsTestProvider{name: "Radio"}
+	m.providers = []provider.Entry{
+		{Key: "radio", Name: "Radio", Provider: radio},
+		{Key: "spotify", Name: "Spotify", Provider: commandsTestProvider{name: "Spotify"}},
+	}
+	m.provPillIdx, m.provider = 0, radio
+	m.immersive.prov = radio
+	m.immersive.section = immSecAlbums
+	return m
+}
+
+func TestImmersiveProviderShortcutReopensOnProvider(t *testing.T) {
+	m := immersiveProvidersModel(t)
+
+	cmd := m.handleImmersiveKey(keyMsg("S"))
+
+	if got := m.activeProviderKey(); got != "spotify" {
+		t.Fatalf("active provider = %q, want spotify", got)
+	}
+	if !m.immersive.active || m.immersive.prov == nil || m.immersive.prov.Name() != "Spotify" {
+		t.Fatalf("immersive active=%v prov=%v, want immersive on Spotify", m.immersive.active, m.immersive.prov)
+	}
+	if m.immersive.section != immSecPlaylists || !m.immersive.loadingLists {
+		t.Fatalf("section=%d loadingLists=%v, want a fresh Playlists root", m.immersive.section, m.immersive.loadingLists)
+	}
+	if cmd == nil {
+		t.Fatal("no fetch command for the new provider")
+	}
+}
+
+func TestImmersiveProviderShortcutStaysPut(t *testing.T) {
+	for _, tt := range []struct {
+		name, key string
+		active    string
+	}{
+		{"already on the provider", "R", "radio"}, // R is immersive radio, never the provider switch
+		{"same provider again", "S", "spotify"},
+		{"unconfigured provider", "T", "radio"},
+		{"not a shortcut", "K", "radio"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := immersiveProvidersModel(t)
+			if tt.active == "spotify" {
+				m.provPillIdx, m.provider = 1, m.providers[1].Provider
+				m.immersive.prov = m.provider
+			}
+			m.handleImmersiveKey(keyMsg(tt.key))
+			if got := m.activeProviderKey(); got != tt.active {
+				t.Errorf("active provider = %q, want %q", got, tt.active)
+			}
+			if !m.immersive.active || m.immersive.section != immSecAlbums {
+				t.Errorf("immersive active=%v section=%d, want the page left as it was", m.immersive.active, m.immersive.section)
+			}
+		})
+	}
+}
