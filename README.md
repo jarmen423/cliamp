@@ -13,17 +13,19 @@ https://github.com/user-attachments/assets/55e251f2-e13b-43d9-bb6a-7b1960e7d7d0
 
 ## What this fork adds
 
-- **Immersive mode (prototype).** Press `I` for a full-screen layout: visualizer band,
-  Now Playing and Queue column, and a list, rows or grid canvas with cover art.
-  Cover art renders as real images over kitty graphics or Sixel, with a
-  block-character fallback. See
-  [Immersive mode](docs/keybindings.md#immersive-mode-prototype) and the
-  `images` setting in [docs/configuration.md](docs/configuration.md).
+- **Immersive mode (prototype).** A browse layout like the Spotify apps:
+  visualizer band, nav pills, a Now Playing and Queue column, and a list, rows
+  or grid canvas with cover art. Press `I`, or set `immersive = true` in
+  `config.toml`. See [Immersive mode](docs/keybindings.md#immersive-mode-prototype).
 - **Pixel visualizers.** Aurora and Phosphor, plus the Ridgeline,
-  EventHorizon, Stage and Encore scenes. In the immersive band and the
-  full-screen visualizer they draw real images on terminals with kitty
-  graphics or Sixel, and half-block text everywhere else. Encore looks out
-  from the stage at an arena of phone lights that react to the music.
+  EventHorizon, Stage and Encore scenes. Encore looks out from the stage at an
+  arena of phone lights that react to the music.
+- **Terminal graphics.** Cover art and the pixel visualizers render as real
+  images over kitty graphics or Sixel (kitty, Ghostty, Windows Terminal,
+  WezTerm, foot, Konsole). They show in immersive mode and in the full-screen
+  visualizer (`V`). The classic layout, and terminals without graphics
+  support, use half-block text. See the `images` setting in
+  [docs/configuration.md](docs/configuration.md).
 - **Spotify.** A [Browse](docs/spotify.md#browse) page for genres, moods and
   new releases; a library browser and artist pages; smart shuffle; playlist
   write operations; and [Spotify Connect](docs/spotify.md#spotify-connect)
@@ -36,7 +38,8 @@ https://github.com/user-attachments/assets/55e251f2-e13b-43d9-bb6a-7b1960e7d7d0
 - **Mouse.** Click the timeline to seek, including in the fullscreen
   visualizer, and right-click a track for a context menu.
 - **Windows.** A single static `cliamp.exe` with Spotify support, credentials
-  stored with DPAPI, and Spotify sign-in over a free local port.
+  stored with DPAPI, Spotify sign-in over a free local port, and Sixel
+  graphics in Windows Terminal.
 
 Upstream links: [cliamp.stream](https://cliamp.stream) (upstream's site),
 [hosted docs](https://whiterose.org.contextowl.co/docs/cliamp),
