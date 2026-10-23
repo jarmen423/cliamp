@@ -36,7 +36,7 @@ type SixelEncoder struct {
 type bandWorker struct {
 	cols    [][]colBits // per color, the columns it covers in the current band
 	present []bool
-	out     bytes.Buffer
+	out     []byte
 }
 
 // colBits is one column of a band for one color: x and the six-row mask.
@@ -96,7 +96,7 @@ func (e *SixelEncoder) worker(i int) *bandWorker {
 	}
 	bw := e.workers[i]
 	clear(bw.present)
-	bw.out.Reset()
+	bw.out = bw.out[:0]
 	return bw
 }
 
@@ -105,7 +105,7 @@ func (e *SixelEncoder) worker(i int) *bandWorker {
 // so the work follows the pixels: scenes like Encore use dozens of colors
 // per band, and walking the full width once per color dominated the encode.
 func (e *SixelEncoder) encodeBands(bw *bandWorker, w, y0, y1 int) {
-	b := &bw.out
+	out := bw.out
 	for by := y0; by < y1; by += 6 {
 		rows := min(6, y1-by)
 		band := e.idx[by*w : (by+rows)*w]
@@ -136,39 +136,40 @@ func (e *SixelEncoder) encodeBands(bw *bandWorker, w, y0, y1 int) {
 			}
 			bw.present[c] = true
 			if !first {
-				b.WriteByte('$')
+				out = append(out, '$')
 			}
 			first = false
-			b.WriteByte('#')
-			b.WriteString(strconv.Itoa(c))
+			out = append(out, '#')
+			out = strconv.AppendInt(out, int64(c), 10)
 			x := 0
 			for i := 0; i < len(cols); {
-				sixelRun(b, int(cols[i].x)-x, 0) // the empty columns before it
+				out = appendRun(out, int(cols[i].x)-x, 0) // the empty columns before it
 				j := i + 1
 				for j < len(cols) && cols[j].mask == cols[i].mask && cols[j].x == cols[j-1].x+1 {
 					j++
 				}
-				sixelRun(b, j-i, cols[i].mask)
+				out = appendRun(out, j-i, cols[i].mask)
 				x, i = int(cols[j-1].x)+1, j
 			}
 			bw.cols[c] = cols[:0]
 		}
-		b.WriteByte('-')
+		out = append(out, '-')
 	}
+	bw.out = out
 }
 
-// sixelRun writes n columns of the six-row mask v, run-length encoded when
-// that is shorter.
-func sixelRun(b *bytes.Buffer, n int, v byte) {
+// appendRun appends n columns of the six-row mask v, run-length encoded
+// when that is shorter.
+func appendRun(out []byte, n int, v byte) []byte {
 	if n > 3 {
-		b.WriteByte('!')
-		b.WriteString(strconv.Itoa(n))
-		b.WriteByte(63 + v)
-		return
+		out = append(out, '!')
+		out = strconv.AppendInt(out, int64(n), 10)
+		return append(out, 63+v)
 	}
 	for range n {
-		b.WriteByte(63 + v)
+		out = append(out, 63+v)
 	}
+	return out
 }
 
 // Encode returns a complete Sixel DCS sequence for img.
@@ -251,7 +252,7 @@ func (e *SixelEncoder) encode(w, h int, prep func(y0, y1 int)) []byte {
 	var b bytes.Buffer
 	total := 64
 	for _, bw := range ws {
-		total += bw.out.Len()
+		total += len(bw.out)
 	}
 	b.Grow(total + len(e.pal)*16)
 	// P2=1: pixels left at 0 stay transparent; raster attributes give the
@@ -278,7 +279,7 @@ func (e *SixelEncoder) encode(w, h int, prep func(y0, y1 int)) []byte {
 		b.WriteString(strconv.Itoa(int(p.B) * 100 / 255))
 	}
 	for _, bw := range ws {
-		b.Write(bw.out.Bytes())
+		b.Write(bw.out)
 	}
 	b.WriteString("\x1b\\")
 	return b.Bytes()
