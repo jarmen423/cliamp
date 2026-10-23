@@ -814,10 +814,12 @@ func main() {
 	appmeta.SetVersion(buildVersion())
 	// The pixel visualizers allocate a frame's Sixel data many times a second
 	// against a live heap of a few tens of MB; Go's default target (GOGC=100)
-	// lets the heap double before a collection. 25 keeps the resident set
-	// about a third lower for about a point of CPU. GOGC still overrides it.
+	// lets the heap double before a collection. 50 cuts the resident set by
+	// about an eighth with no measurable CPU cost; 25 saved more but cost about
+	// a fifth more CPU on Windows, where returning memory is dearer. GOGC still
+	// overrides it.
 	if os.Getenv("GOGC") == "" {
-		debug.SetGCPercent(25)
+		debug.SetGCPercent(50)
 	}
 	app := buildApp()
 	if err := app.Run(context.Background(), os.Args); err != nil {
