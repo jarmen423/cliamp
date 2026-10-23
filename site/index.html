@@ -310,7 +310,7 @@ footer .aml a{color:var(--accent)}
     <div class="wrap">
       <div class="eyebrow">spotify in the terminal</div>
       <h2>A Spotify UI with real album art</h2>
-      <p class="sub">Immersive mode turns your Spotify library into a browsable grid: playlist and album covers, a Now Playing card with the cover of the current track, a queue, and a visualizer across the top. All of it runs in a terminal window in about 80 MB of RAM.</p>
+      <p class="sub">Immersive mode turns your Spotify library into a browsable grid: playlist and album covers, a Now Playing card with the cover of the current track, a queue, and a visualizer across the top. In Windows Terminal, all of it runs in about 80 MB of RAM.</p>
 
       <div class="sp">
         <figure class="shot">
@@ -322,9 +322,9 @@ footer .aml a{color:var(--accent)}
         </figure>
         <div>
           <div class="ram">
-            <div class="n">~80<small>MB RAM</small></div>
-            <p>Streaming Spotify at 320 kbps with album art on screen and the Encore visualizer running in the immersive view.</p>
-            <p class="fine">Resident memory, median of repeated runs on Linux, on the build with the memory work in <a href="https://github.com/jarmen423/cliamp/pull/32">#32</a>, which ships in the next release. The current release, v3.1.5, uses about 99 MB. The full-screen visualizer uses about 93 MB.</p>
+            <div class="n">~80<small>MB RAM on Windows</small></div>
+            <p>Streaming Spotify at 320 kbps with album art on screen and the Encore visualizer running in the immersive view, in v3.1.6.</p>
+            <p class="fine">Working set in Windows Terminal, as Task Manager shows it: 80.6 MB median, 83 MB peak. The same session on Linux uses about 86 MB (RSS). The full-screen visualizer uses about 89 MB on Windows and 102 MB on Linux. In the immersive view, v3.1.5 used about 92 MB on Windows and 99 MB on Linux. Measurements and method in <a href="https://github.com/jarmen423/cliamp/pull/32">#32</a>.</p>
           </div>
         </div>
         <div>
