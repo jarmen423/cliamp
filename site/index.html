@@ -176,6 +176,23 @@ section{padding:clamp(56px,7vw,96px) 0;border-bottom:1px solid var(--line-2)}
 .sources{margin-top:28px;color:var(--fg-2);font-size:15px;max-width:80ch}
 .sources b{color:var(--fg);font-weight:500}
 
+/* spotify */
+.sp{display:grid;grid-template-columns:1fr 1.3fr;gap:20px 28px;margin-top:32px;align-items:start}
+.sp .shot{grid-column:1/-1}
+@media (max-width:860px){.sp{grid-template-columns:1fr}}
+.sp>*{min-width:0}
+.shot{margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#000}
+.shot img{display:block;width:100%;height:auto}
+.shot figcaption{font-family:var(--mono);font-size:12px;color:var(--mute);padding:10px 14px;border-top:1px solid var(--line-2);background:var(--panel)}
+.ram{border:1px solid var(--line-2);border-radius:10px;background:var(--panel);padding:20px}
+.ram .n{font-family:var(--mono);font-size:clamp(44px,6vw,64px);line-height:1;color:var(--accent);letter-spacing:-.03em}
+.ram .n small{font-size:.4em;color:var(--fg-2);margin-left:6px;letter-spacing:0}
+.ram p{color:var(--fg-2);font-size:14.5px;margin-top:10px}
+.ram .fine{font-size:13px;color:var(--mute);margin-top:12px}
+.sp-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.sp-list li{border-left:2px solid var(--line);padding:2px 0 2px 14px;color:var(--fg-2);font-size:14.5px}
+.sp-list li b{color:var(--fg);font-weight:500}
+
 /* install */
 .install{display:grid;grid-template-columns:1.2fr 1fr;gap:28px;margin-top:32px}
 .install>*,.steps>*,.two>*,.vis-grid>*,.feat-grid>*,.howto>*,.credits>*{min-width:0}
@@ -215,6 +232,7 @@ footer .aml a{color:var(--accent)}
     <a class="brand" href="#top" aria-label="cliamp fork home"><img src="favicon.svg" alt="" width="22" height="22">cliamp<span class="fk">fork</span></a>
     <nav class="nav" aria-label="Primary">
       <a href="#visualizers" class="opt">visualizers</a>
+      <a href="#spotify" class="opt">spotify</a>
       <a href="#fork" class="opt">what's new</a>
       <a href="#install">install</a>
       <a href="#headless" class="opt">headless</a>
@@ -284,6 +302,39 @@ footer .aml a{color:var(--accent)}
         <div class="note"><b>Full screen.</b> Press <kbd>V</kbd> for the full-screen visualizer, then <kbd>v</kbd> to cycle through all 39 built-in modes and <kbd>c</kbd> to cycle back. The choice is saved.</div>
         <div class="note"><b>Immersive.</b> Press <kbd>I</kbd>, or set <code>immersive = true</code> in <code>config.toml</code>. The visualizer runs in the band across the top.</div>
         <div class="note"><b>Terminals.</b> kitty graphics in kitty and Ghostty; Sixel in Windows Terminal, WezTerm, foot, Konsole and xterm with Sixel enabled. Force one with <code>images = "sixel"</code>.</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="spotify">
+    <div class="wrap">
+      <div class="eyebrow">spotify in the terminal</div>
+      <h2>A Spotify UI with real album art</h2>
+      <p class="sub">Immersive mode turns your Spotify library into a browsable grid: playlist and album covers, a Now Playing card with the cover of the current track, a queue, and a visualizer across the top. In Windows Terminal, all of it runs in about 80 MB of RAM.</p>
+
+      <div class="sp">
+        <figure class="shot">
+          <picture>
+            <source srcset="media/spotify-immersive.webp" type="image/webp">
+            <img src="media/spotify-immersive.jpg" width="1600" height="898" loading="lazy" alt="cliamp in immersive mode: a grid of Spotify playlists with cover art, Now Playing with album art, and the Ridgeline visualizer across the top">
+          </picture>
+          <figcaption>Immersive mode with Spotify: Playlists grid, Now Playing, and the Ridgeline visualizer, rendered over Sixel.</figcaption>
+        </figure>
+        <div>
+          <div class="ram">
+            <div class="n">~80<small>MB RAM on Windows</small></div>
+            <p>Streaming Spotify at 320 kbps with album art on screen and the Encore visualizer running in the immersive view, in v3.1.6.</p>
+            <p class="fine">Working set in Windows Terminal, as Task Manager shows it: 80.6 MB median, 83 MB peak. The same session on Linux uses about 86 MB (RSS). The full-screen visualizer uses about 89 MB on Windows and 102 MB on Linux. In the immersive view, v3.1.5 used about 92 MB on Windows and 99 MB on Linux. Measurements and method in <a href="https://github.com/jarmen423/cliamp/pull/32">#32</a>.</p>
+          </div>
+        </div>
+        <div>
+          <ul class="sp-list">
+            <li><b>Your library.</b> Playlists, artists, albums and podcasts as pills, with search. <a href="https://github.com/jarmen423/cliamp/blob/main/docs/spotify.md#browse">Browse</a> adds genres, moods and new releases.</li>
+            <li><b>Spotify Connect.</b> cliamp shows up under "Connect to a device" in the Spotify apps, so your phone can pick the music. <a href="https://github.com/jarmen423/cliamp/blob/main/docs/spotify.md#spotify-connect">Setup</a>.</li>
+            <li><b>Radio and smart shuffle.</b> Song, artist and album radio, smart shuffle, artist pages, and playlist editing, from the keyboard or the mouse.</li>
+          </ul>
+          <p class="sub" style="font-size:13.5px">Needs a Spotify Premium account. Press <kbd>I</kbd> to open immersive mode.</p>
+        </div>
       </div>
     </div>
   </section>
