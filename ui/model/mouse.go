@@ -62,12 +62,12 @@ func (ms *mouseState) doubleClick(target string) bool {
 	return false
 }
 
-// recordMouseGeometry maps this frame's content to absolute screen
-// coordinates: padTop/padLeft mirror centerFrame's centering and the frame's
+// recordMouseGeometry maps this frame (the framed content View draws) to
+// absolute screen coordinates: padTop/padLeft mirror centerFrame's centering and the frame's
 // own padding converts a content line index into a screen row. The seek bar
 // and body are located inside the sections by re-rendering them — the
 // renders are pure functions of model state, so string equality is exact.
-func (m *Model) recordMouseGeometry(content string, sections []string, body string) {
+func (m *Model) recordMouseGeometry(frame string, sections []string, body string) {
 	if m.mouse == nil {
 		return
 	}
@@ -76,7 +76,6 @@ func (m *Model) recordMouseGeometry(content string, sections []string, body stri
 	if m.layout.tooSmall() {
 		return
 	}
-	frame := m.layout.frameStyle().Render(content)
 	padLeft, padTop := m.frameOffset(frame)
 	x := padLeft + m.layout.paddingH
 	row := padTop + m.layout.paddingV

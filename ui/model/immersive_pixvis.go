@@ -96,11 +96,11 @@ func (w *pixVisWorker) run() {
 			pv = ui.NewPixelVis(job.mode)
 		}
 		pv.SetColors(job.colors)
-		if img == nil || img.Rect.Dx() != job.pw || img.Rect.Dy() != job.ph {
-			img = image.NewRGBA(image.Rect(0, 0, job.pw, job.ph))
-		}
-		pv.Draw(img, job.in)
 		if job.kitty != nil {
+			if img == nil || img.Rect.Dx() != job.pw || img.Rect.Dy() != job.ph {
+				img = image.NewRGBA(image.Rect(0, 0, job.pw, job.ph))
+			}
+			pv.Draw(img, job.in)
 			changed := !kenc.Unchanged(img)
 			if w.resend.Swap(false) || changed {
 				_, _ = job.kitty.Write(kenc.Encode(kittyVisID, img, job.w, job.h, job.tmux))
@@ -110,11 +110,14 @@ func (w *pixVisWorker) run() {
 		if p := ui.PixelPalette(job.colors); enc == nil || !slices.Equal(p, pal) {
 			pal, enc = p, termimg.NewSixelEncoder(p, 0)
 		}
+		// Sixel takes the frame at its drawn size: the encoder repeats the
+		// palette indices up to the band, never building the large image.
+		frame := pv.DrawNative(job.pw, job.ph, job.in)
 		seq++
 		w.layer.SetLive(termimg.Placement{
 			Key: "vis#" + strconv.Itoa(seq),
 			X:   job.x, Y: job.y, W: job.w, H: job.h,
-			Data: enc.Encode(img),
+			Data: enc.EncodeScaled(frame, job.pw, job.ph),
 		})
 	}
 }

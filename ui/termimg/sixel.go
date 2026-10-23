@@ -27,14 +27,22 @@ type SixelEncoder struct {
 
 	idx     []uint8
 	workers []*bandWorker
+
+	small  []uint8 // EncodeScaled's indices at the source size
+	xs     []int   // EncodeScaled's source column per destination column
+	xsFrom int     // the source width xs maps from
 }
 
 type bandWorker struct {
-	bits    [][]byte
-	used    []bool
+	cols    [][]colBits // per color, the columns it covers in the current band
 	present []bool
-	out     bytes.Buffer
-	width   int // image width the bit rows were last used for
+	out     []byte
+}
+
+// colBits is one column of a band for one color: x and the six-row mask.
+type colBits struct {
+	x    int32
+	mask byte
 }
 
 var bayer4 = [4][4]int{{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}}
@@ -62,11 +70,13 @@ func NewSixelEncoder(pal []color.RGBA, dither int) *SixelEncoder {
 
 func clamp8(v int) int { return max(0, min(255, v)) }
 
-func (e *SixelEncoder) quantizeRows(img *image.RGBA, y0, y1 int) {
+// quantizeRows maps rows [y0, y1) of img to palette indices in idx, which
+// holds img's width per row.
+func (e *SixelEncoder) quantizeRows(img *image.RGBA, y0, y1 int, idx []uint8) {
 	w := img.Rect.Dx()
 	for y := y0; y < y1; y++ {
 		row := img.Pix[y*img.Stride:]
-		out := e.idx[y*w : (y+1)*w]
+		out := idx[y*w : (y+1)*w]
 		for x := range out {
 			p := row[x*4:]
 			r, g, b := int(p[0]), int(p[1]), int(p[2])
@@ -79,89 +89,138 @@ func (e *SixelEncoder) quantizeRows(img *image.RGBA, y0, y1 int) {
 	}
 }
 
-func (e *SixelEncoder) worker(i, w int) *bandWorker {
+func (e *SixelEncoder) worker(i int) *bandWorker {
 	for len(e.workers) <= i {
 		n := len(e.pal)
-		e.workers = append(e.workers, &bandWorker{bits: make([][]byte, n), used: make([]bool, n), present: make([]bool, n)})
+		e.workers = append(e.workers, &bandWorker{cols: make([][]colBits, n), present: make([]bool, n)})
 	}
 	bw := e.workers[i]
-	if w != bw.width {
-		// encodeBands only clears the first w bytes of the colors it used,
-		// so a width change must start from clean rows.
-		for c := range bw.bits {
-			if len(bw.bits[c]) < w {
-				bw.bits[c] = make([]byte, w)
-			} else {
-				clear(bw.bits[c])
-			}
-		}
-		clear(bw.used)
-		bw.width = w
-	}
 	clear(bw.present)
-	bw.out.Reset()
+	bw.out = bw.out[:0]
 	return bw
 }
 
 // encodeBands writes Sixel data for pixel rows [y0, y1); y0 is a multiple
-// of six.
+// of six. A band is read column by column into a list of columns per color,
+// so the work follows the pixels: scenes like Encore use dozens of colors
+// per band, and walking the full width once per color dominated the encode.
 func (e *SixelEncoder) encodeBands(bw *bandWorker, w, y0, y1 int) {
-	b := &bw.out
+	out := bw.out
 	for by := y0; by < y1; by += 6 {
-		for c := range bw.used {
-			if bw.used[c] {
-				clear(bw.bits[c][:w])
-				bw.used[c] = false
+		rows := min(6, y1-by)
+		band := e.idx[by*w : (by+rows)*w]
+		for x := range w {
+			var cs [6]uint8
+			var ms [6]byte
+			n := 0
+			for r := range rows {
+				c := band[r*w+x]
+				k := 0
+				for k < n && cs[k] != c {
+					k++
+				}
+				if k == n {
+					cs[n], n = c, n+1
+				}
+				ms[k] |= 1 << r
 			}
-		}
-		for r := 0; r < 6 && by+r < y1; r++ {
-			for x, c := range e.idx[(by+r)*w : (by+r+1)*w] {
-				bw.bits[c][x] |= 1 << r
-				bw.used[c] = true
+			for k := range n {
+				bw.cols[cs[k]] = append(bw.cols[cs[k]], colBits{int32(x), ms[k]})
 			}
 		}
 		first := true
 		for c := range e.pal {
-			if !bw.used[c] {
+			cols := bw.cols[c]
+			if len(cols) == 0 {
 				continue
 			}
 			bw.present[c] = true
 			if !first {
-				b.WriteByte('$')
+				out = append(out, '$')
 			}
 			first = false
-			b.WriteByte('#')
-			b.WriteString(strconv.Itoa(c))
-			bs := bw.bits[c][:w]
-			end := w
-			for end > 0 && bs[end-1] == 0 {
-				end--
-			}
-			for x := 0; x < end; {
-				v := bs[x]
-				n := 1
-				for x+n < end && bs[x+n] == v {
-					n++
+			out = append(out, '#')
+			out = strconv.AppendInt(out, int64(c), 10)
+			x := 0
+			for i := 0; i < len(cols); {
+				out = appendRun(out, int(cols[i].x)-x, 0) // the empty columns before it
+				j := i + 1
+				for j < len(cols) && cols[j].mask == cols[i].mask && cols[j].x == cols[j-1].x+1 {
+					j++
 				}
-				if n > 3 {
-					b.WriteByte('!')
-					b.WriteString(strconv.Itoa(n))
-					b.WriteByte(63 + v)
-				} else {
-					for range n {
-						b.WriteByte(63 + v)
-					}
-				}
-				x += n
+				out = appendRun(out, j-i, cols[i].mask)
+				x, i = int(cols[j-1].x)+1, j
 			}
+			bw.cols[c] = cols[:0]
 		}
-		b.WriteByte('-')
+		out = append(out, '-')
 	}
+	bw.out = out
+}
+
+// appendRun appends n columns of the six-row mask v, run-length encoded
+// when that is shorter.
+func appendRun(out []byte, n int, v byte) []byte {
+	if n > 3 {
+		out = append(out, '!')
+		out = strconv.AppendInt(out, int64(n), 10)
+		return append(out, 63+v)
+	}
+	for range n {
+		out = append(out, 63+v)
+	}
+	return out
 }
 
 // Encode returns a complete Sixel DCS sequence for img.
 func (e *SixelEncoder) Encode(img *image.RGBA) []byte {
 	w, h := img.Rect.Dx(), img.Rect.Dy()
+	return e.encode(w, h, func(y0, y1 int) { e.quantizeRows(img, y0, y1, e.idx) })
+}
+
+// EncodeScaled is Encode of src scaled up to dw x dh by nearest neighbor,
+// the mapping canvas copies use, without building the large image: src is
+// quantized at its own size and the palette indices are what get repeated.
+// A src larger than dw x dh in either direction is encoded as it is.
+func (e *SixelEncoder) EncodeScaled(src *image.RGBA, dw, dh int) []byte {
+	sw, sh := src.Rect.Dx(), src.Rect.Dy()
+	if sw <= 0 || sh <= 0 || sw > dw || sh > dh || sw == dw && sh == dh {
+		return e.Encode(src)
+	}
+	if cap(e.small) < sw*sh {
+		e.small = make([]uint8, sw*sh)
+	}
+	small := e.small[:sw*sh]
+	e.quantizeRows(src, 0, sh, small)
+	if len(e.xs) != dw || e.xsFrom != sw {
+		e.xs, e.xsFrom = make([]int, dw), sw
+		for x := range e.xs {
+			e.xs[x] = x * sw / dw
+		}
+	}
+	xs := e.xs
+	return e.encode(dw, dh, func(y0, y1 int) {
+		prevSy := -1
+		var prev []uint8
+		for y := y0; y < y1; y++ {
+			row := e.idx[y*dw : (y+1)*dw]
+			sy := y * sh / dh
+			if sy == prevSy {
+				copy(row, prev)
+				continue
+			}
+			srow := small[sy*sw : (sy+1)*sw]
+			for x, sx := range xs {
+				row[x] = srow[sx]
+			}
+			prevSy, prev = sy, row
+		}
+	})
+}
+
+// encode writes a w x h image whose palette indices prep fills in e.idx, one
+// range of rows per worker, as a complete Sixel DCS sequence.
+func (e *SixelEncoder) encode(w, h int, prep func(y0, y1 int)) []byte {
 	if w <= 0 || h <= 0 {
 		return nil
 	}
@@ -175,7 +234,7 @@ func (e *SixelEncoder) Encode(img *image.RGBA) []byte {
 	per := (bands + k - 1) / k
 	ws := make([]*bandWorker, k)
 	for i := range ws {
-		ws[i] = e.worker(i, w)
+		ws[i] = e.worker(i)
 	}
 	var wg sync.WaitGroup
 	for i := range k {
@@ -184,7 +243,7 @@ func (e *SixelEncoder) Encode(img *image.RGBA) []byte {
 			continue
 		}
 		wg.Go(func() {
-			e.quantizeRows(img, y0, y1)
+			prep(y0, y1)
 			e.encodeBands(ws[i], w, y0, y1)
 		})
 	}
@@ -193,7 +252,7 @@ func (e *SixelEncoder) Encode(img *image.RGBA) []byte {
 	var b bytes.Buffer
 	total := 64
 	for _, bw := range ws {
-		total += bw.out.Len()
+		total += len(bw.out)
 	}
 	b.Grow(total + len(e.pal)*16)
 	// P2=1: pixels left at 0 stay transparent; raster attributes give the
@@ -220,7 +279,7 @@ func (e *SixelEncoder) Encode(img *image.RGBA) []byte {
 		b.WriteString(strconv.Itoa(int(p.B) * 100 / 255))
 	}
 	for _, bw := range ws {
-		b.Write(bw.out.Bytes())
+		b.Write(bw.out)
 	}
 	b.WriteString("\x1b\\")
 	return b.Bytes()
