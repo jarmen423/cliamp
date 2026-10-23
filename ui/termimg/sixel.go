@@ -30,11 +30,15 @@ type SixelEncoder struct {
 }
 
 type bandWorker struct {
-	bits    [][]byte
-	used    []bool
+	cols    [][]colBits // per color, the columns it covers in the current band
 	present []bool
 	out     bytes.Buffer
-	width   int // image width the bit rows were last used for
+}
+
+// colBits is one column of a band for one color: x and the six-row mask.
+type colBits struct {
+	x    int32
+	mask byte
 }
 
 var bayer4 = [4][4]int{{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}}
@@ -79,50 +83,49 @@ func (e *SixelEncoder) quantizeRows(img *image.RGBA, y0, y1 int) {
 	}
 }
 
-func (e *SixelEncoder) worker(i, w int) *bandWorker {
+func (e *SixelEncoder) worker(i int) *bandWorker {
 	for len(e.workers) <= i {
 		n := len(e.pal)
-		e.workers = append(e.workers, &bandWorker{bits: make([][]byte, n), used: make([]bool, n), present: make([]bool, n)})
+		e.workers = append(e.workers, &bandWorker{cols: make([][]colBits, n), present: make([]bool, n)})
 	}
 	bw := e.workers[i]
-	if w != bw.width {
-		// encodeBands only clears the first w bytes of the colors it used,
-		// so a width change must start from clean rows.
-		for c := range bw.bits {
-			if len(bw.bits[c]) < w {
-				bw.bits[c] = make([]byte, w)
-			} else {
-				clear(bw.bits[c])
-			}
-		}
-		clear(bw.used)
-		bw.width = w
-	}
 	clear(bw.present)
 	bw.out.Reset()
 	return bw
 }
 
 // encodeBands writes Sixel data for pixel rows [y0, y1); y0 is a multiple
-// of six.
+// of six. A band is read column by column into a list of columns per color,
+// so the work follows the pixels: scenes like Encore use dozens of colors
+// per band, and walking the full width once per color dominated the encode.
 func (e *SixelEncoder) encodeBands(bw *bandWorker, w, y0, y1 int) {
 	b := &bw.out
 	for by := y0; by < y1; by += 6 {
-		for c := range bw.used {
-			if bw.used[c] {
-				clear(bw.bits[c][:w])
-				bw.used[c] = false
+		rows := min(6, y1-by)
+		band := e.idx[by*w : (by+rows)*w]
+		for x := range w {
+			var cs [6]uint8
+			var ms [6]byte
+			n := 0
+			for r := range rows {
+				c := band[r*w+x]
+				k := 0
+				for k < n && cs[k] != c {
+					k++
+				}
+				if k == n {
+					cs[n], n = c, n+1
+				}
+				ms[k] |= 1 << r
 			}
-		}
-		for r := 0; r < 6 && by+r < y1; r++ {
-			for x, c := range e.idx[(by+r)*w : (by+r+1)*w] {
-				bw.bits[c][x] |= 1 << r
-				bw.used[c] = true
+			for k := range n {
+				bw.cols[cs[k]] = append(bw.cols[cs[k]], colBits{int32(x), ms[k]})
 			}
 		}
 		first := true
 		for c := range e.pal {
-			if !bw.used[c] {
+			cols := bw.cols[c]
+			if len(cols) == 0 {
 				continue
 			}
 			bw.present[c] = true
@@ -132,30 +135,33 @@ func (e *SixelEncoder) encodeBands(bw *bandWorker, w, y0, y1 int) {
 			first = false
 			b.WriteByte('#')
 			b.WriteString(strconv.Itoa(c))
-			bs := bw.bits[c][:w]
-			end := w
-			for end > 0 && bs[end-1] == 0 {
-				end--
-			}
-			for x := 0; x < end; {
-				v := bs[x]
-				n := 1
-				for x+n < end && bs[x+n] == v {
-					n++
+			x := 0
+			for i := 0; i < len(cols); {
+				sixelRun(b, int(cols[i].x)-x, 0) // the empty columns before it
+				j := i + 1
+				for j < len(cols) && cols[j].mask == cols[i].mask && cols[j].x == cols[j-1].x+1 {
+					j++
 				}
-				if n > 3 {
-					b.WriteByte('!')
-					b.WriteString(strconv.Itoa(n))
-					b.WriteByte(63 + v)
-				} else {
-					for range n {
-						b.WriteByte(63 + v)
-					}
-				}
-				x += n
+				sixelRun(b, j-i, cols[i].mask)
+				x, i = int(cols[j-1].x)+1, j
 			}
+			bw.cols[c] = cols[:0]
 		}
 		b.WriteByte('-')
+	}
+}
+
+// sixelRun writes n columns of the six-row mask v, run-length encoded when
+// that is shorter.
+func sixelRun(b *bytes.Buffer, n int, v byte) {
+	if n > 3 {
+		b.WriteByte('!')
+		b.WriteString(strconv.Itoa(n))
+		b.WriteByte(63 + v)
+		return
+	}
+	for range n {
+		b.WriteByte(63 + v)
 	}
 }
 
@@ -175,7 +181,7 @@ func (e *SixelEncoder) Encode(img *image.RGBA) []byte {
 	per := (bands + k - 1) / k
 	ws := make([]*bandWorker, k)
 	for i := range ws {
-		ws[i] = e.worker(i, w)
+		ws[i] = e.worker(i)
 	}
 	var wg sync.WaitGroup
 	for i := range k {

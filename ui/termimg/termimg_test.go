@@ -390,3 +390,111 @@ func TestLayerKeepsPendingSpotBesideNewImage(t *testing.T) {
 		t.Fatalf("old image at the pending spot was forgotten, never erased: %q", pre)
 	}
 }
+
+// decodeSixel turns an Encode result back into palette indices (-1 where no
+// color was drawn), so tests can check what the bands mean, not their bytes.
+func decodeSixel(t *testing.T, s string, w, h int) []int {
+	t.Helper()
+	q := strings.IndexByte(s, 'q')
+	body := strings.TrimSuffix(s[q+1:], "\x1b\\")
+	out := make([]int, w*h)
+	for i := range out {
+		out[i] = -1
+	}
+	x, band, c := 0, 0, 0
+	num := func(i int) (int, int) {
+		n := 0
+		for i < len(body) && body[i] >= '0' && body[i] <= '9' {
+			n = n*10 + int(body[i]-'0')
+			i++
+		}
+		return n, i
+	}
+	put := func(v byte, n int) {
+		for range n {
+			for r := range 6 {
+				if v&(1<<r) != 0 {
+					if y := band*6 + r; y < h && x < w {
+						out[y*w+x] = c
+					}
+				}
+			}
+			x++
+		}
+	}
+	for i := 0; i < len(body); {
+		switch ch := body[i]; {
+		case ch == '"': // raster attributes
+			i++
+			for i < len(body) && (body[i] == ';' || body[i] >= '0' && body[i] <= '9') {
+				i++
+			}
+		case ch == '#':
+			n, j := num(i + 1)
+			if j < len(body) && body[j] == ';' { // a color definition
+				for j < len(body) && (body[j] == ';' || body[j] >= '0' && body[j] <= '9') {
+					j++
+				}
+			}
+			c, i = n, j
+		case ch == '!':
+			n, j := num(i + 1)
+			put(body[j]-63, n)
+			i = j + 1
+		case ch == '$':
+			x = 0
+			i++
+		case ch == '-':
+			x, band = 0, band+1
+			i++
+		case ch >= 63 && ch <= 126:
+			put(ch-63, 1)
+			i++
+		default:
+			t.Fatalf("unexpected byte %q at %d", ch, i)
+		}
+	}
+	return out
+}
+
+func TestSixelEncodeRoundTrips(t *testing.T) {
+	pal := make([]color.RGBA, 64)
+	for i := range pal {
+		pal[i] = color.RGBA{uint8(i * 4), uint8(255 - i*4), uint8(i * 37), 255}
+	}
+	rng := uint32(1)
+	next := func(n int) int { rng = rng*1664525 + 1013904223; return int(rng>>8) % n }
+	e := NewSixelEncoder(pal, 0)
+	for _, tc := range []struct {
+		name    string
+		w, h    int
+		density int // percent of pixels that are not the background
+	}{
+		{"sparse lights", 300, 40, 3},
+		{"dense", 120, 25, 90},
+		{"one column", 1, 13, 50},
+		{"edge widths", 5, 7, 60},
+		{"wide strip", 900, 12, 15},
+	} {
+		img := image.NewRGBA(image.Rect(0, 0, tc.w, tc.h))
+		want := make([]int, tc.w*tc.h)
+		for i := range want {
+			p := pal[0]
+			if next(100) < tc.density {
+				p = pal[1+next(len(pal)-1)]
+			}
+			img.SetRGBA(i%tc.w, i/tc.w, p)
+		}
+		enc := string(e.Encode(img))
+		e.quantizeRows(img, 0, tc.h) // the reference indices, from the same LUT
+		for i, v := range e.idx[:len(want)] {
+			want[i] = int(v)
+		}
+		got := decodeSixel(t, enc, tc.w, tc.h)
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%s: pixel (%d,%d) decodes to color %d, want %d", tc.name, i%tc.w, i/tc.w, got[i], want[i])
+			}
+		}
+	}
+}
