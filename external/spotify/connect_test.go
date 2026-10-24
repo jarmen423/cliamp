@@ -274,6 +274,46 @@ func TestPlayerStateRules(t *testing.T) {
 	}
 }
 
+// TestPlayerStateTransferClaim: between taking over playback and the TUI
+// playing the track, the reported state is the claimed track, playing and
+// buffering — never the stale "stopped" snapshot, which leaves the sending
+// app playing too. The claim ends once the TUI plays the claimed track.
+func TestPlayerStateTransferClaim(t *testing.T) {
+	r := newTestReceiver(func(any) {})
+	r.notifyUpdate(playback.State{Status: playback.StatusStopped})
+	r.claimPlayback(nil, "spotify:track:new", 42*time.Second, false)
+
+	st := r.playerState()
+	if !st.IsPlaying || st.IsPaused || !st.IsBuffering || st.PlaybackSpeed != 0 {
+		t.Fatalf("claim: playing=%v paused=%v buffering=%v speed=%v, want playing, buffering, speed 0",
+			st.IsPlaying, st.IsPaused, st.IsBuffering, st.PlaybackSpeed)
+	}
+	if st.Track.GetUri() != "spotify:track:new" || st.PositionAsOfTimestamp != 42_000 {
+		t.Fatalf("claim: track=%q pos=%d, want spotify:track:new at 42000", st.Track.GetUri(), st.PositionAsOfTimestamp)
+	}
+
+	// A snapshot still on the old track keeps the claim.
+	r.notifyUpdate(playback.State{Status: playback.StatusPlaying, Track: playback.Track{URL: "spotify:track:old"}})
+	if st = r.playerState(); st.Track.GetUri() != "spotify:track:new" {
+		t.Fatalf("old snapshot replaced the claim: track=%q", st.Track.GetUri())
+	}
+
+	r.notifyUpdate(playback.State{Status: playback.StatusPlaying, Position: 43 * time.Second, Track: playback.Track{URL: "spotify:track:new"}})
+	st = r.playerState()
+	if st.IsBuffering || st.PlaybackSpeed != 1 || r.claim != nil {
+		t.Fatalf("claim should end once the TUI plays the track: buffering=%v speed=%v claim=%v", st.IsBuffering, st.PlaybackSpeed, r.claim)
+	}
+}
+
+func TestPlayerStateTransferClaimExpires(t *testing.T) {
+	r := newTestReceiver(func(any) {})
+	r.claimPlayback(nil, "spotify:track:new", 0, true)
+	r.claim.until = time.Now().Add(-time.Second)
+	if st := r.playerState(); st.IsBuffering || st.Track != nil {
+		t.Fatalf("expired claim still reported: buffering=%v track=%v", st.IsBuffering, st.Track)
+	}
+}
+
 // TestPlayerStateNonSpotifyTrack: local files keep the device registered but
 // report no track (cliamp can't resolve arbitrary paths into Spotify URIs).
 func TestPlayerStateNonSpotifyTrack(t *testing.T) {
