@@ -189,6 +189,7 @@ Connect requires the same signed-in Premium session as the rest of the provider.
 
 - Play, pause, resume, seek, and skip tracks
 - Transfer the current playback (playlist/album/context and queue) to cliamp
+- Play a single song on its own (from search, say): like Spotify's Autoplay, cliamp follows it with Spotify's station around that song, so the queue keeps going instead of stopping after one track
 - Change the volume, toggle shuffle and repeat, add tracks to the queue, and set a sleep timer
 
 cliamp reports its state (current track, position, volume, shuffle/repeat, sleep timer) back to Spotify, so the app's UI stays in sync — including state changes you make inside cliamp itself. Starting playback from another Spotify client transfers it away: cliamp pauses and the remote device takes over.

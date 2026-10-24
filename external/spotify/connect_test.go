@@ -425,3 +425,49 @@ func TestVolumeMessage(t *testing.T) {
 		t.Fatalf("VolumeDB = %v, want ~6", vm.VolumeDB)
 	}
 }
+
+func TestWithAutoplayFollowsALoneSong(t *testing.T) {
+	const seed = "spotify:track:seed"
+	contextURI, recent := stubStation(t, []string{
+		seed, "spotify:track:a", "spotify:episode:e", "spotify:track:a", "spotify:track:b",
+	}, nil)
+	r := newTestReceiver(func(any) {})
+	r.ctxURI = seed
+
+	got := r.withAutoplay([]playlist.Track{{Path: seed, Title: "Seed"}})
+
+	var paths []string
+	for _, tr := range got {
+		paths = append(paths, tr.Path)
+	}
+	if want := []string{seed, "spotify:track:a", "spotify:track:b"}; !slices.Equal(paths, want) {
+		t.Fatalf("tracks = %v, want %v (the song, then its station without repeats)", paths, want)
+	}
+	if got[0].Title != "Seed" {
+		t.Errorf("song = %+v, want it kept as given", got[0])
+	}
+	if *contextURI != seed || !slices.Equal(*recent, []string{seed}) {
+		t.Errorf("station asked for %q with recent %v, want the song", *contextURI, *recent)
+	}
+}
+
+func TestWithAutoplayLeavesOtherContexts(t *testing.T) {
+	for _, tt := range []struct {
+		name, ctxURI string
+		tracks       []playlist.Track
+		stationErr   error
+	}{
+		{"album", "spotify:album:x", []playlist.Track{{Path: "spotify:track:a"}}, nil},
+		{"playlist", "spotify:playlist:x", []playlist.Track{{Path: "spotify:track:a"}, {Path: "spotify:track:b"}}, nil},
+		{"no station", "spotify:track:a", []playlist.Track{{Path: "spotify:track:a"}}, errors.New("no station")},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			stubStation(t, []string{"spotify:track:z"}, tt.stationErr)
+			r := newTestReceiver(func(any) {})
+			r.ctxURI = tt.ctxURI
+			if got := r.withAutoplay(tt.tracks); len(got) != len(tt.tracks) {
+				t.Errorf("got %d tracks, want the %d given", len(got), len(tt.tracks))
+			}
+		})
+	}
+}
