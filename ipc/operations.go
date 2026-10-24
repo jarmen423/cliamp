@@ -125,6 +125,7 @@ func DefaultOperationRegistry() *OperationRegistry {
 		{Name: "stop", Description: "stop playback"},
 		{Name: "next", Description: "skip to the next track"},
 		{Name: "prev", Description: "skip to the previous track"},
+		{Name: "quit", Description: "quit cliamp, keeping the resume position"},
 		{Name: "volume", Description: "set volume", Parameters: []string{"value"}},
 		{Name: "volume.adjust", Description: "adjust volume", Parameters: []string{"value"}},
 		{Name: "seek", Description: "seek relative to the current position", Parameters: []string{"value"}},

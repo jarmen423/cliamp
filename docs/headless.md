@@ -13,7 +13,7 @@ cliamp --daemon --auto-play --playlist Lofi  # start playing on launch
 cliamp --daemon ~/Music --auto-play          # auto-play a directory
 ```
 
-To stop the daemon, press `Ctrl+C` or send `SIGINT`, `SIGTERM` or `SIGHUP`. The shell sends `SIGHUP` to a background daemon when its terminal closes. cliamp saves the resume position, as the `q` key does in the TUI. A second signal stops a daemon that does not exit.
+To stop the daemon, run `cliamp quit`, press `Ctrl+C`, or send `SIGINT`, `SIGTERM` or `SIGHUP`. The shell sends `SIGHUP` to a background daemon when its terminal closes. cliamp saves the resume position, as the `q` key does in the TUI. A second signal stops a daemon that does not exit. On Windows, use `cliamp quit`: `Stop-Process` ends the daemon without saving the resume position.
 
 ## What works
 
@@ -202,5 +202,5 @@ cliamp --daemon --auto-play http://radio.cliamp.stream/lofi/stream
 
 ## Notes
 
-- The daemon and TUI share one Unix socket. Only one cliamp instance can run for a user. A second daemon exits with the error `cliamp is already running`. It exits before it opens the audio device or loads the plugins, so it does not change the running instance. A second TUI runs without the socket.
+- The daemon and TUI share one Unix socket. Only one cliamp instance can run for a user. A second daemon or TUI exits with the error `cliamp is already running`. It exits before it opens the audio device, signs in to Spotify Connect or loads the plugins, so it does not change the running instance. Run `cliamp quit` first to switch between the daemon and the TUI.
 - cliamp resolves feed, M3U, PLS, and yt-dlp arguments in the background after start. If one of these URLs fails, cliamp adds none of them. The daemon keeps running with the local files and the direct stream URLs. Check `cliamp status`, and look in `~/.config/cliamp/cliamp.log` for the error.

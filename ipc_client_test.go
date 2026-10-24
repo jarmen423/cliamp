@@ -260,3 +260,57 @@ func TestVisModes(t *testing.T) {
 		})
 	}
 }
+
+// cliamp quit returns once the instance has closed its socket, so a new
+// instance can start right after, including when the socket closes before
+// the job result reaches the client.
+func TestIPCQuitWaitsForSocketToClose(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		answer bool // complete the job before closing
+	}{
+		{name: "result then close", answer: true},
+		{name: "close without result"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("CLIAMP_CONFIG_DIR", socketDir(t))
+			srv, err := ipc.NewServer(ipc.DefaultSocketPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = srv.Close() })
+			srv.SetOperationRegistry(ipc.DefaultOperationRegistry())
+			jobs := srv.JobStore()
+			srv.SetV2Dispatcher(ipc.V2DispatcherFunc(func(ctx context.Context, request ipc.V2Request) (ipc.V2Result, *ipc.V2Error) {
+				job, err := jobs.CreateWithContext(ctx, request.Operation)
+				if err != nil {
+					return ipc.V2Result{}, &ipc.V2Error{Code: ipc.V2ErrorCodeConflict, Message: ipc.V2MessageConflict}
+				}
+				go func() {
+					if tt.answer {
+						_, _ = jobs.Start(job.ID)
+						raw, _ := json.Marshal(ipc.Response{OK: true})
+						_ = jobs.Succeed(job.ID, raw)
+					}
+					time.Sleep(100 * time.Millisecond)
+					_ = srv.Close()
+				}()
+				return ipc.V2Result{Job: &job}, nil
+			}))
+
+			if err := ipcQuit(5 * time.Second); err != nil {
+				t.Fatalf("ipcQuit = %v", err)
+			}
+			if running, err := ipc.Listening(ipc.DefaultSocketPath()); err != nil || running {
+				t.Fatalf("after quit: listening=%v err=%v, want the socket closed", running, err)
+			}
+		})
+	}
+}
+
+func TestIPCQuitNotRunning(t *testing.T) {
+	t.Setenv("CLIAMP_CONFIG_DIR", socketDir(t))
+	if err := ipcQuit(time.Second); err == nil {
+		t.Fatal("ipcQuit with no instance succeeded, want an error")
+	}
+}

@@ -262,6 +262,7 @@ Control a running cliamp instance from another terminal:
 ```sh
 cliamp play / pause / toggle / stop    # playback control
 cliamp next / prev                     # track navigation
+cliamp quit                            # quit the running instance, keeping the resume position
 cliamp status                          # current state
 cliamp status --json                   # machine-readable state
 cliamp volume -5                       # set the volume to -5 dB
