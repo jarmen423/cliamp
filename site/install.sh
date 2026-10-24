@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-REPO="bjarneo/cliamp"
+REPO="jarmen423/cliamp"
 
 # Determine install directory: prefer ~/.local/bin (no sudo), fall back to /usr/local/bin
 if [ -z "$INSTALL_DIR" ]; then

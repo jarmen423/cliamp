@@ -169,28 +169,28 @@ func (l *Layer) touched(p Placement) bool {
 	return false
 }
 
-// renderLive draws a new live frame over a live rectangle a Bubbletea frame
-// already put on screen. Anything else waits for the next frame.
-func (l *Layer) renderLive() []byte {
+// renderLive appends to b a new live frame over a live rectangle a Bubbletea
+// frame already put on screen, and reports whether it did. Anything else
+// waits for the next frame.
+func (l *Layer) renderLive(b *bytes.Buffer) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.live == nil || len(l.live.Data) == 0 || l.full {
-		return nil
+		return false
 	}
 	for i, d := range l.drawn {
 		if !d.sameRect(*l.live) {
 			continue
 		}
 		if d.Key == l.live.Key {
-			return nil
+			return false
 		}
-		var b bytes.Buffer
-		cup(&b, l.live.Y, l.live.X)
+		cup(b, l.live.Y, l.live.X)
 		b.Write(l.live.Data)
 		l.drawn[i] = *l.live
-		return b.Bytes()
+		return true
 	}
-	return nil
+	return false
 }
 
 // render returns the bytes that bring the screen from drawn to want around
@@ -324,6 +324,9 @@ type Writer struct {
 	layer    *Layer
 	mu       sync.Mutex
 	pumpOnce sync.Once
+	// frame and live are reused for every write: a live frame carries a whole
+	// Sixel image, so fresh buffers would churn megabytes a second.
+	frame, live bytes.Buffer
 }
 
 // NewWriter wraps f (normally os.Stdout) for layer. The pump that draws live
@@ -333,12 +336,14 @@ func NewWriter(f *os.File, layer *Layer) *Writer {
 }
 
 func (w *Writer) pump() {
+	b := &w.live
 	for range w.layer.kick {
 		w.mu.Lock()
-		if seq := w.layer.renderLive(); len(seq) > 0 {
-			var b bytes.Buffer
-			b.Write(syncBegin)
-			wrap(&b, seq)
+		b.Reset()
+		b.Write(syncBegin)
+		b.Write(saveCur)
+		if w.layer.renderLive(b) {
+			b.Write(restCur)
 			b.Write(syncEnd)
 			_, _ = w.File.Write(b.Bytes())
 		}
@@ -371,12 +376,13 @@ func (w *Writer) Write(p []byte) (int, error) {
 	if bytes.HasSuffix(body, syncEnd) {
 		body, tail = body[:len(body)-len(syncEnd)], syncEnd
 	}
-	var b bytes.Buffer
+	b := &w.frame
+	b.Reset()
 	b.Grow(len(p) + len(pre) + len(post) + 16)
 	b.Write(head)
-	wrap(&b, pre)
+	wrap(b, pre)
 	b.Write(body)
-	wrap(&b, post)
+	wrap(b, post)
 	b.Write(tail)
 	if _, err := w.File.Write(b.Bytes()); err != nil {
 		return 0, err

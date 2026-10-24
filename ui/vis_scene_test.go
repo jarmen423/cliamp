@@ -269,3 +269,32 @@ func BenchmarkSceneDraw(b *testing.B) {
 		}
 	}
 }
+
+// TestDrawNativeScalesToDraw checks that a scene's native frame, scaled up by
+// nearest neighbor, is exactly what Draw draws at the full size.
+func TestDrawNativeScalesToDraw(t *testing.T) {
+	colors := PixelColors{Low: SpectrumLow, Mid: SpectrumMid, High: SpectrumHigh}
+	const w, h = 1200, 800 // over sceneMaxPixels, so the canvas is smaller
+	for _, mode := range []VisMode{VisRidgeline, VisEventHorizon, VisStage, VisEncore} {
+		full, native := NewPixelVis(mode), NewPixelVis(mode)
+		full.SetColors(colors)
+		native.SetColors(colors)
+		dst := image.NewRGBA(image.Rect(0, 0, w, h))
+		for i := range 3 {
+			in := PixelFrame{Scene: busyFrame(float64(i)*0.04, uint64(i))}
+			full.Draw(dst, in)
+			src := native.DrawNative(w, h, in)
+			sw, sh := src.Rect.Dx(), src.Rect.Dy()
+			if sw >= w || sh >= h {
+				t.Fatalf("%s: native frame %dx%d is not smaller than %dx%d", visModes[mode].name, sw, sh, w, h)
+			}
+			for y := range h {
+				for x := range w {
+					if got, want := src.RGBAAt(x*sw/w, y*sh/h), dst.RGBAAt(x, y); got != want {
+						t.Fatalf("%s frame %d: (%d,%d) = %v scaled, Draw has %v", visModes[mode].name, i, x, y, got, want)
+					}
+				}
+			}
+		}
+	}
+}

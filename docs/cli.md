@@ -98,6 +98,8 @@ cliamp upgrade                # latest stable release
 cliamp upgrade --prerelease   # newest release, betas and release candidates included
 ```
 
+`cliamp upgrade` downloads releases from upstream `bjarneo/cliamp`, not from the `jarmen423/cliamp` fork. On the fork, the stable path replaces the fork with upstream's latest release, even an older version. Update the fork with its install script instead (see the [README](../README.md#install)).
+
 Select prerelease updates for each upgrade. `--prerelease` installs the release with the highest SemVer version, stable or prerelease. It never installs a version older than the one you run. Normal installs, package-manager updates, and `cliamp upgrade` use stable releases only.
 
 Maintainers publish a prerelease by tagging the release commit with a SemVer prerelease tag such as `v1.5.0-beta.1` or `v1.5.0-rc.1`. The release workflow builds binaries for all platforms and creates a GitHub prerelease. It does not update Homebrew, AUR, or the public changelog.

@@ -4,6 +4,9 @@ on:
   workflow_run:
     workflows: ["Release"]
     types: [completed]
+  push:
+    branches: [main]
+    paths: ["site/**"]
   workflow_dispatch:
     inputs:
       tag:
@@ -21,7 +24,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
