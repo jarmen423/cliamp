@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"testing"
 	"time"
 
@@ -46,6 +48,38 @@ func TestIsAuthError(t *testing.T) {
 			got := isAuthError(tt.err)
 			if got != tt.want {
 				t.Fatalf("isAuthError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestIsConnDropped pins down which stream errors get one retry: a key request
+// written to an access point connection that just dropped (the error seen on a
+// flaky network), but not timeouts, cancellations, refused keys, or a closed
+// access point, which have their own handling.
+func TestIsConnDropped(t *testing.T) {
+	writeErr := &net.OpError{Op: "write", Net: "tcp", Err: errors.New("wsasend: An existing connection was forcibly closed by the remote host.")}
+	sendFailed := fmt.Errorf("failed retrieving audio key: %w",
+		fmt.Errorf("failed sending key request for file a21d, gid: x: %w", fmt.Errorf("failed writing packet: %w", writeErr)))
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"key request on a dropped connection", sendFailed, true},
+		{"read EOF", fmt.Errorf("failed retrieving audio key: %w", io.EOF), true},
+		{"closed conn", fmt.Errorf("x: %w", net.ErrClosed), true},
+		{"timeout", fmt.Errorf("failed retrieving audio key: %w", context.DeadlineExceeded), false},
+		{"canceled", context.Canceled, false},
+		{"refused key", &audio.KeyProviderError{Code: 1}, false},
+		{"closed access point", fmt.Errorf("x: %w", ap.ErrAccesspointClosed), false},
+		{"other", errors.New("boom"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isConnDropped(tt.err); got != tt.want {
+				t.Fatalf("isConnDropped(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
 	}

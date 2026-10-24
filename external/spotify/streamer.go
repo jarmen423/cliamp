@@ -354,6 +354,22 @@ func isSessionLost(err error) bool {
 	return errors.Is(err, ap.ErrAccesspointClosed)
 }
 
+// connDroppedRetryDelay is how long NewStreamer waits before retrying a
+// stream whose access point connection dropped mid-request.
+const connDroppedRetryDelay = 2 * time.Second
+
+// isConnDropped reports whether err is a write or read failure on an access
+// point connection that is still open, i.e. one go-librespot is reconnecting
+// in the background. On a flaky network the key request can land on the dead
+// connection; a retry a moment later goes out on the new one.
+func isConnDropped(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || isSessionLost(err) {
+		return false
+	}
+	var opErr *net.OpError
+	return errors.As(err, &opErr) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
+}
+
 // keyRefusedWindow is how long after a reconnect that did not stop Spotify
 // refusing an audio key a later refusal skips the reconnect. Skipping through
 // refused tracks would otherwise reconnect once per track.
@@ -441,6 +457,13 @@ func (p *SpotifyProvider) NewStreamer(uri string) (beep.StreamSeekCloser, beep.F
 	}
 
 	s, err := tryStream()
+	if err != nil && isConnDropped(err) {
+		// The key request went out on a connection that had just dropped;
+		// go-librespot is already reconnecting it. Give that a moment.
+		applog.Warn("spotify: connection dropped while opening %s (%v), retrying", uri, err)
+		time.Sleep(connDroppedRetryDelay)
+		s, err = tryStream()
+	}
 	if err == nil {
 		return s, s.Format(), s.Duration(), nil
 	}
