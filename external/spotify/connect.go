@@ -282,9 +282,9 @@ func (r *connectReceiver) serve(sess *session.Session) {
 			if !ok {
 				return
 			}
-			ok := r.handleCommand(sess, cmd.Payload)
-			cmd.Reply(ok)
-			applog.Debug("spotify: connect: replied %s ok=%t", cmd.Payload.Command.Endpoint, ok)
+			replied := r.handleCommand(sess, cmd.Payload)
+			cmd.Reply(replied)
+			applog.Debug("spotify: connect: replied %s ok=%t", cmd.Payload.Command.Endpoint, replied)
 		case <-r.dirty:
 			r.schedulePut(sess)
 		case <-r.putTimer.C:
