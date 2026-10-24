@@ -59,6 +59,10 @@ const (
 	// of a context. It is Spotify's playlist size limit, and it stops the walk
 	// of a generated context (a station), whose pages never run out.
 	connectMaxContextTracks = 10000
+	// connectClaimTimeout bounds how long a transfer claim stands in for the
+	// TUI snapshot when the TUI never reports the claimed track (a failed
+	// load, or a relinked track URI).
+	connectClaimTimeout = 15 * time.Second
 )
 
 // ConnectConfig configures the Spotify Connect receiver. Send forwards
@@ -115,9 +119,20 @@ type connectReceiver struct {
 	lastCmdID       uint32
 	lastCmdDevice   string
 	lastTransferTs  int64
+	claim           *connectClaim // set while a transfer/play is still loading
+	clusterActive   string        // last active device ID seen, for logging
 	lastPut         time.Time
 	putTimer        *time.Timer
 	cooldownUntil   time.Time // 429 backoff expiry; schedulePut never PUTs before it
+}
+
+// connectClaim is the state reported between taking over playback and the
+// TUI actually playing the claimed track.
+type connectClaim struct {
+	uri    string
+	pos    time.Duration
+	paused bool
+	until  time.Time
 }
 
 func newConnectReceiver(s *Session, cfg ConnectConfig) *connectReceiver {
@@ -210,6 +225,8 @@ func (r *connectReceiver) bind(sess *session.Session) {
 	r.sleepState = nil
 	r.lastCmdID = 0
 	r.lastCmdDevice = ""
+	r.claim = nil
+	r.clusterActive = ""
 
 	devID := r.s.deviceID()
 	if r.zc != nil && r.zcDeviceID != devID {
@@ -265,7 +282,9 @@ func (r *connectReceiver) serve(sess *session.Session) {
 			if !ok {
 				return
 			}
-			cmd.Reply(r.handleCommand(sess, cmd.Payload))
+			ok := r.handleCommand(sess, cmd.Payload)
+			cmd.Reply(ok)
+			applog.Debug("spotify: connect: replied %s ok=%t", cmd.Payload.Command.Endpoint, ok)
 		case <-r.dirty:
 			r.schedulePut(sess)
 		case <-r.putTimer.C:
@@ -355,6 +374,7 @@ func (r *connectReceiver) handleMessage(sess *session.Session, msg dealer.Messag
 		if err := proto.Unmarshal(msg.Payload, &cluster); err != nil {
 			return
 		}
+		r.logClusterActive("push", cluster.ActiveDeviceId)
 		if !r.active || cluster.ActiveDeviceId == "" || cluster.ActiveDeviceId == r.s.deviceID() {
 			return
 		}
@@ -364,6 +384,8 @@ func (r *connectReceiver) handleMessage(sess *session.Session, msg dealer.Messag
 		// Playback moved to another device.
 		applog.Debug("spotify: connect: cluster moved active to %q, yielding", cluster.ActiveDeviceId)
 		r.active = false
+		r.activeSince = time.Time{}
+		r.claim = nil
 		r.send(playback.PauseMsg{})
 		if err := sess.Spclient().PutConnectStateInactive(r.ctx, r.spotConnID, false); err != nil {
 			applog.Warn("spotify: connect: put inactive: %v", err)
@@ -478,15 +500,18 @@ func (r *connectReceiver) cmdTransfer(sess *session.Session, req dealer.RequestP
 		r.playOrigin.DeviceIdentifier = req.SentByDeviceId
 	}
 
+	paused := ts.Playback.IsPaused && req.Command.Options.RestorePaused != "resume"
+	position := time.Duration(ts.Playback.PositionAsOfTimestamp) * time.Millisecond
+	if cur := ts.Playback.CurrentTrack; cur != nil {
+		typ := librespot.InferSpotifyIdTypeFromContextUri(r.ctxURI)
+		r.claimPlayback(sess, librespot.ContextTrackToProvidedTrack(typ, cur).GetUri(), position, paused)
+	}
+
 	if err := tl.TrySeekTo(r.ctx, ts.Playback.CurrentTrack); err != nil {
 		applog.Warn("spotify: connect: seek to transferred track: %v", err)
 		return false
 	}
-	cur := tl.CurrentTrack()
-
-	paused := ts.Playback.IsPaused && req.Command.Options.RestorePaused != "resume"
-	position := time.Duration(ts.Playback.PositionAsOfTimestamp) * time.Millisecond
-	r.loadTrackList(sess, tl, cur, ts.Queue.Tracks, position, paused)
+	r.loadTrackList(sess, tl, tl.CurrentTrack(), ts.Queue.Tracks, position, paused)
 	return true
 }
 
@@ -556,6 +581,7 @@ func (r *connectReceiver) cmdPlay(sess *session.Session, req dealer.RequestPaylo
 		}
 	}
 
+	r.claimPlayback(sess, tl.CurrentTrack().GetUri(), 0, req.Command.Options.InitiallyPaused)
 	r.loadTrackList(sess, tl, tl.CurrentTrack(), nil, 0, req.Command.Options.InitiallyPaused)
 	return true
 }
@@ -786,7 +812,11 @@ func (r *connectReceiver) flushState(sess *session.Session, reason connectpb.Put
 
 	ctx, cancel := context.WithTimeout(r.ctx, 10*time.Second)
 	defer cancel()
-	if _, err := sess.Spclient().PutConnectState(ctx, r.spotConnID, req); err != nil {
+	cluster, err := sess.Spclient().PutConnectState(ctx, r.spotConnID, req)
+	if err == nil {
+		r.logClusterActive("put", cluster.GetActiveDeviceId())
+	}
+	if err != nil {
 		var rl *spclient.RateLimitedError
 		if errors.As(err, &rl) {
 			// Coalesce: resend once after the cooldown, like the daemon.
@@ -854,7 +884,55 @@ func (r *connectReceiver) playerState() *connectpb.PlayerState {
 			state.NextTracks = []*connectpb.ProvidedTrack{{Uri: next, Provider: "context"}}
 		}
 	}
+	if c := r.activeClaim(st); c != nil {
+		state.IsPlaying = true
+		state.IsPaused = c.paused
+		state.IsBuffering = true
+		state.PlaybackSpeed = 0 // not progressing while buffering
+		state.PositionAsOfTimestamp = c.pos.Milliseconds()
+		state.Position = c.pos.Milliseconds()
+		state.Duration = 0
+		state.Track = &connectpb.ProvidedTrack{Uri: c.uri, Provider: "context"}
+		state.NextTracks = nil
+	}
 	return state
+}
+
+// claimPlayback reports the takeover at once, before the command is
+// acknowledged and before the TUI has loaded anything. Spotify moves the
+// active device on this PUT; a state that still reads "stopped" while cliamp
+// loads the track leaves the sending app playing alongside cliamp. The claim
+// stands in for the TUI snapshot until the TUI plays the claimed track.
+func (r *connectReceiver) claimPlayback(sess *session.Session, uri string, pos time.Duration, paused bool) {
+	if uri == "" {
+		return
+	}
+	r.claim = &connectClaim{uri: uri, pos: pos, paused: paused, until: time.Now().Add(connectClaimTimeout)}
+	r.flushState(sess, connectpb.PutStateReason_PLAYER_STATE_CHANGED)
+}
+
+// activeClaim returns the pending claim, dropping it once the TUI snapshot
+// shows the claimed track loaded or the claim times out.
+func (r *connectReceiver) activeClaim(st playback.State) *connectClaim {
+	c := r.claim
+	if c == nil {
+		return nil
+	}
+	if time.Now().After(c.until) || (st.Track.URL == c.uri && st.Status != playback.StatusStopped) {
+		r.claim = nil
+		return nil
+	}
+	return c
+}
+
+// logClusterActive logs which device Spotify treats as active whenever that
+// changes, so a transfer that Spotify did not accept shows up in the log.
+func (r *connectReceiver) logClusterActive(src, active string) {
+	if active == r.clusterActive {
+		return
+	}
+	r.clusterActive = active
+	applog.Debug("spotify: connect: cluster active device %q (self=%t, via %s)", active, active != "" && active == r.s.deviceID(), src)
 }
 
 func stateTrackMetadata(st playback.State) map[string]string {
