@@ -511,3 +511,28 @@ func TestRuntimeStateFollowsAStreamStart(t *testing.T) {
 		t.Fatalf("started snapshot = duration %v, seekable %v, want 300, false", snapshot.Duration, snapshot.Seekable)
 	}
 }
+
+// quit completes its job before the Model quits, since the socket closes as
+// cliamp exits, and quits the way the q key does.
+func TestV2QuitCompletesThenQuits(t *testing.T) {
+	pl := playlist.New()
+	pl.Add(playlist.Track{Path: "/music/one.flac", Title: "One"})
+	m := Model{player: &playbackFakeEngine{playing: true}, playlist: pl}
+	msg := v2Request(t, "quit", ipc.Request{})
+	updated, cmd := m.Update(msg)
+	m = updated.(Model)
+
+	job, ok := msg.Jobs.Get(msg.JobID)
+	if !ok || job.State != ipc.JobSucceeded {
+		t.Fatalf("quit job = %+v, want succeeded", job)
+	}
+	if !m.quitting {
+		t.Fatal("Model is not quitting")
+	}
+	if cmd == nil {
+		t.Fatal("quit returned no command")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("quit command does not quit the program")
+	}
+}

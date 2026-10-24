@@ -90,6 +90,7 @@ func buildApp() *cli.Command {
 			ipcSimpleCommand("next", "next track"),
 			ipcSimpleCommand("prev", "previous track"),
 			ipcSimpleCommand("stop", "stop playback"),
+			quitCommand(),
 			statusCommand(),
 			volumeCommand(),
 			seekCommand(),
@@ -738,6 +739,16 @@ func ipcSimpleCommand(name, usage string) *cli.Command {
 		Action: func(ctx context.Context, c *cli.Command) error {
 			_, err := ipcSend(name, ipc.Request{})
 			return err
+		},
+	}
+}
+
+func quitCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "quit",
+		Usage: "quit the running cliamp (TUI or daemon), keeping the resume position",
+		Action: func(ctx context.Context, c *cli.Command) error {
+			return ipcQuit(ipcWait)
 		},
 	}
 }

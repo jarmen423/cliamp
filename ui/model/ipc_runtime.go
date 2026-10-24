@@ -153,6 +153,10 @@ func (m *Model) handleV2Request(msg V2RequestMsg) tea.Cmd {
 		m.stopByUser()
 		m.completeV2Job(msg.Jobs, msg.JobID, ipc.Response{OK: true})
 		return nil
+	case "quit":
+		// Complete the job before quitting: the socket closes as cliamp exits.
+		m.completeV2Job(msg.Jobs, msg.JobID, ipc.Response{OK: true})
+		return m.quit()
 	case "next":
 		cmd := m.skipNext()
 		m.completeV2Job(msg.Jobs, msg.JobID, ipc.Response{OK: true})

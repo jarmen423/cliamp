@@ -202,10 +202,12 @@ func run(overrides config.Overrides, positional []string, headless, visualizer60
 	} else {
 		applog.Info("cliamp starting (version=%s level=%s)", appmeta.Version(), appliedLevel)
 	}
-	if headless {
-		if err := checkNotRunning(); err != nil {
+	if err := checkNotRunning(); err != nil {
+		if headless || errors.Is(err, errAlreadyRunning) {
 			return err
 		}
+		// The TUI does not need the socket; a failed probe should not stop it.
+		applog.Warn("ipc: %v", err)
 	}
 
 	providers := buildProviders(cfg, !headless && isCharDevice(os.Stdin))
@@ -410,11 +412,16 @@ func run(overrides config.Overrides, positional []string, headless, visualizer60
 // Model queued, such as the scrobble of the track that played at quit.
 const reportsExitWait = 3 * time.Second
 
+// errAlreadyRunning marks the checkNotRunning error for a live instance.
+var errAlreadyRunning = errors.New("cliamp is already running")
+
 // checkNotRunning returns an error when another instance serves the socket.
-// Headless mode calls it before it builds the providers, opens the audio
-// device or loads the plugins. The app.quit hooks of the plugins could
-// otherwise change the files of the running instance. startIPC still
-// catches an instance that starts after the check.
+// Both modes call it before they build the providers, open the audio device
+// or load the plugins. A second instance would otherwise play alongside the
+// first, register a second Spotify Connect receiver under the same device
+// ID, and let the app.quit hooks of the plugins change the files of the
+// running instance. startIPC still catches an instance that starts after
+// the check.
 func checkNotRunning() error {
 	socket := ipc.DefaultSocketPath()
 	running, err := ipc.Listening(socket)
@@ -422,7 +429,7 @@ func checkNotRunning() error {
 		return err
 	}
 	if running {
-		return fmt.Errorf("cliamp is already running (socket %s)", socket)
+		return fmt.Errorf("%w (socket %s); control it with cliamp play, pause, next and status, or run cliamp quit to stop it first", errAlreadyRunning, socket)
 	}
 	return nil
 }

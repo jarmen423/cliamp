@@ -46,6 +46,36 @@ func sendV2(request ipc.V2Request) (ipc.V2Response, error) {
 	return response, nil
 }
 
+// ipcQuit asks the running instance to quit and waits until its socket
+// closes, so a new instance can start right after it returns. The socket can
+// close before the job result arrives; a closed socket is the answer then.
+func ipcQuit(wait time.Duration) error {
+	socket := ipc.DefaultSocketPath()
+	if running, err := ipc.Listening(socket); err != nil {
+		return err
+	} else if !running {
+		return fmt.Errorf("cliamp is not running (no socket at %s)", socket)
+	}
+	deadline := time.Now().Add(wait)
+	if _, err := ipcSendWithin("quit", ipc.Request{}, wait); err != nil {
+		if running, probeErr := ipc.Listening(socket); probeErr != nil || running {
+			return err
+		}
+		return nil
+	}
+	for time.Now().Before(deadline) {
+		running, err := ipc.Listening(socket)
+		if err != nil {
+			return err
+		}
+		if !running {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return fmt.Errorf("cliamp did not exit within %s", wait)
+}
+
 // ipcSend submits operation and waits up to ipcWait for its result.
 func ipcSend(operation string, params ipc.Request) (ipc.Response, error) {
 	return ipcSendWithin(operation, params, ipcWait)
