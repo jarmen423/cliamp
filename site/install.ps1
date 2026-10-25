@@ -1,7 +1,8 @@
 # Installs the latest cliamp fork release on Windows.
 #   irm https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.ps1 | iex
-# Set $env:INSTALL_DIR to pick the directory. The default is
-# %LOCALAPPDATA%\Programs\cliamp, which is added to the user PATH.
+# Set $env:INSTALL_DIR to pick the directory. Like install.sh, it prefers
+# ~\.local\bin when that is already on PATH. Otherwise it installs to
+# %LOCALAPPDATA%\Programs\cliamp and adds that to the user PATH.
 #
 # The body runs in a script block so that, under iex, its variables stay out of
 # the caller's session and a failure throws instead of closing the window.
@@ -23,9 +24,15 @@
         default { throw "Unsupported architecture: $Arch" }
     }
 
+    $PathDirs = @($env:Path -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') })
     $InstallDir = $env:INSTALL_DIR
     if (-not $InstallDir) {
-        $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\cliamp'
+        $LocalBin = Join-Path $env:USERPROFILE '.local\bin'
+        if ($PathDirs -contains $LocalBin) {
+            $InstallDir = $LocalBin
+        } else {
+            $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\cliamp'
+        }
     }
 
     $Asset = 'cliamp-windows-amd64.exe'
@@ -74,7 +81,7 @@
     $Key = Get-Item -Path 'HKCU:\Environment'
     $UserPath = $Key.GetValue('Path', '', 'DoNotExpandEnvironmentNames')
     $Entries = @($UserPath -split ';' | Where-Object { $_ })
-    if ($Entries -notcontains $InstallDir) {
+    if ($PathDirs -notcontains $InstallDir.TrimEnd('\') -and $Entries -notcontains $InstallDir) {
         $NewPath = ($Entries + $InstallDir) -join ';'
         Set-ItemProperty -Path 'HKCU:\Environment' -Name 'Path' -Value $NewPath -Type ExpandString
         # Tell Explorer the environment changed, so new terminals see the PATH.

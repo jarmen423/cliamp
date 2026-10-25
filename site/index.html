@@ -390,7 +390,7 @@ footer .aml a{color:var(--accent)}
               <span class="p">PS&gt;</span><span class="t">irm https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.ps1 | iex</span><span class="c">copy</span>
             </button>
           </div>
-          <p class="sub" style="margin:0">Both scripts download the latest fork release and check it against <code>checksums.txt</code>. The shell script installs to <code>~/.local/bin</code>; the PowerShell script installs to <code>%LOCALAPPDATA%\Programs\cliamp</code> and adds it to your user <code>PATH</code>. Set <code>INSTALL_DIR</code> to pick another directory.</p>
+          <p class="sub" style="margin:0">Both scripts download the latest fork release and check it against <code>checksums.txt</code>. The shell script installs to <code>~/.local/bin</code>; the PowerShell script uses <code>~\.local\bin</code> too when it is on <code>PATH</code>, and otherwise installs to <code>%LOCALAPPDATA%\Programs\cliamp</code> and adds that to your user <code>PATH</code>. Set <code>INSTALL_DIR</code> to pick another directory.</p>
           <div>
             <div class="lbl">build from source</div>
             <button type="button" class="cmd" data-copy="git clone https://github.com/jarmen423/cliamp.git && cd cliamp && go build -o cliamp .">

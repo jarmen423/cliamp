@@ -67,7 +67,8 @@ irm https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.ps1 | i
 ```
 
 The PowerShell script downloads `cliamp-windows-amd64.exe`, checks it against
-`checksums.txt`, installs it to `%LOCALAPPDATA%\Programs\cliamp`, and adds that
+`checksums.txt`, and installs it to `%USERPROFILE%\.local\bin` when that is on
+`PATH`. Otherwise it installs to `%LOCALAPPDATA%\Programs\cliamp` and adds that
 directory to your user `PATH`. Set `$env:INSTALL_DIR` first to choose another
 directory. On Windows on ARM it installs the x64 build, which runs under
 emulation.
