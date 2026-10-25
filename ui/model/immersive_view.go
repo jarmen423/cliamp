@@ -1181,7 +1181,7 @@ func (m Model) renderImmStatusLine(w int) string {
 	if line := m.renderTransient(); line != "" {
 		return fitCell(line, w)
 	}
-	hints := "? keys · I exit · 1-5 pills · / search · c view · v visualizer · ; menu · Bksp back · e EQ · f filter · tab focus · V full vis"
+	hints := "? keys · I exit · 1-5 pills · / search · b view · v/c visualizer · ; menu · Bksp back · e EQ · f filter · tab focus · V full vis"
 	return fitCell(dimStyle.Render(hints), w)
 }
 
