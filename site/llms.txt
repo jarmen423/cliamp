@@ -6,6 +6,7 @@
 - Source: https://github.com/jarmen423/cliamp
 - Releases: https://github.com/jarmen423/cliamp/releases/latest
 - Install: curl -fsSL https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.sh | sh
+- Install on Windows (PowerShell): irm https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.ps1 | iex
 - Upstream project by bjarneo: https://github.com/bjarneo/cliamp
 
 ## Docs

@@ -60,6 +60,18 @@ release's `checksums.txt`, and installs it to `~/.local/bin` (or
 `/usr/local/bin` when `~/.local/bin` is not on `PATH`). Set `INSTALL_DIR` to
 choose another directory.
 
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.ps1 | iex
+```
+
+The PowerShell script downloads `cliamp-windows-amd64.exe`, checks it against
+`checksums.txt`, installs it to `%LOCALAPPDATA%\Programs\cliamp`, and adds that
+directory to your user `PATH`. Set `$env:INSTALL_DIR` first to choose another
+directory. On Windows on ARM it installs the x64 build, which runs under
+emulation.
+
 The `cliamp.stream/install.sh` script, Homebrew (`bjarneo/cliamp/cliamp`), the
 AUR package, `nix run github:bjarneo/cliamp` and
 `go install github.com/bjarneo/cliamp` all install upstream cliamp, without this

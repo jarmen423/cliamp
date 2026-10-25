@@ -146,6 +146,12 @@ p{margin:0}
 .cmd .t::-webkit-scrollbar{display:none}
 .cmd .c{margin-left:auto;flex:none;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
 .cmd.done .c{color:var(--accent)}
+.cmd[hidden]{display:none}
+.os-pick{display:flex;gap:6px;margin-top:26px;font-family:var(--mono);font-size:12px}
+.os-pick button{font:inherit;color:var(--fg-2);background:rgba(15,17,19,.7);border:1px solid var(--line-2);border-radius:4px;padding:5px 10px;cursor:pointer}
+.os-pick button:hover{color:var(--fg)}
+.os-pick button[aria-pressed="true"]{color:var(--accent);border-color:var(--accent)}
+.os-pick+.hero-actions{margin-top:10px}
 
 /* sections */
 section{padding:clamp(56px,7vw,96px) 0;border-bottom:1px solid var(--line-2)}
@@ -253,9 +259,16 @@ footer .aml a{color:var(--accent)}
       <h1>cliamp <span class="fk">fork</span></h1>
       <p class="tagline"><a href="https://github.com/bjarneo/cliamp">cliamp</a> is bjarneo's Winamp-style music player for the terminal. This fork adds <em>pixel visualizers</em> and an <em>immersive</em> browse mode.</p>
       <p class="credit-line">cliamp is bjarneo's project, MIT licensed. This fork is maintained separately by jarmen423 and is not affiliated with upstream.</p>
+      <div class="os-pick" role="group" aria-label="Install command for">
+        <button type="button" data-os="sh" aria-pressed="true">macOS / Linux</button>
+        <button type="button" data-os="ps" aria-pressed="false">Windows</button>
+      </div>
       <div class="hero-actions">
-        <button type="button" class="cmd" data-copy="curl -fsSL https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.sh | sh">
+        <button type="button" class="cmd" data-os-cmd="sh" data-copy="curl -fsSL https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.sh | sh">
           <span class="p">$</span><span class="t">curl -fsSL https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.sh | sh</span><span class="c">copy</span>
+        </button>
+        <button type="button" class="cmd" data-os-cmd="ps" data-copy="irm https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.ps1 | iex" hidden>
+          <span class="p">PS&gt;</span><span class="t">irm https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.ps1 | iex</span><span class="c">copy</span>
         </button>
         <a class="btn" href="https://github.com/jarmen423/cliamp/releases/latest">releases &#8599;</a>
       </div>
@@ -371,7 +384,13 @@ footer .aml a{color:var(--accent)}
               <span class="p">$</span><span class="t">curl -fsSL https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.sh | sh</span><span class="c">copy</span>
             </button>
           </div>
-          <p class="sub" style="margin:0">The script downloads the latest fork release, checks it against <code>checksums.txt</code>, and installs to <code>~/.local/bin</code>. Set <code>INSTALL_DIR</code> to pick another directory.</p>
+          <div>
+            <div class="lbl">Windows (PowerShell)</div>
+            <button type="button" class="cmd" data-copy="irm https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.ps1 | iex">
+              <span class="p">PS&gt;</span><span class="t">irm https://raw.githubusercontent.com/jarmen423/cliamp/main/site/install.ps1 | iex</span><span class="c">copy</span>
+            </button>
+          </div>
+          <p class="sub" style="margin:0">Both scripts download the latest fork release and check it against <code>checksums.txt</code>. The shell script installs to <code>~/.local/bin</code>; the PowerShell script installs to <code>%LOCALAPPDATA%\Programs\cliamp</code> and adds it to your user <code>PATH</code>. Set <code>INSTALL_DIR</code> to pick another directory.</p>
           <div>
             <div class="lbl">build from source</div>
             <button type="button" class="cmd" data-copy="git clone https://github.com/jarmen423/cliamp.git && cd cliamp && go build -o cliamp .">
@@ -481,6 +500,13 @@ bind = , XF86AudioNext, exec, cliamp next</pre>
     },{threshold:.25});
     vids.forEach(function(v){io.observe(v);});
   }
+  var picks=document.querySelectorAll("[data-os]");
+  function pickOS(os){
+    picks.forEach(function(b){b.setAttribute("aria-pressed",b.getAttribute("data-os")===os?"true":"false");});
+    document.querySelectorAll("[data-os-cmd]").forEach(function(c){c.hidden=c.getAttribute("data-os-cmd")!==os;});
+  }
+  picks.forEach(function(b){b.addEventListener("click",function(){pickOS(b.getAttribute("data-os"));});});
+  if(/Win/.test(navigator.userAgentData&&navigator.userAgentData.platform||navigator.platform||""))pickOS("ps");
   document.querySelectorAll("[data-copy]").forEach(function(b){
     b.addEventListener("click",function(){
       var text=b.getAttribute("data-copy"),c=b.querySelector(".c");
