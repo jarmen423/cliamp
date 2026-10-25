@@ -181,3 +181,34 @@ func TestImmersiveRestoreCursorYieldsToNavigation(t *testing.T) {
 		t.Fatalf("cursor = %d, want 0 after the user moved on", m.immersive.cursor)
 	}
 }
+
+// A provider's fast first rows show while the full list loads, and never
+// replace the full list once it is in.
+func TestImmersivePartialListsShowFirst(t *testing.T) {
+	m := immersiveModel(t)
+	m.immersive = immersiveState{}
+	m.provider = immProvStub{}
+	m.provPane.lists = nil
+	m.startImmersive()
+	gen := m.requests.immersiveLists
+	partial := func(lists []playlist.PlaylistInfo, err error) {
+		deliver(m, immersiveListsMsg{lists: lists, providerName: "stub", gen: gen, err: err, partial: true})
+	}
+
+	partial(nil, errors.New("offline"))
+	if !m.immersive.loadingLists {
+		t.Fatal("a failed partial answer must keep the list loading")
+	}
+	partial(restoreLists[:2], nil)
+	if m.immersive.loadingLists || len(m.immersive.lists) != 2 {
+		t.Fatalf("after the partial answer: loading = %v, %d rows; want shown with 2", m.immersive.loadingLists, len(m.immersive.lists))
+	}
+	listsAnswer(m, nil)
+	if len(m.immersive.lists) != 3 {
+		t.Fatalf("full answer left %d rows, want 3", len(m.immersive.lists))
+	}
+	partial(restoreLists[:1], nil)
+	if len(m.immersive.lists) != 3 {
+		t.Fatalf("a late partial answer replaced the full list: %d rows", len(m.immersive.lists))
+	}
+}

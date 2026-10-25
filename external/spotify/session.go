@@ -166,6 +166,21 @@ func newSessionFromStored(ctx context.Context, clientID string, creds *storedCre
 		devID = generateDeviceID()
 	}
 
+	// The Web API token does not depend on the librespot login below, so
+	// refresh it at the same time: the slower of the two sets the wait.
+	type refreshResult struct {
+		token *oauth2.Token
+		err   error
+	}
+	var refreshed chan refreshResult
+	if creds.RefreshToken != "" {
+		refreshed = make(chan refreshResult, 1)
+		go func() {
+			token, err := silentTokenRefresh(ctx, clientID, creds.RefreshToken)
+			refreshed <- refreshResult{token, err}
+		}()
+	}
+
 	sess, err := session.NewSessionFromOptions(ctx, &session.Options{
 		Log:        &librespot.NullLogger{},
 		DeviceType: devicespb.DeviceType_COMPUTER,
@@ -176,6 +191,17 @@ func newSessionFromStored(ctx context.Context, clientID string, creds *storedCre
 		},
 	})
 	if err != nil {
+		// Spotify can rotate the refresh token on use, so keep a new one
+		// even though the login failed; the old one may no longer work.
+		if refreshed != nil {
+			if r := <-refreshed; r.err == nil && r.token.RefreshToken != "" && r.token.RefreshToken != creds.RefreshToken {
+				rotated := *creds
+				rotated.RefreshToken = r.token.RefreshToken
+				if err := saveCreds(&rotated); err != nil {
+					applog.UserError("spotify: failed to save credentials: %v", err)
+				}
+			}
+		}
 		return nil, fmt.Errorf("spotify: stored auth: %w", err)
 	}
 
@@ -184,12 +210,12 @@ func newSessionFromStored(ctx context.Context, clientID string, creds *storedCre
 	// Try silent refresh first (no browser), fall back to interactive.
 	var oauthToken *oauth2.Token
 	var refreshErr error
-	if creds.RefreshToken != "" {
-		token, err := silentTokenRefresh(ctx, clientID, creds.RefreshToken)
-		if err == nil {
-			oauthToken = token
+	if refreshed != nil {
+		r := <-refreshed
+		if r.err == nil {
+			oauthToken = r.token
 		} else {
-			refreshErr = err
+			refreshErr = r.err
 		}
 	}
 	// Dead refresh tokens (invalid_grant) never recover — clear so we don't

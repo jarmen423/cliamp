@@ -27,6 +27,13 @@ type Relater interface {
 	RelatedTracks(ctx context.Context, seed playlist.Track, n int) ([]playlist.Track, error)
 }
 
+// PartialPlaylister is implemented by providers whose Playlists call has a
+// fast first part. PlaylistsPartial returns the rows Playlists lists first, so
+// the UI can show them while the rest loads; Playlists still returns them all.
+type PartialPlaylister interface {
+	PlaylistsPartial() ([]playlist.PlaylistInfo, error)
+}
+
 // ArtistBrowser is implemented by providers that support listing artists
 // and their albums.
 type ArtistBrowser interface {

@@ -167,6 +167,7 @@ are in `provider/interfaces.go`.
 | `Searcher` | Track search overlay and IPC search | `SearchTracks(ctx, query, limit)` |
 | `MultiSearcher` | Tabbed multi-type search results | `SearchAll(ctx, query, limit)` returning `SearchResults` |
 | `Relater` | Find up to `n` songs related to one of the provider's tracks, never the track itself. `CanRelate` must answer without network access | `CanRelate(track)`, `RelatedTracks(ctx, seed, n)` |
+| `PartialPlaylister` | Immersive mode shows the rows `Playlists()` lists first while the rest loads. `Playlists()` still returns every row | `PlaylistsPartial()` |
 | `ArtistBrowser` | Hierarchical artist browsing | `Artists()`, `ArtistAlbums(id)` |
 | `TrackArtistResolver` | Jump from a highlighted provider track to its artist or creator with `N` | `ArtistForTrack(track)` |
 | `BrowseEntryProvider` | Add non-playable shortcuts into the provider playlist pane | `BrowseEntries()`. Each entry can set `AfterID`, `AfterSection`, and `OpenInPlaylist` |

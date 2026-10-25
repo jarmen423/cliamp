@@ -10,7 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/bjarneo/cliamp/playlist"
@@ -44,152 +44,63 @@ func (p *SpotifyProvider) currentUserID(ctx context.Context) string {
 	return p.userID
 }
 
-// Playlists returns all playlists in the authenticated user's Spotify library.
+// Playlists returns all playlists in the authenticated user's Spotify library:
+// the Library rows, owned and followed playlists, then saved albums.
 func (p *SpotifyProvider) Playlists() ([]playlist.PlaylistInfo, error) {
 	if err := p.ensureSession(); err != nil {
 		return nil, err
 	}
-
-	p.mu.Lock()
-	if p.listCache != nil && time.Since(p.listCacheAt) < playlistListCacheTTL {
-		cached := slices.Clone(p.listCache)
-		p.mu.Unlock()
+	if cached, ok := p.cachedPlaylists(); ok {
 		return cached, nil
 	}
-	p.mu.Unlock()
+	all, err := p.listFlight.do(p.fetchPlaylists)
+	return slices.Clone(all), err
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
+// PlaylistsPartial returns the rows Playlists lists before the saved albums.
+// They need fewer requests, so the UI can show them while the albums load.
+// Implements provider.PartialPlaylister.
+func (p *SpotifyProvider) PlaylistsPartial() ([]playlist.PlaylistInfo, error) {
+	if err := p.ensureSession(); err != nil {
+		return nil, err
+	}
+	if cached, ok := p.cachedPlaylists(); ok {
+		return cached, nil
+	}
+	rows, err := p.rowsFlight.do(p.fetchPlaylistRows)
+	return slices.Clone(rows), err
+}
 
-	userID := p.currentUserID(ctx)
+func (p *SpotifyProvider) cachedPlaylists() ([]playlist.PlaylistInfo, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.listCache != nil && time.Since(p.listCacheAt) < playlistListCacheTTL {
+		return slices.Clone(p.listCache), true
+	}
+	return nil, false
+}
 
-	var all []playlist.PlaylistInfo
-	offset := 0
-	limit := spotifyPlaylistPageSize
+// fetchPlaylists builds the full list. The saved albums load alongside the
+// playlist rows and come from the same walk AlbumList uses.
+func (p *SpotifyProvider) fetchPlaylists() ([]playlist.PlaylistInfo, error) {
+	var albums savedAlbumSet
+	var albumsErr error
+	albumsDone := make(chan struct{})
+	go func() {
+		defer close(albumsDone)
+		albums, albumsErr = p.savedAlbumSet()
+	}()
 
-	// List of Playlists only includes created playlists by the User.
-	// This doesn't include the 'Liked Songs' playlist.
-	resp, err := p.webAPI(ctx, "GET", "/v1/me/tracks", nil)
+	rows, err := p.rowsFlight.do(p.fetchPlaylistRows)
+	<-albumsDone
 	if err != nil {
-		return nil, fmt.Errorf("spotify: your music: %w", err)
+		return nil, err
 	}
-
-	var result struct {
-		Total int `json:"total"`
-	}
-	if err := decodeBody(resp, &result); err != nil {
-		return nil, fmt.Errorf("spotify: parse playlists: %w", err)
-	}
-
-	// Unfortunately, the Spotify API doesn't expose the localized display name.
-	// i.e. 'Liked Songs' or 'Lieblingssongs' etc.
-	// For the moment, "Your Music" must sufficice without adding a localization
-	// map.
-	all = append(all, playlist.PlaylistInfo{
-		ID:         savedTracksPlaylistID,
-		Name:       "Your Music",
-		TrackCount: result.Total,
-		Section:    "Library",
-	})
-
-	// Synthetic Library rows backed by playback-history endpoints. Best-effort:
-	// when a probe fails (scope missing, network error) the row is silently
-	// omitted rather than failing the whole listing.
-	if n, ok := p.probeTopTracksCount(ctx); ok {
-		all = append(all, playlist.PlaylistInfo{
-			ID:         topTracksID,
-			Name:       "Top Tracks",
-			TrackCount: n,
-			Section:    "Library",
-		})
-	}
-	if n, ok := p.probeRecentlyPlayedCount(ctx); ok {
-		all = append(all, playlist.PlaylistInfo{
-			ID:         recentlyPlayedID,
-			Name:       "Recently Played",
-			TrackCount: n,
-			Section:    "Library",
-		})
-	}
-
-	for {
-		query := url.Values{
-			"limit":  {fmt.Sprintf("%d", limit)},
-			"offset": {fmt.Sprintf("%d", offset)},
-			"fields": {"items(id,name,snapshot_id,collaborative,owner(id),items.total,images),total"},
-		}
-
-		resp, err := p.webAPI(ctx, "GET", "/v1/me/playlists", query)
-		if err != nil {
-			return nil, fmt.Errorf("spotify: list playlists: %w", err)
-		}
-
-		var result struct {
-			Items []spotifyPlaylistItem `json:"items"`
-			Total int                   `json:"total"`
-		}
-		if err := decodeBody(resp, &result); err != nil {
-			return nil, fmt.Errorf("spotify: parse playlists: %w", err)
-		}
-
-		p.mu.Lock()
-		for _, item := range result.Items {
-			count := 0
-			if item.Items != nil {
-				count = item.Items.Total
-			}
-			section := "Followed playlists"
-			owned := userID != "" && item.Owner.ID == userID
-			if owned {
-				section = "Your playlists"
-			}
-			// Without a user ID, ownership is unknown, so offer every playlist.
-			p.writable[item.ID] = owned || item.Collaborative || userID == ""
-			all = append(all, playlist.PlaylistInfo{
-				ID:         item.ID,
-				Name:       item.Name,
-				TrackCount: count,
-				Section:    section,
-				Owned:      owned,
-				ImageURL:   pickCoverImage(item.Images),
-			})
-			// Update snapshot_id in cache; if it changed, invalidate cached tracks.
-			if cached, ok := p.trackCache[item.ID]; ok {
-				if cached.snapshotID != item.SnapshotID {
-					delete(p.trackCache, item.ID)
-				}
-			}
-			// Store snapshot_id for later cache checks in Tracks().
-			if _, ok := p.trackCache[item.ID]; !ok && item.SnapshotID != "" {
-				p.trackCache[item.ID] = &playlistCache{snapshotID: item.SnapshotID}
-			}
-		}
-		p.mu.Unlock()
-
-		if offset+limit >= result.Total {
-			break
-		}
-		offset += limit
-	}
+	all := slices.Clone(rows)
+	all = append(all, albums.rows...)
 
 	// Saved albums are extra. When they fail, show the playlists and report
 	// the error, and do not cache the partial list.
-	albums, albumsErr := p.savedAlbums(ctx)
-	all = append(all, albums...)
-
-	// Group playlists by section so the UI can emit one header per group.
-	// Library first, then owned, then followed, then saved albums; preserve
-	// API order within each section.
-	sectionOrder := map[string]int{
-		"Library":            0,
-		"Your playlists":     1,
-		"Followed playlists": 2,
-		savedAlbumSection:    3,
-	}
-	sort.SliceStable(all, func(i, j int) bool {
-		return sectionOrder[all[i].Section] < sectionOrder[all[j].Section]
-	})
-
 	if albumsErr != nil {
 		return all, albumsErr
 	}
@@ -198,69 +109,168 @@ func (p *SpotifyProvider) Playlists() ([]playlist.PlaylistInfo, error) {
 	p.listCache = all
 	p.listCacheAt = time.Now()
 	p.mu.Unlock()
-
-	return slices.Clone(all), nil
+	return all, nil
 }
 
-// savedAlbums returns the authenticated user's saved albums from
-// /v1/me/albums, paginated. Each is surfaced as a playlist entry whose ID
-// carries the savedAlbumIDPrefix, so Tracks() expands it via AlbumTracks.
-func (p *SpotifyProvider) savedAlbums(ctx context.Context) ([]playlist.PlaylistInfo, error) {
-	var all []playlist.PlaylistInfo
-	offset := 0
+// fetchPlaylistRows returns the Library rows and the user's playlists,
+// grouped Library, then owned, then followed, in API order within each.
+func (p *SpotifyProvider) fetchPlaylistRows() ([]playlist.PlaylistInfo, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
 
-	for {
-		query := url.Values{
-			"limit":  {strconv.Itoa(spotifyAlbumPageSize)},
-			"offset": {strconv.Itoa(offset)},
-		}
-
-		resp, err := p.webAPI(ctx, "GET", "/v1/me/albums", query)
-		if err != nil {
-			return nil, fmt.Errorf("spotify: list saved albums: %w", err)
-		}
-
-		var result struct {
-			Items []struct {
-				Album spotifyAlbumItem `json:"album"`
-			} `json:"items"`
-			Total int `json:"total"`
-		}
-		if err := decodeBody(resp, &result); err != nil {
-			return nil, fmt.Errorf("spotify: parse saved albums: %w", err)
-		}
-
-		for _, item := range result.Items {
-			a := item.Album
-			if a.ID == "" {
-				continue // skip unavailable albums
-			}
-			name := a.Name
-			if artist := artistNames(a.Artists); artist != "" {
-				name = artist + " - " + a.Name
-			}
-			all = append(all, playlist.PlaylistInfo{
-				ID:         savedAlbumIDPrefix + a.ID,
-				Name:       name,
-				TrackCount: a.TotalTracks,
-				Section:    savedAlbumSection,
-				ImageURL:   pickCoverImage(a.Images),
-			})
-		}
-
-		if offset+spotifyAlbumPageSize >= result.Total {
-			break
-		}
-		offset += spotifyAlbumPageSize
+	// /v1/me, the Library probes and the playlist pages do not depend on
+	// each other, so they run at once. Ownership needs the user ID, so the
+	// playlists are sorted into sections after everything returns.
+	var (
+		wg          sync.WaitGroup
+		userID      string
+		likedTotal  int
+		likedErr    error
+		topCount    int
+		topOK       bool
+		recentCount int
+		recentOK    bool
+		items       []spotifyPlaylistItem
+		itemsErr    error
+	)
+	wg.Add(5)
+	go func() { defer wg.Done(); userID = p.currentUserID(ctx) }()
+	go func() { defer wg.Done(); likedTotal, likedErr = p.savedTracksTotal(ctx) }()
+	go func() { defer wg.Done(); topCount, topOK = p.probeTopTracksCount(ctx) }()
+	go func() { defer wg.Done(); recentCount, recentOK = p.probeRecentlyPlayedCount(ctx) }()
+	go func() { defer wg.Done(); items, itemsErr = p.playlistItems(ctx) }()
+	wg.Wait()
+	if likedErr != nil {
+		return nil, likedErr
+	}
+	if itemsErr != nil {
+		return nil, itemsErr
 	}
 
-	// Spotify returns saved albums most-recently-added first; sort by the
-	// "Artist - Album" display name so the list reads alphabetically by artist.
-	sort.SliceStable(all, func(i, j int) bool {
-		return strings.ToLower(all[i].Name) < strings.ToLower(all[j].Name)
-	})
+	// Unfortunately, the Spotify API doesn't expose the localized display name.
+	// i.e. 'Liked Songs' or 'Lieblingssongs' etc.
+	// For the moment, "Your Music" must sufficice without adding a localization
+	// map.
+	all := []playlist.PlaylistInfo{{
+		ID:         savedTracksPlaylistID,
+		Name:       "Your Music",
+		TrackCount: likedTotal,
+		Section:    "Library",
+	}}
 
+	// Synthetic Library rows backed by playback-history endpoints. Best-effort:
+	// when a probe fails (scope missing, network error) the row is silently
+	// omitted rather than failing the whole listing.
+	if topOK {
+		all = append(all, playlist.PlaylistInfo{
+			ID:         topTracksID,
+			Name:       "Top Tracks",
+			TrackCount: topCount,
+			Section:    "Library",
+		})
+	}
+	if recentOK {
+		all = append(all, playlist.PlaylistInfo{
+			ID:         recentlyPlayedID,
+			Name:       "Recently Played",
+			TrackCount: recentCount,
+			Section:    "Library",
+		})
+	}
+
+	p.mu.Lock()
+	for _, item := range items {
+		count := 0
+		if item.Items != nil {
+			count = item.Items.Total
+		}
+		section := "Followed playlists"
+		owned := userID != "" && item.Owner.ID == userID
+		if owned {
+			section = "Your playlists"
+		}
+		// Without a user ID, ownership is unknown, so offer every playlist.
+		p.writable[item.ID] = owned || item.Collaborative || userID == ""
+		all = append(all, playlist.PlaylistInfo{
+			ID:         item.ID,
+			Name:       item.Name,
+			TrackCount: count,
+			Section:    section,
+			Owned:      owned,
+			ImageURL:   pickCoverImage(item.Images),
+		})
+		// Update snapshot_id in cache; if it changed, invalidate cached tracks.
+		if cached, ok := p.trackCache[item.ID]; ok {
+			if cached.snapshotID != item.SnapshotID {
+				delete(p.trackCache, item.ID)
+			}
+		}
+		// Store snapshot_id for later cache checks in Tracks().
+		if _, ok := p.trackCache[item.ID]; !ok && item.SnapshotID != "" {
+			p.trackCache[item.ID] = &playlistCache{snapshotID: item.SnapshotID}
+		}
+	}
+	p.mu.Unlock()
+
+	// Group playlists by section so the UI can emit one header per group.
+	// Library first, then owned, then followed; preserve API order within
+	// each section. Saved albums follow in Playlists.
+	sectionOrder := map[string]int{
+		"Library":            0,
+		"Your playlists":     1,
+		"Followed playlists": 2,
+	}
+	sort.SliceStable(all, func(i, j int) bool {
+		return sectionOrder[all[i].Section] < sectionOrder[all[j].Section]
+	})
 	return all, nil
+}
+
+// savedTracksTotal returns how many songs Liked Songs holds. The playlist
+// list does not include Liked Songs, so it is read from /v1/me/tracks.
+func (p *SpotifyProvider) savedTracksTotal(ctx context.Context) (int, error) {
+	resp, err := p.webAPI(ctx, "GET", "/v1/me/tracks", url.Values{"limit": {"1"}})
+	if err != nil {
+		return 0, fmt.Errorf("spotify: your music: %w", err)
+	}
+	var result struct {
+		Total int `json:"total"`
+	}
+	if err := decodeBody(resp, &result); err != nil {
+		return 0, fmt.Errorf("spotify: parse playlists: %w", err)
+	}
+	return result.Total, nil
+}
+
+// playlistItems pages through /v1/me/playlists. The list includes only the
+// playlists the user created or follows, not Liked Songs.
+func (p *SpotifyProvider) playlistItems(ctx context.Context) ([]spotifyPlaylistItem, error) {
+	var all []spotifyPlaylistItem
+	offset := 0
+	limit := spotifyPlaylistPageSize
+	for {
+		query := url.Values{
+			"limit":  {strconv.Itoa(limit)},
+			"offset": {strconv.Itoa(offset)},
+			"fields": {"items(id,name,snapshot_id,collaborative,owner(id),items.total,images),total"},
+		}
+		resp, err := p.webAPI(ctx, "GET", "/v1/me/playlists", query)
+		if err != nil {
+			return nil, fmt.Errorf("spotify: list playlists: %w", err)
+		}
+		var result struct {
+			Items []spotifyPlaylistItem `json:"items"`
+			Total int                   `json:"total"`
+		}
+		if err := decodeBody(resp, &result); err != nil {
+			return nil, fmt.Errorf("spotify: parse playlists: %w", err)
+		}
+		all = append(all, result.Items...)
+		if offset+limit >= result.Total {
+			return all, nil
+		}
+		offset += limit
+	}
 }
 
 // CanAddToPlaylist reports whether tracks can be added to pl. Liked Songs

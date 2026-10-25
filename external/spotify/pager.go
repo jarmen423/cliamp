@@ -219,5 +219,10 @@ func (p *SpotifyProvider) probeRecentlyPlayedCount(ctx context.Context) (count i
 	if err != nil {
 		return 0, false
 	}
+	// Keep the page, so opening Recently Played does not fetch it again.
+	p.mu.Lock()
+	p.recentTracks = tracks
+	p.recentTracksAt = time.Now()
+	p.mu.Unlock()
 	return len(tracks), true
 }

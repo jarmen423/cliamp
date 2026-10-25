@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bjarneo/cliamp/config"
+	"github.com/bjarneo/cliamp/playlist"
 	"github.com/bjarneo/cliamp/provider"
 )
 
@@ -83,13 +84,25 @@ func artistFromSpotify(a spotifyArtist) provider.ArtistInfo {
 	return provider.ArtistInfo{ID: a.ID, Name: a.Name, ImageURL: pickCoverImage(a.Images)}
 }
 
-// Artists returns the artists the current user follows.
-// AlbumCount stays 0: Spotify doesn't report it cheaply.
+// Artists returns the artists the current user follows, cached for
+// playlistListCacheTTL. AlbumCount stays 0: Spotify doesn't report it cheaply.
 func (p *SpotifyProvider) Artists() ([]provider.ArtistInfo, error) {
 	if err := p.ensureSession(); err != nil {
 		return nil, err
 	}
+	p.mu.Lock()
+	if !p.artistCacheAt.IsZero() && time.Since(p.artistCacheAt) < playlistListCacheTTL {
+		cached := slices.Clone(p.artistCache)
+		p.mu.Unlock()
+		return cached, nil
+	}
+	p.mu.Unlock()
 
+	all, err := p.artistFlight.do(p.fetchArtists)
+	return slices.Clone(all), err
+}
+
+func (p *SpotifyProvider) fetchArtists() ([]provider.ArtistInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), webAPITimeout)
 	defer cancel()
 
@@ -125,6 +138,11 @@ func (p *SpotifyProvider) Artists() ([]provider.ArtistInfo, error) {
 		}
 		offset += spotifyPlaylistPageSize
 	}
+
+	p.mu.Lock()
+	p.artistCache = all
+	p.artistCacheAt = time.Now()
+	p.mu.Unlock()
 	return all, nil
 }
 
@@ -225,35 +243,57 @@ func (p *SpotifyProvider) AlbumList(sortType string, offset, size int) ([]provid
 	return slices.Clone(sorted[offset:end]), nil
 }
 
+// savedAlbumSet is one walk of /v1/me/albums in the two shapes it is used
+// in: AlbumList's AlbumInfo, newest saved first, and the saved-album rows of
+// Playlists, sorted by "Artist - Album".
+type savedAlbumSet struct {
+	infos []provider.AlbumInfo
+	rows  []playlist.PlaylistInfo
+}
+
 // savedAlbumInfos returns the full saved-albums list (newest saved first),
 // cached for playlistListCacheTTL.
 func (p *SpotifyProvider) savedAlbumInfos() ([]provider.AlbumInfo, error) {
+	set, err := p.savedAlbumSet()
+	if err != nil {
+		return nil, err
+	}
+	return slices.Clone(set.infos), nil
+}
+
+// savedAlbumSet returns the saved albums, cached for playlistListCacheTTL.
+// Concurrent callers share one walk. The slices are shared: clone before
+// changing them.
+func (p *SpotifyProvider) savedAlbumSet() (savedAlbumSet, error) {
 	p.mu.Lock()
 	if !p.albumCacheAt.IsZero() && time.Since(p.albumCacheAt) < playlistListCacheTTL {
-		cached := slices.Clone(p.albumCache)
+		set := savedAlbumSet{infos: p.albumCache, rows: p.albumRows}
 		p.mu.Unlock()
-		return cached, nil
+		return set, nil
 	}
 	p.mu.Unlock()
 
 	if err := p.ensureSession(); err != nil {
-		return nil, err
+		return savedAlbumSet{}, err
 	}
+	return p.albumFlight.do(p.fetchSavedAlbums)
+}
 
+func (p *SpotifyProvider) fetchSavedAlbums() (savedAlbumSet, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), webAPITimeout)
 	defer cancel()
 
-	var all []provider.AlbumInfo
+	var set savedAlbumSet
 	offset := 0
 
 	for {
 		query := url.Values{
-			"limit":  {strconv.Itoa(spotifyPlaylistPageSize)},
+			"limit":  {strconv.Itoa(spotifyAlbumPageSize)},
 			"offset": {strconv.Itoa(offset)},
 		}
 		resp, err := p.webAPI(ctx, "GET", "/v1/me/albums", query)
 		if err != nil {
-			return nil, fmt.Errorf("spotify: list albums: %w", err)
+			return savedAlbumSet{}, fmt.Errorf("spotify: list albums: %w", err)
 		}
 		var result struct {
 			Items []struct {
@@ -262,25 +302,46 @@ func (p *SpotifyProvider) savedAlbumInfos() ([]provider.AlbumInfo, error) {
 			Total int `json:"total"`
 		}
 		if err := decodeBody(resp, &result); err != nil {
-			return nil, fmt.Errorf("spotify: parse albums: %w", err)
+			return savedAlbumSet{}, fmt.Errorf("spotify: parse albums: %w", err)
 		}
 
 		for _, item := range result.Items {
-			all = append(all, albumFromSpotify(item.Album))
+			a := item.Album
+			set.infos = append(set.infos, albumFromSpotify(a))
+			if a.ID == "" {
+				continue // no playlist row for an unavailable album
+			}
+			name := a.Name
+			if artist := artistNames(a.Artists); artist != "" {
+				name = artist + " - " + a.Name
+			}
+			set.rows = append(set.rows, playlist.PlaylistInfo{
+				ID:         savedAlbumIDPrefix + a.ID,
+				Name:       name,
+				TrackCount: a.TotalTracks,
+				Section:    savedAlbumSection,
+				ImageURL:   pickCoverImage(a.Images),
+			})
 		}
 
-		if len(result.Items) == 0 || offset+spotifyPlaylistPageSize >= result.Total {
+		if len(result.Items) == 0 || offset+spotifyAlbumPageSize >= result.Total {
 			break
 		}
-		offset += spotifyPlaylistPageSize
+		offset += spotifyAlbumPageSize
 	}
 
+	// Spotify returns saved albums most-recently-added first; sort the rows by
+	// the "Artist - Album" display name so they read alphabetically by artist.
+	sort.SliceStable(set.rows, func(i, j int) bool {
+		return strings.ToLower(set.rows[i].Name) < strings.ToLower(set.rows[j].Name)
+	})
+
 	p.mu.Lock()
-	p.albumCache = all
+	p.albumCache = set.infos
+	p.albumRows = set.rows
 	p.albumCacheAt = time.Now()
 	p.mu.Unlock()
-
-	return slices.Clone(all), nil
+	return set, nil
 }
 
 // invalidateAlbumCache clears the saved-albums cache. Call after save/unsave
@@ -288,6 +349,7 @@ func (p *SpotifyProvider) savedAlbumInfos() ([]provider.AlbumInfo, error) {
 func (p *SpotifyProvider) invalidateAlbumCache() {
 	p.mu.Lock()
 	p.albumCache = nil
+	p.albumRows = nil
 	p.albumCacheAt = time.Time{}
 	p.mu.Unlock()
 }

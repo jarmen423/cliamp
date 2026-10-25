@@ -545,6 +545,16 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.isCurrentImmersiveRequest(msg.gen, msg.providerName, m.requests.immersiveLists) {
 			return m, nil
 		}
+		if msg.partial {
+			// The first rows show while the full list loads. Once the full
+			// list is in, or when they fail, they change nothing; the full
+			// answer reports any error and runs the page restore.
+			if m.immersive.loadingLists && msg.err == nil {
+				m.immersive.loadingLists = false
+				m.immersive.lists = m.filterImmersivePlaylists(msg.lists)
+			}
+			return m, nil
+		}
 		m.immersive.loadingLists = false
 		m.noteImmersiveLoadErr("Playlists", msg.err)
 		if msg.err == nil {

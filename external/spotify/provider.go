@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bjarneo/cliamp/applog"
 	"github.com/bjarneo/cliamp/playlist"
 	"github.com/bjarneo/cliamp/provider"
 )
@@ -22,6 +23,7 @@ var (
 	_ provider.PlaylistTargetFilter = (*SpotifyProvider)(nil)
 	_ playlist.Authenticator        = (*SpotifyProvider)(nil)
 	_ provider.Relater              = (*SpotifyProvider)(nil)
+	_ provider.PartialPlaylister    = (*SpotifyProvider)(nil)
 )
 
 // SpotifyProvider implements playlist.Provider using the Spotify Web API
@@ -47,10 +49,23 @@ type SpotifyProvider struct {
 	listCacheAt time.Time
 	writable    map[string]bool // playlist IDs the user owns or collaborates on
 
-	// Saved-album list cache backing AlbumList (browse.go).
+	// Saved-album list cache backing AlbumList (browse.go) and the saved
+	// album rows of Playlists. albumRows keeps every artist in the name.
 	browseSort   string // persisted album sort ID; empty until first read/save
 	albumCache   []provider.AlbumInfo
+	albumRows    []playlist.PlaylistInfo
 	albumCacheAt time.Time
+
+	// Followed-artist cache backing Artists (browse.go).
+	artistCache   []provider.ArtistInfo
+	artistCacheAt time.Time
+
+	// In-flight calls shared by concurrent callers (flight.go).
+	sessionFlight flight[struct{}]
+	rowsFlight    flight[[]playlist.PlaylistInfo]
+	listFlight    flight[[]playlist.PlaylistInfo]
+	albumFlight   flight[savedAlbumSet]
+	artistFlight  flight[[]provider.ArtistInfo]
 
 	// Library-row track caches (pager.go).
 	topTracks      []playlist.Track
@@ -87,30 +102,55 @@ func New(session *Session, clientID string, bitrate int) *SpotifyProvider {
 
 // ensureSession tries to create a session using stored credentials only
 // (no browser). Returns playlist.ErrNeedsAuth if interactive sign-in is needed.
+// Concurrent callers share one attempt, so a provider switch that fires
+// several fetches at once builds one session, not one per fetch.
 func (p *SpotifyProvider) ensureSession() error {
 	p.mu.Lock()
-	if p.session != nil {
-		p.mu.Unlock()
+	ready := p.session != nil
+	p.mu.Unlock()
+	if ready {
 		return nil
 	}
-	clientID := p.clientID
-	p.mu.Unlock()
+	_, err := p.sessionFlight.do(func() (struct{}, error) {
+		p.mu.Lock()
+		if p.session != nil {
+			p.mu.Unlock()
+			return struct{}{}, nil
+		}
+		clientID := p.clientID
+		p.mu.Unlock()
 
-	if clientID == "" {
-		return fmt.Errorf("spotify: no client ID available")
+		if clientID == "" {
+			return struct{}{}, fmt.Errorf("spotify: no client ID available")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		sess, err := NewSessionSilent(ctx, clientID)
+		if err != nil {
+			return struct{}{}, playlist.ErrNeedsAuth
+		}
+		p.mu.Lock()
+		p.session = sess
+		p.resetSessionScopedStateLocked()
+		p.startConnectLocked(sess)
+		p.mu.Unlock()
+		return struct{}{}, nil
+	})
+	return err
+}
+
+// Warm builds the session in the background when stored credentials exist,
+// so the first switch to Spotify does not wait for the sign-in handshake.
+// Without stored credentials it does nothing: sign-in stays interactive.
+func (p *SpotifyProvider) Warm() {
+	if creds, err := loadCreds(); err != nil || creds.Username == "" || len(creds.Data) == 0 {
+		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	sess, err := NewSessionSilent(ctx, clientID)
-	if err != nil {
-		return playlist.ErrNeedsAuth
-	}
-	p.mu.Lock()
-	p.session = sess
-	p.resetSessionScopedStateLocked()
-	p.startConnectLocked(sess)
-	p.mu.Unlock()
-	return nil
+	go func() {
+		if err := p.ensureSession(); err != nil {
+			applog.Debug("spotify: warm-up: %v", err)
+		}
+	}()
 }
 
 // signIn runs the interactive sign-in. It reconnects existing when it is not
@@ -202,6 +242,10 @@ func (p *SpotifyProvider) Refresh() {
 	p.trackCache = make(map[string]*playlistCache)
 	clear(p.writable)
 	p.albumCache = nil
+	p.albumRows = nil
+	p.albumCacheAt = time.Time{}
+	p.artistCache = nil
+	p.artistCacheAt = time.Time{}
 	p.topTracks = nil
 	p.recentTracks = nil
 }
@@ -213,7 +257,10 @@ func (p *SpotifyProvider) resetSessionScopedStateLocked() {
 	p.userID = ""
 	p.meFetched = false
 	p.albumCache = nil
+	p.albumRows = nil
 	p.albumCacheAt = time.Time{}
+	p.artistCache = nil
+	p.artistCacheAt = time.Time{}
 	p.topTracks = nil
 	p.topTracksAt = time.Time{}
 	p.recentTracks = nil

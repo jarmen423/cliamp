@@ -266,6 +266,7 @@ type immersiveListsMsg struct {
 	providerName string
 	gen          uint64
 	err          error
+	partial      bool // the fast first rows of a provider.PartialPlaylister
 }
 
 type immersiveAlbumsMsg struct {
@@ -321,6 +322,13 @@ func fetchImmersiveListsCmd(prov playlist.Provider, gen uint64) tea.Cmd {
 	return func() tea.Msg {
 		lists, err := prov.Playlists()
 		return immersiveListsMsg{lists: lists, providerName: prov.Name(), gen: gen, err: err}
+	}
+}
+
+func fetchImmersivePartialListsCmd(pp provider.PartialPlaylister, providerName string, gen uint64) tea.Cmd {
+	return func() tea.Msg {
+		lists, err := pp.PlaylistsPartial()
+		return immersiveListsMsg{lists: lists, providerName: providerName, gen: gen, err: err, partial: true}
 	}
 }
 
@@ -464,7 +472,11 @@ func (m *Model) fetchImmersiveSidebar() tea.Cmd {
 	providerName := prov.Name()
 	var cmds []tea.Cmd
 	if m.immersive.loadingLists {
-		cmds = append(cmds, fetchImmersiveListsCmd(prov, nextRequest(&m.requests.immersiveLists)))
+		gen := nextRequest(&m.requests.immersiveLists)
+		cmds = append(cmds, fetchImmersiveListsCmd(prov, gen))
+		if pp, ok := prov.(provider.PartialPlaylister); ok {
+			cmds = append(cmds, fetchImmersivePartialListsCmd(pp, providerName, gen))
+		}
 	}
 	if ab, ok := prov.(provider.AlbumBrowser); ok && m.immersive.loadingAlbums {
 		sortType := ab.DefaultAlbumSort()

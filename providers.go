@@ -197,7 +197,11 @@ func buildProviders(cfg config.Config, interactive bool) *providerSet {
 	}
 	if cfg.Spotify.IsSet() {
 		clientID := cfg.Spotify.ResolveClientID(spotify.DefaultClientID)
-		add("spotify", spotify.New(nil, clientID, cfg.Spotify.Bitrate))
+		sp := spotify.New(nil, clientID, cfg.Spotify.Bitrate)
+		// Sign in now from stored credentials, so the first switch to
+		// Spotify does not wait for the handshake.
+		sp.Warm()
+		add("spotify", sp)
 	}
 	if cfg.Qobuz.IsSet() {
 		add("qobuz", qobuz.New(cfg.Qobuz.Quality))

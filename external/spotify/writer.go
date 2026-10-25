@@ -224,6 +224,11 @@ func (p *SpotifyProvider) setArtistFollowed(ctx context.Context, artistID string
 		return fmt.Errorf("spotify: %s artist: %w", followWord(follow), err)
 	}
 	resp.Body.Close()
+
+	p.mu.Lock()
+	p.artistCache = nil
+	p.artistCacheAt = time.Time{}
+	p.mu.Unlock()
 	return nil
 }
 
