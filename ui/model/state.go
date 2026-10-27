@@ -373,6 +373,7 @@ type requestState struct {
 	immersiveArtist  uint64 // artist-detail fetches (view + right rail)
 	immersiveSearch  uint64 // top-bar track searches
 	immersiveSuggest uint64 // search-as-you-type dropdown
+	immersiveBrowse  uint64 // Browse category-list fetches
 }
 
 func nextRequest(gen *uint64) uint64 {

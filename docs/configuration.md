@@ -450,7 +450,7 @@ cliamp remembers where you left off, for every provider:
 - The last track and its position. Local files, finite streams, and Mixcloud shows resume at the saved position. Live radio and other yt-dlp sites are reselected from the start.
 - The list the track was chosen from, such as the album, playlist, search results, or station list.
 - The play-next queue.
-- In immersive mode, the page on screen: the section, the open playlist, album, artist, search, or queue, and the cursor and scroll.
+- In immersive mode, the page on screen: the section, the open playlist, album, artist, search, queue, or Browse page, and the cursor and scroll.
 
 cliamp saves this when a track starts, every two seconds during confirmed playback, and on a normal exit. `q`, `Ctrl+C`, and quitting through system media controls save the current position. If the terminal closes or cliamp exits abruptly, the last checkpoint is used. Buffering and unfinished seeks never overwrite the checkpoint with an unconfirmed position. The file is `resume.json` in the config directory. It keeps up to 500 tracks of the list, around the active track, and 200 queued tracks, so a checkpoint of a large library stays small.
 

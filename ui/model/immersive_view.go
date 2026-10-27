@@ -575,9 +575,13 @@ func (m Model) immCanvasTitle() string {
 		}
 	case immViewRadio:
 		title = im.ctxName
+	case immViewCategories:
+		title = firstNonEmpty(im.ctxName, "Browse")
 	default:
 		kind := "Playlist"
 		switch im.view {
+		case immViewCategory:
+			kind = "Browse"
 		case immViewAlbum:
 			kind = "Album"
 		case immViewArtist:
@@ -647,6 +651,10 @@ func (m Model) renderImmCanvasInner(w, rows int) []string {
 	}
 	if im.section == immSecArtists && im.loadingArtists && im.view == immViewBrowse {
 		lines[0] = "  " + m.immSpin() + " loading artists…"
+		return lines
+	}
+	if im.loadingCategories && im.view == immViewCategories {
+		lines[0] = "  " + m.immSpin() + " loading " + strings.ToLower(firstNonEmpty(im.ctxName, "Browse")) + "…"
 		return lines
 	}
 	if im.searchLoading && im.view == immViewSearch {

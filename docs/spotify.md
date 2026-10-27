@@ -117,14 +117,14 @@ The browser menu also has **Browse & discover**, which opens [Browse](#browse).
 
 ## Browse
 
-Browse is cliamp's version of the Browse tab in the Spotify apps. Open it from the **Browse** row in the provider panel, from **Browse & discover** in the `N` menu, or by pressing `Enter` on an empty `Ctrl+F` search.
+Browse is cliamp's version of the Browse tab in the Spotify apps. Open it from the **Browse** row in the provider panel, from **Browse & discover** in the `N` menu, or by pressing `Enter` on an empty `Ctrl+F` search. In [immersive mode](keybindings.md#immersive-mode-prototype), **Browse** is the first row of the Playlists pill.
 
 The page lists two groups:
 
 - **For you**: **Made for you** (tracks picked from your top tracks and your top artists' newest albums, plus your top artists) and **New releases** (Spotify's new-release albums).
 - **Genres & moods**: Spotify's own browse categories, such as Pop, Hip-Hop, Chill, and Workout.
 
-Opening an entry shows the same Tracks / Albums / Artists / Playlists tabs as a search, starting on the tab with content (Playlists for a genre or mood, Albums for new releases). Everything you can do on search results works here too: open an album or playlist, open an artist page, play, queue, like, follow, and add to playlists.
+Opening an entry shows the same Tracks / Albums / Artists / Playlists tabs as a search, starting on the tab with content (Playlists for a genre or mood, Albums for new releases). Everything you can do on search results works here too: open an album or playlist, open an artist page, play, queue, like, follow, and add to playlists. In immersive mode an entry opens as one list instead: playlists, then albums, songs, and artists.
 
 | Key | Action |
 |---|---|

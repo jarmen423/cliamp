@@ -19,8 +19,8 @@ import (
 
 // Stable names for the saved page, indexed by the matching constants.
 var (
-	immViewNames = []string{"browse", "playlist", "album", "artist", "show", "search", "settings", "queue", "radio"}
-	immKindNames = []string{"playlist", "album", "artist", "show", "track"}
+	immViewNames = []string{"browse", "playlist", "album", "artist", "show", "search", "settings", "queue", "radio", "categories", "category"}
+	immKindNames = []string{"playlist", "album", "artist", "show", "track", "browse", "category"}
 )
 
 // immSearchCtxPrefix starts the search view's context name (runImmersiveSearch).
@@ -75,7 +75,7 @@ func (m Model) immersiveResumeView() *resume.View {
 	switch {
 	case view == immViewSearch:
 		v.Query = strings.TrimPrefix(im.ctxName, immSearchCtxPrefix)
-	case view.isTrackView():
+	case view.isTrackView() || view == immViewCategories:
 		v.Kind, v.ID, v.Name, v.Sub = nameAt(immKindNames, int(im.ctxKind)), im.ctxID, im.ctxName, im.ctxSub
 	}
 	return v
@@ -139,7 +139,7 @@ func (m *Model) applyImmersiveRestore() tea.Cmd {
 		cmd := m.runImmersiveSearch()
 		m.immRestorePos = pos
 		return cmd
-	case view.isTrackView():
+	case view.isTrackView() || view == immViewCategories:
 		kind, ok := indexOfName(immKindNames, r.Kind)
 		if !ok || r.ID == "" {
 			return nil

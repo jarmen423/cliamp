@@ -423,7 +423,8 @@ Spotify's Browse page lists **For you** (Made for you, New releases) and
 Spotify's genre and mood categories. Open it from the **Browse** row in the
 Spotify provider pane, **Browse & discover** in the `N` menu, or `Enter` on an
 empty `Ctrl+F` query. A category opens in the result tabs above, with the same
-keys.
+keys. In [immersive mode](#immersive-mode-prototype), **Browse** is the first
+row of the Playlists pill.
 
 | Key | Action |
 |---|---|
@@ -471,7 +472,10 @@ config). It falls back to the classic layout when the terminal is under
 80x24. Transport keys keep their normal bindings (`Space`, `>`/`<`, `r`, `Z`,
 `+`/`-`, `Shift+Left`/`Shift+Right`, `v` to cycle visualizers, `c`
 to cycle back); `Ctrl+K` or
-`?` lists everything below. The immersive-only keys:
+`?` lists everything below. On Spotify the Playlists pill starts with
+**Browse**: it opens the [Browse page](#browse-page) categories in the canvas,
+and a category opens as one list of playlists, albums, songs, and artists. The
+immersive-only keys:
 
 | Key | Action |
 |---|---|

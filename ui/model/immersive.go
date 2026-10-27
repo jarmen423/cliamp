@@ -69,22 +69,24 @@ var immSectionLabels = [immSecCount]string{
 type immersiveView int
 
 const (
-	immViewBrowse   immersiveView = iota // item list of the active section
-	immViewPlaylist                      // opened playlist's tracks
-	immViewAlbum                         // opened album's tracks
-	immViewArtist                        // artist detail (popular tracks)
-	immViewShow                          // podcast show episodes
-	immViewSearch                        // search results
-	immViewSettings                      // settings/EQ tab (key-only, no pill)
-	immViewQueue                         // queue page (immersive_queue.go)
-	immViewRadio                         // opened radio's tracks (collection_radio.go)
+	immViewBrowse     immersiveView = iota // item list of the active section
+	immViewPlaylist                        // opened playlist's tracks
+	immViewAlbum                           // opened album's tracks
+	immViewArtist                          // artist detail (popular tracks)
+	immViewShow                            // podcast show episodes
+	immViewSearch                          // search results
+	immViewSettings                        // settings/EQ tab (key-only, no pill)
+	immViewQueue                           // queue page (immersive_queue.go)
+	immViewRadio                           // opened radio's tracks (collection_radio.go)
+	immViewCategories                      // Browse category list (immersive_browse.go)
+	immViewCategory                        // opened Browse category's page
 )
 
 // isTrackView reports whether the canvas shows a track list (detail or
 // search results) rather than a collection browse or the settings tab.
 func (v immersiveView) isTrackView() bool {
 	switch v {
-	case immViewPlaylist, immViewAlbum, immViewArtist, immViewShow, immViewSearch, immViewRadio:
+	case immViewPlaylist, immViewAlbum, immViewArtist, immViewShow, immViewSearch, immViewRadio, immViewCategory:
 		return true
 	}
 	return false
@@ -144,7 +146,9 @@ const (
 	immKindArtist
 	immKindShow // podcast show
 	immKindTrack
-	immKindHeader // queue-page section label; never selected
+	immKindBrowse   // a provider's Browse page (immersive_browse.go)
+	immKindCategory // one Browse category
+	immKindHeader   // queue-page section label; never selected
 )
 
 // immItem is one selectable canvas row: a collection in a browse view or a
@@ -199,6 +203,11 @@ type immersiveState struct {
 	loadingLists   bool
 	loadingAlbums  bool
 	loadingArtists bool
+
+	// The Browse page's categories (provider.CategoryBrowser), fetched the
+	// first time Browse opens.
+	categories        []provider.CategoryInfo
+	loadingCategories bool
 
 	// — canvas —
 	view      immersiveView
@@ -256,7 +265,7 @@ func (m Model) immSpin() string {
 func (m Model) immLoadingActive() bool {
 	im := m.immersive
 	return im.loadingLists || im.loadingAlbums || im.loadingArtists ||
-		im.tracksLoading || im.searchLoading
+		im.loadingCategories || im.tracksLoading || im.searchLoading
 }
 
 // — messages —
@@ -452,6 +461,7 @@ func (m *Model) exitImmersive() {
 	nextRequest(&m.requests.immersiveContent)
 	nextRequest(&m.requests.immersiveArtist)
 	nextRequest(&m.requests.immersiveSearch)
+	nextRequest(&m.requests.immersiveBrowse)
 	m.immersive = immersiveState{}
 	m.releaseImages()
 	m.immRestore = nil
@@ -572,6 +582,13 @@ func (m Model) browseItems() []immItem {
 			return strings.ToLower(items[i].title) < strings.ToLower(items[j].title)
 		})
 	}
+	if im.section == immSecPlaylists {
+		// Browse leads the playlists whatever the sort, as long as the
+		// filter keeps it.
+		if it, ok := m.immBrowseItem(); ok && (im.filter == "" || strings.Contains(strings.ToLower(it.title), strings.ToLower(im.filter))) {
+			items = append([]immItem{it}, items...)
+		}
+	}
 	return items
 }
 
@@ -613,6 +630,9 @@ func (m Model) canvasItems() []immItem {
 	}
 	if im.view == immViewQueue {
 		return m.immQueueViewItems()
+	}
+	if im.view == immViewCategories {
+		return m.categoryItems()
 	}
 	if im.view.isTrackView() {
 		return trackItems(m.sortedTracks())
@@ -771,6 +791,13 @@ func (m *Model) loadImmersiveItem(item immItem) tea.Cmd {
 			return fetchImmersiveAlbumCmd(l, providerName, item.kind, item.id, item.title, item.sub, gen)
 		}
 		return fetchImmersiveContentCmd(prov, item.kind, item.id, item.title, item.sub, gen)
+	case immKindBrowse:
+		return m.showImmersiveCategories()
+	case immKindCategory:
+		m.immersive.view = immViewCategory
+		if b, ok := prov.(provider.CategoryBrowser); ok {
+			return fetchImmersiveCategoryCmd(b, providerName, m.immersiveCategory(item), gen)
+		}
 	}
 	m.immersive.tracksLoading = false
 	return nil
@@ -865,6 +892,9 @@ func (m *Model) immersiveRestore(snap immNavSnap) tea.Cmd {
 		cmd := m.loadImmersiveItem(immItem{kind: snap.ctxKind, id: snap.ctxID, title: snap.ctxName, sub: snap.ctxSub})
 		im.cursor, im.scroll, im.trackSort = snap.cursor, snap.scroll, snap.trackSort
 		return cmd
+	}
+	if snap.view == immViewCategories {
+		return m.showImmersiveCategories() // refetches a list that never arrived
 	}
 	return nil
 }

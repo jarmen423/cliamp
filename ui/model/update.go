@@ -587,6 +587,18 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case immersiveCategoriesMsg:
+		if !m.isCurrentImmersiveRequest(msg.gen, msg.providerName, m.requests.immersiveBrowse) {
+			return m, nil
+		}
+		m.immersive.loadingCategories = false
+		m.noteImmersiveLoadErr("Browse", msg.err)
+		if msg.err == nil {
+			m.immersive.categories = msg.cats
+			m.applyImmersiveRestorePos()
+		}
+		return m, nil
+
 	case immersiveContentMsg:
 		if !m.isCurrentImmersiveRequest(msg.gen, msg.providerName, m.requests.immersiveContent) {
 			return m, nil
