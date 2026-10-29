@@ -28,10 +28,11 @@ import (
 
 // isolateProviderEnv points every config and credential lookup at a new
 // directory, so buildProviders reads no real config and starts no provider
-// from the environment.
+// from the environment. PATH is empty, so no yt-dlp is found.
 func isolateProviderEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
 	for _, name := range []string{"CLIAMP_CONFIG_DIR", "XDG_CONFIG_HOME", "NAVIDROME_URL", "LYRION_URL"} {
 		t.Setenv(name, "")
 	}
@@ -99,6 +100,52 @@ func TestBuildProviders(t *testing.T) {
 				if nav, ok := e.Provider.(*navidrome.NavidromeClient); ok && nav.SaveSort == nil {
 					t.Error("the Navidrome album sort is not saved to the config")
 				}
+			}
+		})
+	}
+}
+
+// Without a YouTube sign-in, buildProviders registers the search-only YouTube
+// entry when yt-dlp is installed, and no YouTube entry when it is not.
+func TestBuildProvidersAnonymousYouTube(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		ytdlp bool
+		want  bool
+	}{
+		{name: "with yt-dlp", ytdlp: true, want: true},
+		{name: "without yt-dlp"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			isolateProviderEnv(t)
+			if tt.ytdlp {
+				bin := "yt-dlp"
+				if runtime.GOOS == "windows" {
+					bin += ".exe"
+				}
+				if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), bin), []byte("#!/bin/sh"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			set := buildProviders(config.Config{}, false)
+			t.Cleanup(set.Close)
+
+			var youtube []string
+			for _, e := range set.entries {
+				switch e.Key {
+				case "yt", "youtube", "ytmusic":
+					youtube = append(youtube, e.Key)
+				}
+			}
+			if tt.want {
+				if !slices.Equal(youtube, []string{"youtube"}) {
+					t.Fatalf("YouTube entries = %v, want [youtube] alone", youtube)
+				}
+				if _, ok := set.entries[len(set.entries)-1].Provider.(provider.Searcher); !ok {
+					t.Error("the anonymous YouTube provider must support search")
+				}
+			} else if len(youtube) != 0 {
+				t.Fatalf("YouTube entries = %v, want none without yt-dlp", youtube)
 			}
 		})
 	}

@@ -119,10 +119,14 @@ func TestProviderEmptyStateHints(t *testing.T) {
 	}
 }
 
-// The Shift+Y hint names the config key that registers YouTube. It once
-// named a cliamp ytmusic-login command that does not exist.
+// The hint for the signed-in YouTube providers names the config key that
+// registers them. It once named a cliamp ytmusic-login command that does not
+// exist. Plain YouTube needs no sign-in, so its hint names yt-dlp.
 func TestUnconfiguredYouTubeHintNamesConfig(t *testing.T) {
-	for _, key := range []string{"yt", "youtube", "ytmusic"} {
+	if hint := unconfiguredProviderHint("youtube"); !strings.Contains(hint, "yt-dlp") {
+		t.Errorf("unconfiguredProviderHint(youtube) = %q, want it to name yt-dlp", hint)
+	}
+	for _, key := range []string{"yt", "ytmusic"} {
 		if hint := unconfiguredProviderHint(key); !strings.Contains(hint, "[ytmusic] cookies_from") {
 			t.Errorf("unconfiguredProviderHint(%q) = %q, want it to name [ytmusic] cookies_from", key, hint)
 		}

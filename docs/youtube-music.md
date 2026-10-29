@@ -10,6 +10,8 @@ Cliamp automatically sorts playlists into two providers:
 > - **Cookie-based (zero OAuth):** Set `cookies_from = "your_browser"` in `~/.config/cliamp/config.toml`, or select a browser in `cliamp setup`. cliamp loads playlists through the existing browser session. You do not need OAuth credentials or `ytmusic_credentials.json`.
 > - **OAuth-based:** Set Google Cloud OAuth credentials as described below. Then press Enter in the provider browser to sign in. cliamp stores credentials in `~/.config/cliamp/ytmusic_credentials.json`.
 
+Without a sign-in, `Y` opens plain **YouTube** and `Ctrl+F` searches it through yt-dlp. Playlists, YouTube Music and YouTube (All) need one of the setups below.
+
 ## Setup
 
 ### Option 1: Browser cookies (zero setup)

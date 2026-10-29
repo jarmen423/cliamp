@@ -516,12 +516,12 @@ func TestPlMgrDeletePromptOwnsProviderShortcuts(t *testing.T) {
 		configured  []string // provider keys registered next to local
 		wantRemoved bool
 	}{
-		{name: "list Y without yt", screen: plMgrScreenList, key: "Y", wantRemoved: true},
-		{name: "list Y with yt", screen: plMgrScreenList, key: "Y", configured: []string{"yt"}, wantRemoved: true},
+		{name: "list Y without youtube", screen: plMgrScreenList, key: "Y", wantRemoved: true},
+		{name: "list Y with youtube", screen: plMgrScreenList, key: "Y", configured: []string{"youtube"}, wantRemoved: true},
 		{name: "list S with spotify", screen: plMgrScreenList, key: "S", configured: []string{"spotify"}},
 		{name: "list S without spotify", screen: plMgrScreenList, key: "S"},
-		{name: "dirs Y without yt", screen: plMgrScreenDirs, key: "Y", wantRemoved: true},
-		{name: "dirs Y with yt", screen: plMgrScreenDirs, key: "Y", configured: []string{"yt"}, wantRemoved: true},
+		{name: "dirs Y without youtube", screen: plMgrScreenDirs, key: "Y", wantRemoved: true},
+		{name: "dirs Y with youtube", screen: plMgrScreenDirs, key: "Y", configured: []string{"youtube"}, wantRemoved: true},
 		{name: "dirs S with spotify", screen: plMgrScreenDirs, key: "S", configured: []string{"spotify"}},
 		{name: "dirs S without spotify", screen: plMgrScreenDirs, key: "S"},
 	}

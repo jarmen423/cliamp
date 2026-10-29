@@ -170,7 +170,7 @@ func keybindingTestModel() Model {
 		provider: local,
 		providers: []provider.Entry{
 			{Key: "local", Name: "Local", Provider: local},
-			{Key: "yt", Name: "YouTube", Provider: commandsTestProvider{name: "YouTube"}},
+			{Key: "youtube", Name: "YouTube", Provider: commandsTestProvider{name: "YouTube"}},
 		},
 	}
 }

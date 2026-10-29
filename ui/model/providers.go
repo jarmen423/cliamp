@@ -422,7 +422,7 @@ func providerKeyForShortcut(key string) string {
 	case "B":
 		return "audiobookshelf"
 	case "Y":
-		return "yt"
+		return "youtube"
 	case "C":
 		return "soundcloud"
 	case "X":
@@ -470,7 +470,9 @@ func (m Model) hasProvider(key string) bool {
 // whose provider did not register (fresh config, missing credentials).
 func unconfiguredProviderHint(key string) string {
 	switch key {
-	case "yt", "youtube", "ytmusic":
+	case "youtube":
+		return "YouTube needs yt-dlp to search — install it and restart (`cliamp setup`)"
+	case "yt", "ytmusic":
 		return "YouTube not configured — set [ytmusic] cookies_from or run `cliamp setup` (needs yt-dlp)"
 	case "spotify":
 		return "Spotify not configured — run `cliamp setup` to sign in"

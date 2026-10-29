@@ -32,6 +32,7 @@ const (
 
 type cookieBase struct {
 	browser     string
+	anonymous   bool // no sign-in: search only, no account playlists
 	fetchFn     func(browser string) ([]playlist.PlaylistInfo, error)
 	resolveFn   func(ctx context.Context, pageURL string, start, count int, browser string) ([]playlist.Track, int, error)
 	mu          sync.Mutex
@@ -268,6 +269,14 @@ func NewCookieProvider(browser string, kind ProviderKind) *CookieProvider {
 	}
 }
 
+// NewAnonymousProvider creates a YouTube video provider that needs no
+// sign-in. It searches with yt-dlp and lists no account playlists.
+func NewAnonymousProvider() *CookieProvider {
+	base := newCookieBase("")
+	base.anonymous = true
+	return &CookieProvider{base: base, kind: KindVideo}
+}
+
 // Name returns the display name of this provider.
 func (p *CookieProvider) Name() string {
 	switch p.kind {
@@ -284,6 +293,9 @@ func (p *CookieProvider) Name() string {
 
 // Playlists returns the available playlists for this provider.
 func (p *CookieProvider) Playlists() ([]playlist.PlaylistInfo, error) {
+	if p.base.anonymous {
+		return []playlist.PlaylistInfo{}, nil
+	}
 	userPls, err := p.base.fetchPlaylists()
 	if err != nil {
 		return nil, err

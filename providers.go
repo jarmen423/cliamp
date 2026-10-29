@@ -248,9 +248,21 @@ func buildProviders(cfg config.Config, interactive bool) *providerSet {
 	return s
 }
 
+// anonymousYouTubeEntries returns the plain YouTube entry alone, for a config
+// with no YouTube sign-in. It searches with yt-dlp and needs no credentials.
+func anonymousYouTubeEntries(reason string) []provider.Entry {
+	if !player.YTDLPAvailable() {
+		logYouTubeSkipped(reason)
+		return nil
+	}
+	return []provider.Entry{
+		{Key: "youtube", Name: providerName("youtube"), Provider: ytmusic.NewAnonymousProvider()},
+	}
+}
+
 // youTubeEntries returns the YouTube (All), YouTube and YouTube Music
-// entries, which share one sign-in. It returns none when YouTube is not
-// wanted, has no credentials or has no yt-dlp.
+// entries, which share one sign-in. Without a sign-in it returns the
+// search-only YouTube entry when yt-dlp is installed, and none otherwise.
 func youTubeEntries(cfg config.Config, interactive bool) []provider.Entry {
 	wanted := cfg.YouTubeMusic.IsSet()
 	if !wanted {
@@ -260,8 +272,7 @@ func youTubeEntries(cfg config.Config, interactive bool) []provider.Entry {
 		}
 	}
 	if !wanted {
-		logYouTubeSkipped("not configured")
-		return nil
+		return anonymousYouTubeEntries("not configured")
 	}
 	clientID := strings.TrimSpace(cfg.YouTubeMusic.ClientID)
 	clientSecret := strings.TrimSpace(cfg.YouTubeMusic.ClientSecret)
@@ -274,8 +285,7 @@ func youTubeEntries(cfg config.Config, interactive bool) []provider.Entry {
 	}
 	if !hasOAuth && !hasCookies {
 		fmt.Fprintf(os.Stderr, "YouTube: no credentials available (configure client_id/client_secret or cookies_from in config.toml)\n")
-		logYouTubeSkipped("no credentials available")
-		return nil
+		return anonymousYouTubeEntries("no credentials available")
 	}
 
 	if !player.YTDLPAvailable() {

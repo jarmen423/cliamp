@@ -469,3 +469,20 @@ func TestNewCookieProvidersDoesNotMutateOtherHostCookies(t *testing.T) {
 		t.Errorf("SoundCloud cookies were replaced with 'chrome': %s", string(logged))
 	}
 }
+
+func TestAnonymousProviderListsNoPlaylistsAndSearches(t *testing.T) {
+	prov := NewAnonymousProvider()
+	if got := prov.Name(); got != "YouTube" {
+		t.Errorf("Name() = %q, want YouTube", got)
+	}
+	pls, err := prov.Playlists()
+	if err != nil {
+		t.Fatalf("Playlists() error = %v, want none without a sign-in", err)
+	}
+	if len(pls) != 0 {
+		t.Errorf("Playlists() = %v, want none without a sign-in", pls)
+	}
+	if _, ok := any(prov).(provider.Searcher); !ok {
+		t.Error("anonymous provider must support search")
+	}
+}
