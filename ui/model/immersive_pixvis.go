@@ -134,12 +134,12 @@ func (m Model) immPixelVisOn() artKind {
 }
 
 // fullVisPixelOn is immPixelVisOn for the full-screen visualizer, whose
-// visualizer is PanelWidth by vis.Rows cells.
+// visualizer is fullVisWidth by vis.Rows cells.
 func (m Model) fullVisPixelOn() artKind {
 	if m.activeScreen() != screenFullVisualizer || m.vis == nil {
 		return artNone
 	}
-	return m.pixelVisKind(ui.PanelWidth, m.vis.Rows)
+	return m.pixelVisKind(m.fullVisWidth(), m.vis.Rows)
 }
 
 // pixelVisKind reports how a w by h cell area can show the pixel

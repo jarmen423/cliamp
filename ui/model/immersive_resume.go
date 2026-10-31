@@ -19,7 +19,7 @@ import (
 
 // Stable names for the saved page, indexed by the matching constants.
 var (
-	immViewNames = []string{"browse", "playlist", "album", "artist", "show", "search", "settings", "queue", "radio", "categories", "category"}
+	immViewNames = []string{"browse", "playlist", "album", "artist", "show", "search", "settings", "queue", "radio", "categories", "category", "lyrics"}
 	immKindNames = []string{"playlist", "album", "artist", "show", "track", "browse", "category"}
 )
 
@@ -55,15 +55,15 @@ func immSectionByName(name string) (immSection, bool) {
 }
 
 // immersiveResumeView is the page to save, or nil outside immersive. The
-// settings tab and open inputs are transient: the page under them is saved.
+// tabs and open inputs are transient: the page under them is saved.
 func (m Model) immersiveResumeView() *resume.View {
 	im := m.immersive
 	if !im.active || im.prov == nil || im.section < 0 || im.section >= immSecCount {
 		return nil
 	}
 	view := im.view
-	if view == immViewSettings {
-		view = im.settingsReturn
+	if view.isTab() {
+		view = im.tabReturn
 	}
 	v := &resume.View{
 		Provider: im.prov.Name(),

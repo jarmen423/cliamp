@@ -20,11 +20,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, spinnerTickCmd()
 	}
 	spinning := m.spinnerVisible()
+	lyricsWanted := m.lyricsWanted()
 	next, cmd := m.update(msg)
 	if nm, ok := next.(Model); ok {
 		nm.recomputeLayout()
 		nm.dropStalePreload()
 		nm.notifyPlaybackChange()
+		// A lyrics view opened. Only on the change: a track with no lyrics
+		// would otherwise look them up again after every message.
+		if !lyricsWanted && nm.lyricsWanted() {
+			cmd = tea.Batch(cmd, nm.ensureLyrics())
+		}
 		// A load that starts now gets its own redraws at once. The main tick
 		// can still wait up to ui.TickIdle before it runs at the spinner rate.
 		if !spinning && !nm.spinnerTicking && nm.spinnerVisible() {
@@ -254,7 +260,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case lyricsLoadedMsg:
-		if msg.gen != m.requests.lyrics || !m.lyrics.visible || msg.query != m.lyrics.query {
+		if msg.gen != m.requests.lyrics || msg.query != m.lyrics.query {
 			return m, nil
 		}
 		m.lyrics.loading = false

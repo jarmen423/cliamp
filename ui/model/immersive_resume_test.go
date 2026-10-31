@@ -50,7 +50,7 @@ func TestImmersiveResumeViewSavesPage(t *testing.T) {
 	if got := m.immersiveResumeView(); got == nil || *got != want {
 		t.Fatalf("view = %+v, want %+v", got, want)
 	}
-	m.immersive.settingsReturn, m.immersive.view = immViewPlaylist, immViewSettings
+	m.immersive.tabReturn, m.immersive.view = immViewPlaylist, immViewSettings
 	if got := m.immersiveResumeView(); got == nil || got.View != "playlist" {
 		t.Fatalf("settings tab saved %+v, want the playlist under it", got)
 	}

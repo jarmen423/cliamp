@@ -80,7 +80,14 @@ const (
 	immViewRadio                           // opened radio's tracks (collection_radio.go)
 	immViewCategories                      // Browse category list (immersive_browse.go)
 	immViewCategory                        // opened Browse category's page
+	immViewLyrics                          // lyrics tab (key-only, no pill)
 )
+
+// isTab reports whether the view is a canvas tab over the page under it: not
+// a history step, and not saved for resume.
+func (v immersiveView) isTab() bool {
+	return v == immViewSettings || v == immViewLyrics
+}
 
 // isTrackView reports whether the canvas shows a track list (detail or
 // search results) rather than a collection browse or the settings tab.
@@ -229,7 +236,7 @@ type immersiveState struct {
 	back          []immNavSnap // history behind the current canvas (Back)
 	fwd           []immNavSnap // history undone by Back (Forward)
 
-	settingsReturn immersiveView // view `e` returns to
+	tabReturn      immersiveView // view `e` and `y` return to
 	settingsCursor int           // row inside the settings tab
 
 	// — queue panel —
@@ -421,14 +428,14 @@ func (m *Model) enterImmersive() tea.Cmd {
 // stays hidden behind the classic layout while the terminal is too small.
 func (m *Model) startImmersive() tea.Cmd {
 	m.immersive = immersiveState{
-		active:         true,
-		prov:           m.provider,
-		focus:          immPaneCanvas,
-		section:        immSecPlaylists,
-		view:           immViewBrowse,
-		mode:           m.immCanvasPref,
-		sort:           immBrowseSortRecents,
-		settingsReturn: immViewBrowse,
+		active:    true,
+		prov:      m.provider,
+		focus:     immPaneCanvas,
+		section:   immSecPlaylists,
+		view:      immViewBrowse,
+		mode:      m.immCanvasPref,
+		sort:      immBrowseSortRecents,
+		tabReturn: immViewBrowse,
 	}
 	m.recomputeLayout() // the visualizer takes the band's height
 	artCmd := m.startArtPolling()
@@ -622,10 +629,10 @@ func trackItems(tracks []playlist.Track) []immItem {
 }
 
 // canvasItems returns the items the canvas lists in its current view.
-// Track views wrap sortedTracks(); the settings tab has no items.
+// Track views wrap sortedTracks(); the tabs have no items.
 func (m Model) canvasItems() []immItem {
 	im := m.immersive
-	if im.view == immViewSettings {
+	if im.view.isTab() {
 		return nil
 	}
 	if im.view == immViewQueue {
@@ -821,12 +828,12 @@ func (m Model) immersiveSnap() immNavSnap {
 }
 
 // pushImmersiveBack records the current canvas before a new navigation,
-// which also discards the forward history. Settings is transient and never
+// which also discards the forward history. The tabs are transient and never
 // recorded.
 func (m *Model) pushImmersiveBack() {
 	m.immRestorePos = nil // the user moved on before a restored list arrived
 	m.immersive.fwd = nil
-	if m.immersive.view == immViewSettings {
+	if m.immersive.view.isTab() {
 		return
 	}
 	m.immersive.back = append(m.immersive.back, m.immersiveSnap())
@@ -837,8 +844,8 @@ func (m *Model) pushImmersiveBack() {
 func (m *Model) immersiveGoBack() tea.Cmd {
 	m.immRestorePos = nil
 	im := &m.immersive
-	if im.view == immViewSettings {
-		im.view = im.settingsReturn // Settings is a tab, not a history step
+	if im.view.isTab() {
+		im.view = im.tabReturn // a tab, not a history step
 		return nil
 	}
 	n := len(im.back)
@@ -865,7 +872,7 @@ func (m *Model) immersiveGoForward() tea.Cmd {
 	}
 	snap := im.fwd[n-1]
 	im.fwd = im.fwd[:n-1]
-	if im.view != immViewSettings {
+	if !im.view.isTab() {
 		im.back = append(im.back, m.immersiveSnap())
 	}
 	return m.immersiveRestore(snap)

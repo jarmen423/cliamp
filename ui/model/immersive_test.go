@@ -227,7 +227,7 @@ func TestImmersiveSettingsTab(t *testing.T) {
 		t.Fatalf("view = %d, want settings", m.immersive.view)
 	}
 	m.immersive.view = immViewPlaylist
-	m.immersive.settingsReturn = immViewPlaylist
+	m.immersive.tabReturn = immViewPlaylist
 	m.immersive.view = immViewSettings
 	m.handleImmersiveKey(keyMsg("esc"))
 	if m.immersive.view != immViewPlaylist {

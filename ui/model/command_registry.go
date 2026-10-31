@@ -221,6 +221,8 @@ var commandRegistry = []commandSpec{
 	{Mode: commandModeImmersive, Keys: []string{"v"}, KeyLabel: "v", Label: "Cycle visualizer", ContextHelp: true},
 	{Mode: commandModeImmersive, Keys: []string{"c"}, KeyLabel: "c", Label: "Previous visualizer", ContextHelp: true},
 	{Mode: commandModeImmersive, Keys: []string{"V"}, KeyLabel: "V", Label: "Full-screen visualizer", ContextHelp: true},
+	{Mode: commandModeImmersive, Keys: []string{"y"}, KeyLabel: "y", Label: "Lyrics in the canvas", ContextHelp: true},
+	{Mode: commandModeImmersive, Keys: []string{"[", "]"}, KeyLabel: "[ ]", Label: "Lyrics tab: sync offset (−/+250 ms)", ContextHelp: true},
 	{Mode: commandModeImmersive, Keys: []string{"backspace", "alt+left"}, KeyLabel: "Bksp Alt+Left", Label: "Back", ContextHelp: true},
 	{Mode: commandModeImmersive, Keys: []string{"alt+right"}, KeyLabel: "Alt+Right", Label: "Forward", ContextHelp: true},
 	{Mode: commandModeImmersive, Keys: []string{";"}, KeyLabel: ";", Label: "Track menu (also right-click)", ContextHelp: true},
@@ -415,7 +417,7 @@ var commandRegistry = []commandSpec{
 		return ok
 	}},
 	{Mode: commandModeLyrics, Keys: []string{"r"}, KeyLabel: "r", Label: "Retry", ContextHelp: true, Primary: true, Enabled: func(m Model) bool { return !m.lyrics.loading && (m.lyrics.err != nil || len(m.lyrics.lines) == 0) }},
-	{Mode: commandModeLyrics, Keys: []string{"[", "]"}, KeyLabel: "[ ]", Label: "Sync offset (ΓêÆ/+250 ms)", ContextHelp: true, Keymap: true, Enabled: func(m Model) bool { return m.lyricsSyncable() && m.lyricsHaveTimestamps() }},
+	{Mode: commandModeLyrics, Keys: []string{"[", "]"}, KeyLabel: "[ ]", Label: "Sync offset (−/+250 ms)", ContextHelp: true, Keymap: true, Enabled: func(m Model) bool { return m.lyricsFollowPlayback() }},
 	{Mode: commandModeLyrics, Keys: []string{"esc", "q"}, KeyLabel: "Esc", Label: "Close", ContextHelp: true, Cancel: true},
 	{Mode: commandModeInfo, Keys: []string{"esc", "q"}, KeyLabel: "Esc", Label: "Close", ContextHelp: true, Cancel: true},
 	{Mode: commandModePlaylistManager, Keys: []string{"a"}, KeyLabel: "a", Label: "New playlist", ContextHelp: true, Primary: true, Enabled: func(m Model) bool {
@@ -561,6 +563,9 @@ var commandRegistry = []commandSpec{
 	{Mode: commandModeFullVis, Keys: []string{"v"}, KeyLabel: "v", Label: "Cycle visualizer", Keymap: true},
 	{Mode: commandModeFullVis, Keys: []string{"c"}, KeyLabel: "c", Label: "Previous visualizer", Keymap: true},
 	{Mode: commandModeFullVis, Keys: []string{"t"}, KeyLabel: "t", Label: "Hide track info", Keymap: true, ContextHelp: true},
+	{Mode: commandModeFullVis, Keys: []string{"y"}, KeyLabel: "y", Label: "Lyrics: split / lyrics only / off", Keymap: true, ContextHelp: true},
+	{Mode: commandModeFullVis, Keys: []string{"j", "k", "up", "down"}, KeyLabel: "j k", RunKey: "j", Label: "Scroll unsynced lyrics", Keymap: true},
+	{Mode: commandModeFullVis, Keys: []string{"[", "]"}, KeyLabel: "[ ]", Label: "Lyrics sync offset (−/+250 ms)", Keymap: true},
 	{Mode: commandModeFullVis, Keys: []string{"?"}, KeyLabel: "?", Label: "Help", Keymap: true},
 }
 

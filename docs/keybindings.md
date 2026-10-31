@@ -108,7 +108,7 @@ list.
 | `v` | Cycle visualizer and save the choice in `config.toml` |
 | `c` | Cycle visualizer backward and save the choice |
 | `Ctrl+V` | Pick visualizer from a list (live preview) |
-| `V` | Full screen visualizer. Inside it, `v` cycles modes and saves the choice (`c` cycles back), `<`/`>` change track, `+`/`-` change volume, and `t` hides the episode name, leaving only the bracketed source. `q` or `Esc` exits back to the player; `Ctrl+C` quits. |
+| `V` | Full screen visualizer. Inside it, `v` cycles modes and saves the choice (`c` cycles back), `<`/`>` change track, `+`/`-` change volume, and `t` hides the episode name, leaving only the bracketed source. `y` cycles the visualizer beside the lyrics, the lyrics alone, and the visualizer alone; on a narrow screen it skips the split. While lyrics show, `[`/`]` adjust their timing and `j`/`k` scroll lyrics without timestamps. `q` or `Esc` exits back to the player; `Ctrl+C` quits. |
 | `Ctrl+H` | Toggle album headers |
 | `Ctrl+G` | Toggle the key-binding hint bar (remembered in `hide_help_bar`) |
 | `Ctrl+B` | Open/close the settings pane (remembered in `hide_settings_pane`) |
@@ -487,12 +487,13 @@ immersive-only keys:
 | `Enter` | Open the focused collection, play the focused track, or adjust a setting |
 | `Backspace` or `Alt+Left` | Back through the canvas history (the ◀ button) |
 | `Alt+Right` | Forward again (the ▶ button) |
-| `Esc` | Leave the settings tab or an opened collection; exits at the root |
+| `Esc` | Leave the settings or lyrics tab or an opened collection; exits at the root |
 | `g` or `Home` | Jump back to the canvas root |
 | `b` | Cycle the canvas view: list, rows, grid |
 | `z` | Shuffle button: off, shuffle, Smart Shuffle (✦), off |
 | `;` | Track menu for the focused track (also right-click) |
 | `e` | Toggle the settings tab in the canvas (EQ preset/bands, volume, speed, visualizer) |
+| `y` | Toggle the lyrics tab in the canvas. The visualizer band stays above it. `[`/`]` adjust the timing of synced lyrics and `j`/`k` scroll lyrics without timestamps |
 | `t` | Cycle track sort: order, title, album, duration |
 | `s` | Toggle browse sort: recents vs alphabetical |
 | `f` | Filter the current browse list |
@@ -503,7 +504,7 @@ immersive-only keys:
 | `q` | Focus the Queue panel (queue clicks jump the live queue there) |
 | `Q` | Queue page in the canvas: Now playing, Next in queue, and Next up from the playing context (in shuffled order when shuffle is on). `Enter` jumps there, `x` removes a queued track, `Shift+Up`/`Shift+Down` move it, `;` opens the track menu, `Q` or `Esc` goes back |
 | `R` | Radio: in an open playlist, album or artist, radio for that collection; in a list, radio for the focused artist, album or playlist, or song radio for a focused track. The radio opens in the canvas as a new playlist page and the queue is left alone: `Enter` or `p` plays it, the Queue panel then shows it as "Next from … Radio", and `Backspace` returns to where you were. On Spotify it is Spotify's station for the seed; other providers with recommendations mix a spread of the collection's tracks with them |
-| `V` | Full-screen visualizer |
+| `V` | Full-screen visualizer. `y` inside it cycles the visualizer beside the lyrics, the lyrics alone, and the visualizer alone |
 | `S`, `L`, `O`, `P`, `Y`, … | Switch provider with the same Shift+letter keys as the classic layout, staying in immersive mode: the frame reopens on the new provider's Playlists. `Q` and `R` keep their immersive meaning (queue page, radio) |
 | `I` or `Esc` | Exit immersive mode |
 

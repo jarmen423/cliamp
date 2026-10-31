@@ -130,12 +130,19 @@ func (m *Model) handleImmersiveKey(msg tea.KeyPressMsg) tea.Cmd {
 		_ = m.saveConfigString("immersive_view", immCanvasModeNames[m.immersive.mode])
 		return nil
 	case "e":
-		if m.immersive.view == immViewSettings {
-			m.immersive.view = m.immersive.settingsReturn
-		} else {
-			m.immersive.settingsReturn = m.immersive.view
-			m.immersive.view = immViewSettings
-			m.immersive.focus = immPaneCanvas
+		m.immToggleTab(immViewSettings)
+		return nil
+	case "y":
+		m.immToggleTab(immViewLyrics)
+		return nil
+	case "[":
+		if m.immersive.view == immViewLyrics {
+			m.nudgeSyncedLyrics(-lyricsOffsetStep)
+		}
+		return nil
+	case "]":
+		if m.immersive.view == immViewLyrics {
+			m.nudgeSyncedLyrics(lyricsOffsetStep)
 		}
 		return nil
 	case "s":
@@ -270,6 +277,21 @@ func (m *Model) immCycleRepeat() tea.Cmd {
 	return nil
 }
 
+// immToggleTab opens a canvas tab, or returns to the page under it. Moving
+// from one tab to the other keeps that page.
+func (m *Model) immToggleTab(tab immersiveView) {
+	im := &m.immersive
+	if im.view == tab {
+		im.view = im.tabReturn
+		return
+	}
+	if !im.view.isTab() {
+		im.tabReturn = im.view
+	}
+	im.view = tab
+	im.focus = immPaneCanvas
+}
+
 // openImmersiveSearch activates the Search pill's input field.
 func (m *Model) openImmersiveSearch() tea.Cmd {
 	if _, ok := m.immersive.prov.(provider.Searcher); !ok {
@@ -283,13 +305,13 @@ func (m *Model) openImmersiveSearch() tea.Cmd {
 	return nil
 }
 
-// immersiveEscape peels the innermost state: the settings tab, an opened
-// collection (one history step back), then the mode itself. Pill-to-pill
-// history is Back's job, not Esc's.
+// immersiveEscape peels the innermost state: a tab, an opened collection (one
+// history step back), then the mode itself. Pill-to-pill history is Back's
+// job, not Esc's.
 func (m *Model) immersiveEscape() tea.Cmd {
 	switch {
-	case m.immersive.view == immViewSettings:
-		m.immersive.view = m.immersive.settingsReturn
+	case m.immersive.view.isTab():
+		m.immersive.view = m.immersive.tabReturn
 	case m.immersive.view != immViewBrowse && m.immersive.view != immViewSearch:
 		return m.immersiveGoBack()
 	default:
@@ -343,6 +365,10 @@ func (m *Model) immersiveMoveCanvas(dy, dx int) {
 		if dx != 0 {
 			m.immersiveAdjustSetting(im.settingsCursor, dx)
 		}
+		return
+	}
+	if im.view == immViewLyrics {
+		m.scrollLyrics(dy)
 		return
 	}
 	n := len(m.canvasItems())

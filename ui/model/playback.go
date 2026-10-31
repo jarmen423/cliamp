@@ -757,7 +757,7 @@ func (m *Model) beginPlaybackTrack(track playlist.Track) (playlist.Track, tea.Cm
 	m.lyrics.query = ""
 	m.lyrics.scroll = 0
 	m.resetSeek()
-	if m.lyrics.visible {
+	if m.lyricsWanted() {
 		q := lyricsLookupKey(track, track.Artist, track.Title)
 		if q == "" {
 			return track, historyCmd

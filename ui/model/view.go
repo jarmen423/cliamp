@@ -284,7 +284,7 @@ func (m Model) View() tea.View {
 			m.imgLayer.Set(nil)
 			m.touchChangedRows(rendered)
 			x, y := m.fullVisOrigin(framed, visAbove)
-			m.feedPixelVis(kind, x, y, ui.PanelWidth, m.vis.Rows)
+			m.feedPixelVis(kind, x, y, m.fullVisWidth(), m.vis.Rows)
 		} else {
 			m.clearImages()
 		}
@@ -696,18 +696,49 @@ func (m Model) fullVisHead() []string {
 // fullVisSpectrum is the full-screen visualizer: an image's cells when a
 // pixel mode shows as one, the text rendition otherwise.
 func (m Model) fullVisSpectrum() string {
+	w := m.fullVisWidth()
 	if m.vis != nil {
-		if cells, ok := m.pixelVisCells(m.fullVisPixelOn(), ui.PanelWidth, m.vis.Rows); ok {
+		if cells, ok := m.pixelVisCells(m.fullVisPixelOn(), w, m.vis.Rows); ok {
 			return strings.Join(cells, "\n")
 		}
 	}
+	// The text rendition of the pixel modes draws to PanelWidth.
+	defer ui.WithPanelWidth(w)()
 	return m.renderSpectrum()
+}
+
+// fullVisContent is the area under the head of the full-screen visualizer:
+// the visualizer, the visualizer beside the lyrics, or the lyrics alone.
+func (m Model) fullVisContent() string {
+	mode := m.fullVisLyricsNow()
+	if mode == fullVisLyricsOff {
+		return m.fullVisSpectrum()
+	}
+	rows := m.layout.fullVisualizerRows
+	if mode == fullVisLyricsOnly {
+		return strings.Join(padPane(m.lyricsPane(ui.PanelWidth, rows), ui.PanelWidth, rows), "\n")
+	}
+	visW := m.fullVisWidth()
+	lyricsW := ui.PanelWidth - visW - fullVisSplitGutter
+	// The visualizer's rows are already visW wide, and this runs every frame:
+	// pad them only on the frames before it has its size.
+	vis := strings.Split(m.fullVisSpectrum(), "\n")
+	if len(vis) != rows {
+		vis = padPane(vis, visW, rows)
+	}
+	pane := padPane(m.lyricsPane(lyricsW, rows), lyricsW, rows)
+	gutter := strings.Repeat(" ", fullVisSplitGutter)
+	out := make([]string, rows)
+	for i := range out {
+		out[i] = vis[i] + gutter + pane[i]
+	}
+	return strings.Join(out, "\n")
 }
 
 // fullVisualizerSections builds the fullscreen visualizer screen: the
 // visualizer with minimal track info and a seek bar.
 func (m Model) fullVisualizerSections() []string {
-	sections := append(m.fullVisHead(), m.fullVisSpectrum(), m.renderSeekBar())
+	sections := append(m.fullVisHead(), m.fullVisContent(), m.renderSeekBar())
 	if !m.hideHelpBar {
 		sections = append(
 			sections,
@@ -716,7 +747,7 @@ func (m Model) fullVisualizerSections() []string {
 				helpKey("v c", "Mode:"+m.vis.ModeName()+" ")+
 				helpKey("Spc", "▶❚❚ ")+
 				helpKey("<>", "Trk ")+
-				helpKey("+-", "Vol ")+
+				helpKey("y", "Lyrics ")+
 				helpKey("t", "Title ")+
 				helpKey("?", "Keys"),
 		)

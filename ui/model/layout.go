@@ -239,6 +239,9 @@ func (m *Model) recomputeLayout() {
 	ui.PanelWidth = layout.panelWidth
 	if m.vis != nil {
 		m.vis.Cols = layout.panelWidth
+		if m.fullVis {
+			m.vis.Cols = m.fullVisWidth()
+		}
 		if m.width <= 0 && !m.headless {
 			// Bubbletea draws a frame before the first WindowSizeMsg. The
 			// visualizer stays unsized until then, so a mode never starts at
@@ -249,6 +252,9 @@ func (m *Model) recomputeLayout() {
 			m.vis.Rows = 0
 		} else if m.fullVis {
 			m.vis.Rows = layout.fullVisualizerRows
+			if m.fullVisLyricsNow() == fullVisLyricsOnly {
+				m.vis.Rows = 0 // nothing to draw, so the visualizer work stops
+			}
 		} else if m.immersiveShown() {
 			m.vis.Rows = immVisRowsFor(m.immFrameRows())
 		} else {

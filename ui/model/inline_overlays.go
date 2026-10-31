@@ -1,13 +1,11 @@
 package model
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/bjarneo/cliamp/lyrics"
 	"github.com/bjarneo/cliamp/playlist"
 	"github.com/bjarneo/cliamp/provider"
 	"github.com/bjarneo/cliamp/theme"
@@ -428,65 +426,7 @@ func (m Model) renderLyricsBody() string {
 		return ""
 	}
 
-	var lines []string
-	switch {
-	case m.lyrics.loading:
-		lines = append(lines, loadingLine("Searching for lyrics..."))
-	case m.lyrics.err != nil:
-		if errors.Is(m.lyrics.err, lyrics.ErrNotFound) {
-			lines = append(lines, dimStyle.Render("  No lyrics found for this track."))
-		} else {
-			lines = append(lines, errorStyle.Render("  Lyrics fetch failed: "+m.lyrics.err.Error()))
-		}
-	case len(m.lyrics.lines) == 0:
-		artist, title := m.lyricsArtistTitle()
-		if artist == "" && title == "" {
-			lines = append(lines, dimStyle.Render("  No artist/title metadata available."))
-			if track, idx := m.currentPlaybackTrack(); idx >= 0 && track.Stream {
-				lines = append(lines, dimStyle.Render("  Waiting for stream metadata..."))
-			}
-		} else {
-			lines = append(lines, dimStyle.Render("  No lyrics loaded. Press r to retry."))
-		}
-	case m.lyricsSyncable() && m.lyricsHaveTimestamps():
-		pos := m.lyricsPlaybackPosition()
-		activeIdx := -1
-		for i, line := range m.lyrics.lines {
-			if line.Start <= pos {
-				activeIdx = i
-			} else {
-				break
-			}
-		}
-		half := visible / 2
-		startIdx := max(activeIdx-half, 0)
-		endIdx := startIdx + visible
-		if endIdx > len(m.lyrics.lines) {
-			endIdx = len(m.lyrics.lines)
-			startIdx = max(endIdx-visible, 0)
-		}
-		for i := startIdx; i < endIdx; i++ {
-			text := m.lyrics.lines[i].Text
-			if text == "" {
-				text = "♪"
-			}
-			if i == activeIdx {
-				lines = append(lines, playlistSelectedStyle.Render("  "+text))
-			} else {
-				lines = append(lines, dimStyle.Render("  "+text))
-			}
-		}
-	default:
-		endIdx := min(m.lyrics.scroll+visible, len(m.lyrics.lines))
-		for i := m.lyrics.scroll; i < endIdx; i++ {
-			text := m.lyrics.lines[i].Text
-			if text == "" {
-				text = "♪"
-			}
-			lines = append(lines, dimStyle.Render("  "+text))
-		}
-	}
-	return bodyLines(lines, visible)
+	return bodyLines(m.lyricsPane(m.layout.panelWidth, visible), visible)
 }
 
 // — online (net) search —

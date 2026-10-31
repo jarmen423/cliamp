@@ -566,6 +566,8 @@ func (m Model) immCanvasTitle() string {
 		}
 	case immViewSettings:
 		return "Settings"
+	case immViewLyrics:
+		return "Lyrics"
 	case immViewQueue:
 		return "Queue"
 	case immViewSearch:
@@ -621,6 +623,9 @@ func (m Model) renderImmCanvasInner(w, rows int) []string {
 	im := m.immersive
 	if im.view == immViewSettings {
 		return m.renderImmSettings(w, rows)
+	}
+	if im.view == immViewLyrics {
+		return m.lyricsPane(w, rows)
 	}
 	lines := make([]string, rows)
 	if im.needsAuth && im.view == immViewBrowse {
@@ -1189,7 +1194,7 @@ func (m Model) renderImmStatusLine(w int) string {
 	if line := m.renderTransient(); line != "" {
 		return fitCell(line, w)
 	}
-	hints := "? keys · I exit · 1-5 pills · / search · b view · v/c visualizer · ; menu · Bksp back · e EQ · f filter · tab focus · V full vis"
+	hints := "? keys · I exit · 1-5 pills · / search · b view · y lyrics · v/c visualizer · ; menu · Bksp back · e EQ · f filter · tab focus · V full vis"
 	return fitCell(dimStyle.Render(hints), w)
 }
 

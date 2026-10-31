@@ -13,8 +13,7 @@ import (
 // A positive offset must advance the position used for highlighting, so `]`
 // moves the highlight earlier when a source's timestamps run late.
 func TestLyricsOffsetAdvancesTheHighlightPosition(t *testing.T) {
-	eng := &playbackFakeEngine{position: 10 * time.Second}
-	m := Model{player: eng}
+	m := Model{cachedPos: 10 * time.Second}
 
 	m.lyrics.offset = 500 * time.Millisecond
 	if got, want := m.lyricsPlaybackPosition(), 10*time.Second+500*time.Millisecond; got != want {

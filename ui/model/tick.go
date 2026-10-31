@@ -247,7 +247,7 @@ func (m *Model) isFullyIdle() bool {
 // then redraws at least every spinnerInterval so that the frames advance.
 func (m *Model) spinnerVisible() bool {
 	return m.provPane.loading || m.provSearch.loading || m.catalogBatch.loading || m.feedLoading ||
-		(m.lyrics.visible && m.lyrics.loading) ||
+		(m.lyricsWanted() && m.lyrics.loading) ||
 		(m.netSearch.active && m.netSearch.loading) ||
 		(m.searchOverlay.visible && (m.searchOverlay.loading || m.searchOverlay.albumLoading)) ||
 		(m.navBrowser.visible && (m.navBrowser.loading || m.navBrowser.albumLoading)) ||
@@ -452,7 +452,7 @@ func (m *Model) tickStreamTitle() tea.Cmd {
 	m.resetTitleScroll()
 	m.applyHeightMode()
 	m.adjustScroll()
-	if !m.lyrics.visible || m.lyrics.loading {
+	if !m.lyricsWanted() || m.lyrics.loading {
 		return nil
 	}
 	artist, song, ok := splitStreamTitle(title)

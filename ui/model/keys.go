@@ -677,9 +677,6 @@ func (m *Model) handleMainKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	case "y":
 		m.lyrics.visible = !m.lyrics.visible
-		if m.lyrics.visible {
-			return m.retryLyrics()
-		}
 
 	case "I":
 		return m.toggleImmersive()
@@ -825,31 +822,17 @@ func (m *Model) handleInfoKey(msg tea.KeyPressMsg) tea.Cmd {
 func (m *Model) handleLyricsKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc", "y", "q":
-		nextRequest(&m.requests.lyrics)
-		m.lyrics.loading = false
-		m.lyrics.query = ""
 		m.lyrics.visible = false
 	case "r":
 		return m.retryLyrics()
 	case "[":
-		if m.lyricsSyncable() && m.lyricsHaveTimestamps() {
-			return m.nudgeLyricsOffset(-250 * time.Millisecond)
-		}
+		m.nudgeSyncedLyrics(-lyricsOffsetStep)
 	case "]":
-		if m.lyricsSyncable() && m.lyricsHaveTimestamps() {
-			return m.nudgeLyricsOffset(250 * time.Millisecond)
-		}
+		m.nudgeSyncedLyrics(lyricsOffsetStep)
 	case "up", "k":
-		if !(m.lyricsSyncable() && m.lyricsHaveTimestamps()) && m.lyrics.scroll > 0 {
-			m.lyrics.scroll--
-		}
+		m.scrollLyrics(-1)
 	case "down", "j":
-		if !(m.lyricsSyncable() && m.lyricsHaveTimestamps()) {
-			maxScroll := max(len(m.lyrics.lines)-1, 0)
-			if m.lyrics.scroll < maxScroll {
-				m.lyrics.scroll++
-			}
-		}
+		m.scrollLyrics(1)
 	case "ctrl+x":
 		m.toggleExpandedView()
 	}
@@ -862,9 +845,14 @@ func (m *Model) exitFullVisualizer() {
 }
 
 func (m *Model) handleFullVisualizerKey(msg tea.KeyPressMsg) tea.Cmd {
+	if m.handleFullVisLyricsKey(msg.String()) {
+		return nil
+	}
 	switch msg.String() {
 	case "esc", "backspace", "b", "V", "q":
 		m.exitFullVisualizer()
+	case "y":
+		m.cycleFullVisLyrics()
 	case "space":
 		return m.togglePlayPause()
 	case ">", ".":
