@@ -8,6 +8,7 @@ require (
 	github.com/charmbracelet/ultraviolet v0.0.0-20260812204455-68fa937c71be
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/charmbracelet/x/term v0.2.2
+	github.com/coder/websocket v1.8.15
 	github.com/devgianlu/go-librespot v0.10.3
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/godbus/dbus/v5 v5.2.2
@@ -22,6 +23,7 @@ require (
 	golang.org/x/text v0.42.0
 	google.golang.org/api v0.295.0
 	google.golang.org/protobuf v1.36.12
+	rsc.io/qr v0.2.0
 )
 
 require (
@@ -37,7 +39,6 @@ require (
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
-	github.com/coder/websocket v1.8.15 // indirect
 	github.com/devgianlu/shannon v0.0.0-20230613115856-82ec90b7fa7e // indirect
 	github.com/dlclark/regexp2/v2 v2.7.1 // indirect
 	github.com/dop251/goja v0.0.0-20260826204918-8f1c0696a37b // indirect

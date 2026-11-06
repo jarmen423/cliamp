@@ -14,6 +14,7 @@ import (
 
 	"github.com/bjarneo/cliamp/internal/appdir"
 	"github.com/bjarneo/cliamp/ipc"
+	"github.com/bjarneo/cliamp/remote"
 )
 
 // cachedWriteRules holds the write rules for this process. The paths they
@@ -53,7 +54,8 @@ func loadWriteRules() writeRules {
 
 	// A plugin that writes these could approve its own code in
 	// plugins/.trust.json, add a binary to the exec allowlist in config.toml,
-	// change the stations in radios.toml, break IPC, or erase what it logged.
+	// change the stations in radios.toml, break IPC, erase what it logged,
+	// or set a remote token it knows and so open cliamp to the network.
 	// The IPC server reads the PID file at start. A live PID in it makes the
 	// next start fail with "cliamp is already running".
 	if pluginDir, err := appdir.PluginDir(); err == nil {
@@ -66,6 +68,9 @@ func loadWriteRules() writeRules {
 	}
 	add(&r.deny, ipc.DefaultSocketPath())
 	add(&r.deny, ipc.DefaultSocketPath()+".pid")
+	if tokenPath, err := remote.TokenPath(); err == nil {
+		add(&r.deny, tokenPath)
+	}
 	return r
 }
 

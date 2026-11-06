@@ -390,7 +390,7 @@ func TestStartIPCWithTheSocketInUse(t *testing.T) {
 			var stop func()
 			var err error
 			printed := captureStderr(t, func() {
-				stop, err = startIPC(func(tea.Msg) {}, ipc.NewBroker(), nil, tt.headless)
+				stop, err = startIPC(func(tea.Msg) {}, ipc.NewBroker(), nil, tt.headless, config.RemoteConfig{})
 			})
 			message := printed
 			if tt.headless {
@@ -431,7 +431,7 @@ func TestStartIPCServesTheModel(t *testing.T) {
 					request.Reply <- model.V2RequestResult{Result: ipc.V2Result{Snapshot: &ipc.RuntimeSnapshot{State: "paused"}}}
 				}
 			}
-			stop, err := startIPC(send, ipc.NewBroker(), nil, tt.headless)
+			stop, err := startIPC(send, ipc.NewBroker(), nil, tt.headless, config.RemoteConfig{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -473,7 +473,7 @@ func TestHeadlessAppearanceCommands(t *testing.T) {
 			request.Reply <- model.V2RequestResult{Result: ipc.V2Result{Snapshot: &ipc.RuntimeSnapshot{State: "paused", Visualizer: "Wave"}}}
 		}
 	}
-	stop, err := startIPC(send, ipc.NewBroker(), nil, true)
+	stop, err := startIPC(send, ipc.NewBroker(), nil, true, config.RemoteConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}

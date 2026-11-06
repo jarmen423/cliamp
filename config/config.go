@@ -462,6 +462,37 @@ func (r *RadioConfig) set(key, val string) {
 	}
 }
 
+// DefaultRemoteListen is the address of the remote gateway when [remote]
+// sets no listen key.
+const DefaultRemoteListen = ":7700"
+
+// RemoteConfig turns on the network gateway that phones and other devices use
+// to control cliamp. See docs/mobile-remote.md.
+type RemoteConfig struct {
+	Enabled bool   // true only when the user sets enabled = true
+	Listen  string // host:port to listen on; empty means DefaultRemoteListen
+}
+
+// set applies one key of the [remote] section.
+func (r *RemoteConfig) set(key, val string) {
+	switch key {
+	case "enabled":
+		if v, ok := parseBool(val); ok {
+			r.Enabled = v
+		}
+	case "listen":
+		r.Listen = strings.TrimSpace(parseString(val))
+	}
+}
+
+// Addr returns the address the gateway listens on.
+func (r RemoteConfig) Addr() string {
+	if r.Listen == "" {
+		return DefaultRemoteListen
+	}
+	return r.Listen
+}
+
 // PodcastConfig tunes the always-available public podcast directory.
 type PodcastConfig struct {
 	Country string // two-letter country code for Apple charts (default "us")
@@ -790,6 +821,7 @@ type Config struct {
 	Mixcloud         MixcloudConfig               // Mixcloud provider (opt-in via enabled = true)
 	NetEase          NetEaseConfig                // NetEase Cloud Music provider (opt-in via enabled = true)
 	Yandex           YandexConfig                 // Yandex Music provider (opt-in via enabled = true)
+	Remote           RemoteConfig                 // network remote control for phones (opt-in via enabled = true)
 	Plugins          map[string]map[string]string // per-plugin config from [plugins.*] sections
 	LogLevel         string                       // log level: debug, info, warn, error (default "info")
 	LowPower         bool                         // reduce CPU by lowering UI cadence and disabling visualization
@@ -914,6 +946,8 @@ func Load() (Config, error) {
 			cfg.Emby.set(key, val)
 		case "audiobookshelf":
 			cfg.Audiobookshelf.set(key, val)
+		case "remote":
+			cfg.Remote.set(key, val)
 		default:
 			if name, ok := pluginSection(section); ok {
 				if m, ok := cfg.Plugins[name]; ok {
