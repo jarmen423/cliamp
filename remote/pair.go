@@ -63,6 +63,22 @@ func BasePairURL(base, token string) (PairURL, error) {
 	return PairURL{URL: u.Scheme + "://" + u.Host + "/#t=" + token, Label: label}, nil
 }
 
+// AddMachineURL returns a link that opens the app at app and adds the
+// gateway at base to its machine list, so one installed app controls every
+// cliamp. pair is a URL from PairURLs or BasePairURL.
+func AddMachineURL(app string, pair PairURL, token string) (PairURL, error) {
+	a, err := url.Parse(strings.TrimSpace(app))
+	if err != nil || (a.Scheme != "http" && a.Scheme != "https") || a.Host == "" {
+		return PairURL{}, fmt.Errorf("remote: --app %q: want the http or https URL the app is open at", app)
+	}
+	base, _, _ := strings.Cut(pair.URL, "/#t=")
+	if a.Scheme == "https" && strings.HasPrefix(base, "http://") {
+		return PairURL{}, fmt.Errorf("remote: an https app cannot reach %s; pass --base with this machine's https address", base)
+	}
+	link := a.Scheme + "://" + a.Host + "/#m=" + url.QueryEscape(base) + "&t=" + token
+	return PairURL{URL: link, Label: "add to app"}, nil
+}
+
 func pairURL(host, port, token string) string {
 	return "http://" + net.JoinHostPort(host, port) + "/#t=" + token
 }

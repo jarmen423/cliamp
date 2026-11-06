@@ -12,6 +12,7 @@ package remote
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -68,6 +69,8 @@ type Options struct {
 	Server    ConnServer // serves the V2 stream of each WebSocket
 	TokenPath string     // the pairing token file, read for each request
 	ArtDir    string     // the album-art cache directory; empty serves no art
+	Name      string     // the machine name that /info reports
+	Version   string     // the cliamp version that /info reports
 }
 
 // Gateway is a running remote gateway.
@@ -198,18 +201,55 @@ func (g *Gateway) track(conn net.Conn, token string) (func(), bool) {
 func (g *Gateway) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v2", g.serveV2)
-	mux.HandleFunc("GET /art/{name}", g.serveArt)
+	mux.HandleFunc("GET /info", cors(g.serveInfo))
+	mux.HandleFunc("OPTIONS /info", cors(nil))
+	mux.HandleFunc("GET /art/{name}", cors(g.serveArt))
+	mux.HandleFunc("OPTIONS /art/{name}", cors(nil))
 	static, _ := fs.Sub(webFiles, "web")
 	mux.Handle("GET /", http.FileServerFS(static))
 	return securityHeaders(mux)
 }
 
+// cors lets the app of another cliamp read /info and /art: the app can
+// switch between machines, and each one serves its own art. The token in
+// the Authorization header, not a cookie, authorizes the request, so any
+// origin may ask. A nil handler answers the preflight only.
+func cors(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Access-Control-Allow-Origin", "*")
+		h.Set("Access-Control-Allow-Headers", "Authorization")
+		h.Set("Access-Control-Allow-Methods", "GET")
+		h.Set("Access-Control-Max-Age", "600")
+		if next == nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// serveInfo names the machine for the app's machine picker.
+func (g *Gateway) serveInfo(w http.ResponseWriter, r *http.Request) {
+	if _, ok := g.authorized(r); !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	}{g.opts.Name, g.opts.Version})
+}
+
 // securityHeaders keeps the web app from being framed or loading code from
 // anywhere but the gateway. Album art loads from the providers over https.
+// The app connects to the other cliamp machines it is paired with, so
+// connect-src allows any http and WebSocket origin.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https: blob: data:; connect-src 'self' ws: wss:; frame-ancestors 'none'")
+		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https: blob: data:; connect-src 'self' http: https: ws: wss:; frame-ancestors 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		// The app is small and changes with cliamp, so a client always

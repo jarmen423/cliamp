@@ -39,9 +39,39 @@ tailnet (see [Away from home](#away-from-home)).
 | Search | Searches Spotify, YouTube, or both at once. Tap a result to play it. The play-next button queues it after the current track |
 | Library | The playlists of each provider. Open one, then play it from the start or from a track |
 | Queue | The play-next list and the live playlist. Tap to play a track, or remove it |
+| Artist | Tap the artist on Playing, or under an album title. The artist page shows the photo, the popular tracks with your liked ones marked, and the discography by albums, singles and EPs, and compilations. Spotify only |
 
 The app takes the accent color of the cliamp theme, so it matches the
 terminal. A mini player sits above the tabs on every screen but Playing.
+
+## Several machines
+
+One app controls every computer that runs cliamp, the way the Spotify app
+picks a device. The chip at the top of the Playing screen names the machine
+the app controls. Tap it to open the machine list:
+
+- Tap a machine to control it instead.
+- **Play here** moves what plays now to that machine, at the same position,
+  and pauses the first one. A Spotify or YouTube playlist or album moves as
+  the whole list, so the queue goes on there. A local file moves only to a
+  machine that has the same file, and a provider track only to a machine
+  that has that provider.
+- The dot shows whether each machine is online.
+
+To add a machine, run this on it, with the address the app is open at, and
+scan the code:
+
+```sh
+cliamp remote pair --app https://<machine>.<tailnet>.ts.net:7443
+```
+
+The link opens your app and adds the machine; it does not open a second
+copy of the app. You can also paste a pairing link of the machine in
+**Add a machine**. An app that runs over `https` can only reach machines
+that use `https` too, so on each one, run `tailscale serve` as in
+[Install it as an app](#install-it-as-an-app) and add `--base` with its
+`https` address. The installed app keeps itself on the phone, so it opens
+even when the machine you installed it from is off.
 
 ## Configuration
 
@@ -49,12 +79,14 @@ terminal. A mini player sits above the tabs on every screen but Playing.
 [remote]
 enabled = true
 listen = ":7700"
+name = "Living room"
 ```
 
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `enabled` | `false` | Serve the app and the API |
 | `listen` | `":7700"` | The address to listen on, as `host:port`. With no host, cliamp listens on every address of the computer |
+| `name` | the hostname | The name of this machine in the app's machine list |
 
 ## Pairing and security
 
@@ -114,9 +146,11 @@ endpoints:
 |----------|----------------|
 | `GET /` | The web app |
 | `GET /v2` | A WebSocket that carries [V2 IPC](remote-control.md#version-2), one JSON line per message |
+| `GET /info` | `{"name": …, "version": …}`: the machine name and the cliamp version |
 | `GET /art/<sha256>.<ext>` | Album art that cliamp read from a local file. A track's `album_art_url` names the file. Provider art is a public `https` URL |
 
-`/v2` and `/art` need the token. Send it as `Authorization: Bearer <token>`.
+`/v2`, `/info` and `/art` need the token. `/info` and `/art` allow any
+origin (CORS), so an app served by one machine can show another. Send it as `Authorization: Bearer <token>`.
 A browser cannot set headers on a WebSocket, so it can offer the
 subprotocols `cliamp.v2` and `cliamp.token.<token>` instead. cliamp answers
 with `cliamp.v2`.

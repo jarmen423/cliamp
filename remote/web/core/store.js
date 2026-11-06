@@ -81,3 +81,15 @@ export function isAlbum(t) {
 export function albumID(t) {
   return t?.provider_meta?.albumID || ''
 }
+
+// providerOf returns the provider key a track comes from, read from the
+// prefix of its path ("spotify:track:…"), when a provider has that key.
+export function providerOf(t, providers) {
+  const key = /^([\w-]+):/.exec(t?.path || '')?.[1]
+  return key ? providers.find((p) => p.key === key) || null : null
+}
+
+// compactCount renders 70812345 as "70.8M".
+export function compactCount(n) {
+  return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(n || 0)
+}

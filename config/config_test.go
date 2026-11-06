@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -1145,5 +1146,14 @@ func TestRemoteConfigAddr(t *testing.T) {
 				t.Errorf("Addr() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRemoteConfigMachineName(t *testing.T) {
+	if got := (RemoteConfig{Name: "Desk"}).MachineName(); got != "Desk" {
+		t.Errorf("MachineName() = %q, want the name key", got)
+	}
+	if got := (RemoteConfig{}).MachineName(); got == "" || strings.Contains(got, ".") {
+		t.Errorf("MachineName() = %q, want a short hostname", got)
 	}
 }

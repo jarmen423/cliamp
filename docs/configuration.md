@@ -674,6 +674,7 @@ your network or tailnet. It is off unless enabled:
 [remote]
 enabled = true
 listen = ":7700"   # host:port; the default listens on every address
+name = "Desk"      # the name in the app's machine list; default: hostname
 ```
 
 Pair a phone with `cliamp remote pair`. See [Phone Remote](mobile-remote.md).

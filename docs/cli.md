@@ -285,6 +285,7 @@ cliamp remote capabilities              # v2 operation list
 cliamp remote events runtime.state      # v2 event stream
 cliamp remote pair                      # pair a phone with the [remote] gateway; see mobile-remote.md
 cliamp remote pair --base https://host.tailnet.ts.net:7443  # pair through tailscale serve
+cliamp remote pair --app https://phone-app-address  # add this machine to an app paired with another
 ```
 
 `cliamp volume` sets an absolute level. A sign does not make the value relative, so `cliamp volume +3` sets the volume to +3 dB. To step the volume up or down, submit `volume.adjust` with `cliamp remote call`. A negative value lowers the volume. Both forms clamp the result to the range `volume_min` to +6 dB.

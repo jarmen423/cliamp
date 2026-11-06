@@ -40,6 +40,9 @@ type AlbumInfo struct {
 	// Restricted is presentation metadata for provider items that may require
 	// account access. It must not be folded into Name or persisted metadata.
 	Restricted bool
+	// Type is the release type, "album", "single" or "compilation", or ""
+	// when the provider does not say.
+	Type string
 }
 
 // GenreInfo describes a provider category and whether it is pinned as a

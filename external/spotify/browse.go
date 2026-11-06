@@ -63,6 +63,7 @@ type spotifyAlbum struct {
 	ReleaseDate string          `json:"release_date"`
 	TotalTracks int             `json:"total_tracks"`
 	Images      []spotifyImage  `json:"images"`
+	AlbumType   string          `json:"album_type"` // "album", "single" or "compilation"
 }
 
 func albumFromSpotify(a spotifyAlbum) provider.AlbumInfo {
@@ -72,6 +73,7 @@ func albumFromSpotify(a spotifyAlbum) provider.AlbumInfo {
 		Year:       releaseYear(a.ReleaseDate),
 		TrackCount: a.TotalTracks,
 		ImageURL:   pickCoverImage(a.Images),
+		Type:       a.AlbumType,
 	}
 	if len(a.Artists) > 0 {
 		info.Artist = a.Artists[0].Name

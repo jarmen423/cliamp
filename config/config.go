@@ -471,6 +471,7 @@ const DefaultRemoteListen = ":7700"
 type RemoteConfig struct {
 	Enabled bool   // true only when the user sets enabled = true
 	Listen  string // host:port to listen on; empty means DefaultRemoteListen
+	Name    string // the machine name the phone app shows; empty means the hostname
 }
 
 // set applies one key of the [remote] section.
@@ -482,7 +483,24 @@ func (r *RemoteConfig) set(key, val string) {
 		}
 	case "listen":
 		r.Listen = strings.TrimSpace(parseString(val))
+	case "name":
+		r.Name = strings.TrimSpace(parseString(val))
 	}
+}
+
+// MachineName returns the name the phone app shows for this machine: the
+// name key, or the hostname, or "cliamp".
+func (r RemoteConfig) MachineName() string {
+	if r.Name != "" {
+		return r.Name
+	}
+	if host, err := os.Hostname(); err == nil && host != "" {
+		if short, _, ok := strings.Cut(host, "."); ok && short != "" {
+			return short
+		}
+		return host
+	}
+	return "cliamp"
 }
 
 // Addr returns the address the gateway listens on.

@@ -225,7 +225,11 @@ func (m *Model) handleIPCLibrary(request ipcLibraryRequest) tea.Cmd {
 			_, browseArtists := entry.Provider.(provider.ArtistBrowser)
 			_, browseAlbums := entry.Provider.(provider.AlbumBrowser)
 			_, catalog := entry.Provider.(provider.CatalogLoader)
-			items = append(items, ipc.ProviderInfo{Key: entry.Key, Name: entry.Name, Searchable: searchable, BrowseArtists: browseArtists, BrowseAlbums: browseAlbums, Catalog: catalog})
+			_, profiles := entry.Provider.(provider.ArtistDetailLoader)
+			items = append(items, ipc.ProviderInfo{
+				Key: entry.Key, Name: entry.Name, Searchable: searchable, BrowseArtists: browseArtists,
+				BrowseAlbums: browseAlbums, Catalog: catalog, ArtistProfiles: profiles,
+			})
 		}
 		request.Reply <- ipc.Response{OK: true, Providers: items}
 		return nil
@@ -488,6 +492,49 @@ func (m *Model) handleIPCLibrary(request ipcLibraryRequest) tea.Cmd {
 			request.Reply <- ipc.Response{OK: true, Albums: ipcAlbumInfos(albums), Sorts: sortItems, Total: len(albums)}
 			return nil
 		}
+	case "provider.artist", "provider.load_artist":
+		loader, ok := entry.Provider.(provider.ArtistDetailLoader)
+		if !ok {
+			request.Reply <- ipc.Response{OK: false, Error: "provider does not support artist profiles"}
+			return nil
+		}
+		artistID := request.Artist
+		if artistID == "" && request.Track != nil {
+			// Open the artist of a track, as the TUI does from the playlist.
+			if resolver, ok := entry.Provider.(provider.TrackArtistResolver); ok {
+				if info, found := resolver.ArtistForTrack(ipcTrackFromInfo(*request.Track)); found {
+					artistID = info.ID
+				}
+			}
+		}
+		if artistID == "" {
+			request.Reply <- ipc.Response{OK: false, Error: "no artist for this track"}
+			return nil
+		}
+		favorite := m.trackFavoriteLookup(false)
+		name := entry.Provider.Name()
+		return func() tea.Msg {
+			detail, err := loader.ArtistDetail(artistID)
+			if request.Op == "provider.load_artist" {
+				return ipcProviderLoadResult{request: request, tracks: detail.Popular, provider: name, loaded: "artist:" + artistID, source: entry.Key + ":artist:" + artistID, err: err}
+			}
+			if err != nil {
+				request.Reply <- ipcResponseError(err)
+				return nil
+			}
+			info := ipc.ArtistInfo{
+				ID: detail.Info.ID, Name: detail.Info.Name, AlbumCount: detail.Info.AlbumCount,
+				ImageURL: detail.Info.ImageURL, Followers: detail.Followers, Genres: detail.Genres,
+			}
+			request.Reply <- ipc.Response{
+				OK:      true,
+				Artists: []ipc.ArtistInfo{info},
+				Tracks:  ipcTrackInfos(detail.Popular, favorite),
+				Albums:  ipcAlbumInfos(detail.Discography),
+				Total:   len(detail.Popular),
+			}
+			return nil
+		}
 	case "provider.album_tracks", "provider.load_album":
 		loader, ok := entry.Provider.(provider.AlbumTrackLoader)
 		if !ok {
@@ -717,7 +764,10 @@ func ipcTrackInfos(tracks []playlist.Track, favorite func(playlist.Track) bool) 
 func ipcAlbumInfos(albums []provider.AlbumInfo) []ipc.AlbumInfo {
 	items := make([]ipc.AlbumInfo, len(albums))
 	for i, album := range albums {
-		items[i] = ipc.AlbumInfo{ID: album.ID, Name: album.Name, Artist: album.Artist, ArtistID: album.ArtistID, Year: album.Year, TrackCount: album.TrackCount, Genre: album.Genre}
+		items[i] = ipc.AlbumInfo{
+			ID: album.ID, Name: album.Name, Artist: album.Artist, ArtistID: album.ArtistID, Year: album.Year,
+			TrackCount: album.TrackCount, Genre: album.Genre, ImageURL: album.ImageURL, Type: album.Type,
+		}
 	}
 	return items
 }

@@ -139,6 +139,7 @@ token = "y0_token"
 [remote]
 enabled = true
 listen = "100.64.0.1:7701" # tailnet only
+name = "Desk # 2"
 
 [plugins]
 disabled = webhook, discord-rpc
@@ -273,7 +274,7 @@ func TestLoadGolden(t *testing.T) {
 	}
 	sectionsWant.NetEase = NetEaseConfig{Enabled: true, CookiesFrom: "chrome:Profile 1", UserID: "42"}
 	sectionsWant.Yandex = YandexConfig{Enabled: true, Token: "y0_token"}
-	sectionsWant.Remote = RemoteConfig{Enabled: true, Listen: "100.64.0.1:7701"}
+	sectionsWant.Remote = RemoteConfig{Enabled: true, Listen: "100.64.0.1:7701", Name: "Desk # 2"}
 	sectionsWant.Plugins = map[string]map[string]string{
 		"": {"disabled": "webhook, discord-rpc"},
 		"lastfm": {
@@ -357,7 +358,7 @@ func TestLoadGolden(t *testing.T) {
 	}
 	allWant.NetEase = NetEaseConfig{Enabled: true, CookiesFrom: "chrome", UserID: "optional-account-user-id"}
 	allWant.Yandex = YandexConfig{Enabled: true, Token: "y0_YourPersonalOAuthToken"}
-	allWant.Remote = RemoteConfig{Enabled: true, Listen: ":7700"}
+	allWant.Remote = RemoteConfig{Enabled: true, Listen: ":7700", Name: "Living room"}
 	allWant.Plex = PlexConfig{URL: "http://192.168.1.10:32400", Token: "xxxxxxxxxxxxxxxxxxxx", Libraries: []string{"Music", "Jazz"}}
 	allWant.Jellyfin = JellyfinConfig{
 		URL:      "https://jellyfin.example.com",

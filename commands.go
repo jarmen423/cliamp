@@ -1231,13 +1231,14 @@ func remoteCommand() *cli.Command {
 				Flags: []cli.Flag{
 					&cli.BoolFlag{Name: "rotate", Usage: "make a new token, so devices paired before must pair again"},
 					&cli.StringFlag{Name: "base", Usage: "pair through a proxy at this URL, such as the https address of tailscale serve"},
+					&cli.StringFlag{Name: "app", Usage: "add this machine to the app open at this URL, instead of pairing the app of this machine"},
 				},
 				Action: func(ctx context.Context, c *cli.Command) error {
 					cfg, err := config.Load()
 					if err != nil {
 						return err
 					}
-					return pairRemote(c.Root().Writer, cfg.Remote, c.Bool("rotate"), c.String("base"))
+					return pairRemote(c.Root().Writer, cfg.Remote, c.Bool("rotate"), c.String("base"), c.String("app"))
 				},
 			},
 			{
@@ -1306,7 +1307,7 @@ func remoteCommand() *cli.Command {
 
 // pairRemote prints the pairing URLs of the remote gateway and the QR code
 // of the first one. It makes the token when there is none.
-func pairRemote(w io.Writer, cfg config.RemoteConfig, rotate bool, base string) error {
+func pairRemote(w io.Writer, cfg config.RemoteConfig, rotate bool, base, app string) error {
 	path, err := remote.TokenPath()
 	if err != nil {
 		return err
@@ -1332,6 +1333,25 @@ func pairRemote(w io.Writer, cfg config.RemoteConfig, rotate bool, base string) 
 	}
 	if len(urls) == 0 {
 		return fmt.Errorf("remote: no network address found; set listen in [remote]")
+	}
+	if app != "" {
+		// One link per address of this machine that the app can reach. An
+		// https app skips the plain http addresses.
+		var links []remote.PairURL
+		var lastErr error
+		for _, u := range urls {
+			link, err := remote.AddMachineURL(app, u, token)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			link.Label = u.Label
+			links = append(links, link)
+		}
+		if len(links) == 0 {
+			return lastErr
+		}
+		urls = links
 	}
 	if !cfg.Enabled {
 		fmt.Fprintln(w, "The remote gateway is off. Add this to config.toml and restart cliamp:")

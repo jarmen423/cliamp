@@ -1,15 +1,19 @@
 // The app shell: pairing, the tab bar and the routes.
-import { html, render, useEffect, useState } from '../vendor/preact-htm.js'
+import { html, render, useEffect, useMemo, useRef, useState } from '../vendor/preact-htm.js'
 import { createRemote } from '../core/api.js'
+import {
+  addMachine, blockedByScheme, loadActive, loadMachines, movePlayback, parsePairing,
+  probe, saveActive, saveMachines, waitOpen,
+} from '../core/machines.js'
 import { trackTitle } from '../core/store.js'
 import { setArtAuth } from './art.js'
 import { Icon } from './icons.js'
 import { useRemote } from './hooks.js'
+import { ArtistPage } from './artist.js'
 import { Library, Queue, Search } from './lists.js'
+import { machineLabel } from './machines.js'
 import { MiniPlayer, NowPlaying } from './now.js'
-import { Toasts } from './toast.js'
-
-const PAIR_KEY = 'cliamp.pair'
+import { toast, Toasts } from './toast.js'
 const ROUTES = ['now', 'search', 'library', 'queue']
 const TABS = [
   { key: 'now', name: 'Playing', icon: Icon.now },
@@ -17,26 +21,16 @@ const TABS = [
   { key: 'library', name: 'Library', icon: Icon.library },
   { key: 'queue', name: 'Queue', icon: Icon.queue },
 ]
-const TOKEN_RE = /^[0-9a-f]{64}$/i
-
-// takePairing reads a token from the #t= fragment of a pairing URL, saves
-// it, and removes it from the address bar and history.
+// takePairing adds the machine of a pairing link in the address bar, then
+// removes the token from the address bar and history. It returns the base
+// of the machine it added.
 function takePairing() {
-  const m = /(?:^#|&)t=([0-9a-f]{64})/i.exec(location.hash)
-  if (m) {
-    savePairing(m[1])
-    history.replaceState(null, '', location.pathname + '#/now')
-  }
-  try {
-    const saved = JSON.parse(localStorage.getItem(PAIR_KEY))
-    return saved?.token && saved.base === location.origin ? saved : null
-  } catch {
-    return null
-  }
-}
-
-function savePairing(token) {
-  localStorage.setItem(PAIR_KEY, JSON.stringify({ base: location.origin, token }))
+  const p = parsePairing(location.hash, location.origin)
+  if (!p) return ''
+  history.replaceState(null, '', location.pathname + '#/now')
+  if (blockedByScheme(p.base, location.protocol)) return ''
+  saveMachines(localStorage, addMachine(loadMachines(localStorage), p))
+  return p.base
 }
 
 const route = () => {
@@ -54,27 +48,20 @@ function accentOf(snap) {
   return luma > 0.28 ? c : null
 }
 
-function Pair({ reason }) {
+function Pair({ reason, onAdd }) {
   const [value, setValue] = useState('')
   const [error, setError] = useState('')
   const submit = (e) => {
     e.preventDefault()
-    const v = value.trim()
-    const m = /#t=([0-9a-f]{64})/i.exec(v)
-    if (/^https?:\/\//i.test(v) && m) {
-      const target = new URL(v)
-      if (target.origin !== location.origin) return void (location.href = v)
-      savePairing(m[1])
-      return void location.reload()
+    const p = parsePairing(value.trim(), location.origin)
+    if (!p) return setError('Paste the whole URL that cliamp remote pair printed.')
+    if (blockedByScheme(p.base, location.protocol)) {
+      return setError('This app runs over https, so that machine needs https too. Pair it with --base.')
     }
-    if (TOKEN_RE.test(v)) {
-      savePairing(v)
-      return void location.reload()
-    }
-    setError('Paste the whole URL that cliamp remote pair printed.')
+    onAdd(p)
   }
   return html`<main class="pair">
-    ${reason === 'unauthorized' && html`<p class="notice" role="alert">cliamp no longer accepts this phone's pairing. Pair it again.</p>`}
+    ${reason && html`<p class="notice" role="alert">${reason}</p>`}
     <div class="wordmark" aria-label="cliamp">cliamp<span class="cursor" aria-hidden="true"></span></div>
     <p class="pair-lede">Control the music on your computer from this phone.</p>
     <ol class="pair-steps">
@@ -104,7 +91,7 @@ function ConnectionPill({ remote }) {
   return html`<div class="conn" role="status"><i></i>Reconnecting to cliamp…</div>`
 }
 
-function Shell({ remote }) {
+function Shell({ remote, machines }) {
   const [r, setR] = useState(route())
   const state = useRemote(remote)
   useEffect(() => {
@@ -112,9 +99,13 @@ function Shell({ remote }) {
     addEventListener('hashchange', on)
     return () => removeEventListener('hashchange', on)
   }, [])
+  // An artist page stacks over the current tab; a tab tap closes it.
+  const [page, setPage] = useState(null)
   const go = (to) => {
+    setPage(null)
     location.hash = '#/' + to
   }
+  const openArtist = (provider, { artist, track }) => setPage({ provider, artist, track, from: r })
 
   const snap = state.snapshot
   const accent = accentOf(snap)
@@ -127,11 +118,14 @@ function Shell({ remote }) {
   }, [snap?.track])
 
   const View = { now: NowPlaying, search: Search, library: Library, queue: Queue }[r]
-  const mini = r !== 'now' && !!snap?.track
+  const mini = (r !== 'now' || page) && !!snap?.track
   return html`<div class="shell">
     <${ConnectionPill} remote=${remote} />
-    <main class=${'view' + (mini ? ' has-mini' : '')} id="view" key=${r}>
-      <${View} remote=${remote} go=${go} />
+    <main class=${'view' + (mini || page ? ' has-mini' : '')} id="view" key=${page ? 'artist:' + (page.artist || page.track?.path) : r}>
+      ${page
+        ? html`<${ArtistPage} remote=${remote} provider=${page.provider} artist=${page.artist} track=${page.track}
+            backLabel=${TABS.find((t) => t.key === page.from)?.name || 'Back'} back=${() => setPage(null)} />`
+        : html`<${View} remote=${remote} go=${go} machines=${machines} openArtist=${openArtist} />`}
     </main>
     ${mini && html`<${MiniPlayer} remote=${remote} go=${go} />`}
     <${Toasts} />
@@ -142,14 +136,56 @@ function Shell({ remote }) {
   </div>`
 }
 
-function App({ pairing }) {
-  const [remote] = useState(() => pairing && createRemote(pairing))
-  const [status, setStatus] = useState(remote ? remote.store.get().status : 'closed')
+function App({ added }) {
+  const [list, setList] = useState(() => loadMachines(localStorage))
+  const [active, setActive] = useState(() => {
+    const all = loadMachines(localStorage)
+    const saved = added || loadActive(localStorage)
+    return all.some((m) => m.base === saved) ? saved : all[0]?.base || ''
+  })
+  const [reason, setReason] = useState('')
+  const remotes = useRef(new Map()) // base -> remote, made when first used
+  const current = list.find((m) => m.base === active)
+
+  const update = (fn) =>
+    setList((prev) => {
+      const next = typeof fn === 'function' ? fn(prev) : fn
+      saveMachines(localStorage, next)
+      return next
+    })
+  const choose = (base) => setActive(base)
+  useEffect(() => saveActive(localStorage, active), [active])
+  const remoteFor = (m) => {
+    let r = remotes.current.get(m.base)
+    if (!r || r.token !== m.token) {
+      r?.stop()
+      r = Object.assign(createRemote({ base: m.base, token: m.token }), { token: m.token })
+      remotes.current.set(m.base, r)
+    }
+    return r
+  }
+  const remote = current && remoteFor(current)
+
   useEffect(() => {
-    if (!remote) return
-    setArtAuth(pairing.base, pairing.token)
-    const off = remote.store.subscribe((s) => setStatus(s.status))
+    if (!current) return
+    setArtAuth(current.base, current.token)
+    const off = remote.store.subscribe((s) => {
+      if (s.status !== 'unauthorized') return
+      // This machine dropped the pairing: forget it and move on.
+      const rest = list.filter((m) => m.base !== current.base)
+      update((prev) => prev.filter((m) => m.base !== current.base))
+      remotes.current.delete(current.base)
+      const msg = machineLabel(current) + ' no longer accepts this phone. Pair it again.'
+      if (rest.length) {
+        toast(msg, 'error')
+        choose(rest[0].base)
+      } else {
+        setReason(msg)
+        choose('')
+      }
+    })
     remote.start()
+    probe(current).then((info) => info.name && info.name !== current.name && machines.rename(current.base, info.name))
     // A phone suspends the page in the background; come back fresh.
     const onVisible = () => document.visibilityState === 'visible' && remote.refresh()
     document.addEventListener('visibilitychange', onVisible)
@@ -159,11 +195,55 @@ function App({ pairing }) {
       remote.stop()
     }
   }, [remote])
-  if (!remote || status === 'unauthorized') {
-    if (status === 'unauthorized') localStorage.removeItem(PAIR_KEY)
-    return html`<${Pair} reason=${status} />`
+
+  const machines = useMemo(() => ({
+    list,
+    current,
+    get playing() {
+      return remote?.store.get().snapshot?.track && remote.store.get().snapshot.state === 'playing'
+    },
+    select(base) {
+      if (base !== active) choose(base)
+    },
+    add(p) {
+      update((prev) => addMachine(prev, p))
+      toast('Added ' + p.base.replace(/^https?:\/\//, ''))
+    },
+    remove(base) {
+      remotes.current.get(base)?.stop()
+      remotes.current.delete(base)
+      update((prev) => prev.filter((m) => m.base !== base))
+    },
+    rename(base, name) {
+      update((prev) => prev.map((m) => (m.base === base ? { ...m, name } : m)))
+    },
+    // move plays what plays here on base, then switches the app to base.
+    async move(base) {
+      const target = list.find((m) => m.base === base)
+      const to = remoteFor(target)
+      to.name = machineLabel(target)
+      to.start()
+      try {
+        await waitOpen(to)
+        await movePlayback(remote, to)
+      } catch (err) {
+        to.stop()
+        throw err
+      }
+      choose(base)
+    },
+  }), [list, active, remote])
+
+  if (!current) {
+    return html`<${Pair} reason=${reason} onAdd=${(p) => { update((prev) => addMachine(prev, p)); setReason(''); choose(p.base) }} />`
   }
-  return html`<${Shell} remote=${remote} />`
+  return html`<${Shell} key=${current.base} remote=${remote} machines=${machines} />`
 }
 
-render(html`<${App} pairing=${takePairing()} />`, document.getElementById('app'))
+render(html`<${App} added=${takePairing()} />`, document.getElementById('app'))
+
+// The service worker keeps the app on the phone. Browsers allow it only on
+// https (or localhost), the same pages that can install the app.
+if ('serviceWorker' in navigator && globalThis.isSecureContext) {
+  navigator.serviceWorker.register('sw.js').catch(() => {})
+}
