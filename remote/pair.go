@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"net/url"
 	"strings"
 
 	"rsc.io/qr"
@@ -42,6 +43,24 @@ func PairURLs(listen, token string) ([]PairURL, error) {
 		urls = append(urls, PairURL{URL: pairURL(addr.String(), port, token), Label: addrLabel(addr)})
 	}
 	return urls, nil
+}
+
+// BasePairURL returns the pairing URL for a gateway that a proxy serves at
+// base, such as the https address that tailscale serve gives it. A browser
+// installs the app only from an https page.
+func BasePairURL(base, token string) (PairURL, error) {
+	u, err := url.Parse(strings.TrimSpace(base))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return PairURL{}, fmt.Errorf("remote: --base %q: want an http or https URL such as https://host.tailnet.ts.net:7443", base)
+	}
+	if u.Path != "" && u.Path != "/" || u.RawQuery != "" || u.Fragment != "" {
+		return PairURL{}, fmt.Errorf("remote: --base %q: the gateway must be at the root of the URL", base)
+	}
+	label := "proxy"
+	if u.Scheme == "https" {
+		label = "HTTPS"
+	}
+	return PairURL{URL: u.Scheme + "://" + u.Host + "/#t=" + token, Label: label}, nil
 }
 
 func pairURL(host, port, token string) string {

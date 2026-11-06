@@ -1230,13 +1230,14 @@ func remoteCommand() *cli.Command {
 				Usage: "print the URL and QR code that pair a phone with the remote gateway",
 				Flags: []cli.Flag{
 					&cli.BoolFlag{Name: "rotate", Usage: "make a new token, so devices paired before must pair again"},
+					&cli.StringFlag{Name: "base", Usage: "pair through a proxy at this URL, such as the https address of tailscale serve"},
 				},
 				Action: func(ctx context.Context, c *cli.Command) error {
 					cfg, err := config.Load()
 					if err != nil {
 						return err
 					}
-					return pairRemote(c.Root().Writer, cfg.Remote, c.Bool("rotate"))
+					return pairRemote(c.Root().Writer, cfg.Remote, c.Bool("rotate"), c.String("base"))
 				},
 			},
 			{
@@ -1305,7 +1306,7 @@ func remoteCommand() *cli.Command {
 
 // pairRemote prints the pairing URLs of the remote gateway and the QR code
 // of the first one. It makes the token when there is none.
-func pairRemote(w io.Writer, cfg config.RemoteConfig, rotate bool) error {
+func pairRemote(w io.Writer, cfg config.RemoteConfig, rotate bool, base string) error {
 	path, err := remote.TokenPath()
 	if err != nil {
 		return err
@@ -1319,8 +1320,14 @@ func pairRemote(w io.Writer, cfg config.RemoteConfig, rotate bool) error {
 	if err != nil {
 		return err
 	}
-	urls, err := remote.PairURLs(cfg.Addr(), token)
-	if err != nil {
+	var urls []remote.PairURL
+	if base != "" {
+		u, err := remote.BasePairURL(base, token)
+		if err != nil {
+			return err
+		}
+		urls = []remote.PairURL{u}
+	} else if urls, err = remote.PairURLs(cfg.Addr(), token); err != nil {
 		return err
 	}
 	if len(urls) == 0 {

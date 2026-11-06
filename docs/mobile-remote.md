@@ -6,7 +6,8 @@ playlists and edits the queue. The music still plays on the computer: the
 phone is a remote, like the Spotify app is for [Spotify Connect](spotify.md#spotify-connect).
 
 The app needs no install. It works in the phone browser, and you can add it
-to the home screen. It works with the TUI and with [headless mode](headless.md),
+to the home screen. To install it as an app, serve it over `https` (see
+[Install it as an app](#install-it-as-an-app)). It works with the TUI and with [headless mode](headless.md),
 so a headless cliamp on a home server works well.
 
 ## Set it up
@@ -85,15 +86,24 @@ enabled = true
 listen = "100.101.102.103:7700"  # the address from: tailscale ip -4
 ```
 
-For HTTPS with a real certificate, serve the gateway through Tailscale and
-open the `https://<machine>.<tailnet>.ts.net` URL on the phone, with the
-`#t=` part of the pairing URL. `tailscale serve` connects to
-`127.0.0.1:7700`, so keep `listen` at `":7700"` or set it to
-`"127.0.0.1:7700"`:
+### Install it as an app
+
+Chrome and Safari install a web app as an app only from an `https` page. On
+a plain `http` LAN address, "Add to Home screen" makes a shortcut instead.
+Tailscale gives the gateway `https` with a real certificate. Turn on HTTPS
+certificates for your tailnet in the Tailscale admin console, then serve the
+gateway on its own port:
 
 ```sh
-tailscale serve --bg 7700
+sudo tailscale serve --bg --https=7443 http://127.0.0.1:7700
+cliamp remote pair --base https://<machine>.<tailnet>.ts.net:7443
 ```
+
+`tailscale serve` connects to `127.0.0.1:7700`, so keep `listen` at `":7700"`
+or set it to `"127.0.0.1:7700"`. Scan the code, then use **Install app** in
+the browser menu. `sudo tailscale set --operator=$USER` once lets you run
+`tailscale serve` without sudo. `--base` pairs through any proxy that
+serves the gateway at the root of a URL.
 
 ## For client developers
 

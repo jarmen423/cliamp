@@ -371,3 +371,30 @@ func TestVirtualBridge(t *testing.T) {
 		}
 	}
 }
+
+func TestBasePairURL(t *testing.T) {
+	tests := []struct {
+		base      string
+		wantURL   string
+		wantLabel string
+		wantErr   bool
+	}{
+		{"https://box.tail1.ts.net:7443", "https://box.tail1.ts.net:7443/#t=tok", "HTTPS", false},
+		{"https://box.tail1.ts.net/", "https://box.tail1.ts.net/#t=tok", "HTTPS", false},
+		{"http://192.168.1.5:7700", "http://192.168.1.5:7700/#t=tok", "proxy", false},
+		{"box.tail1.ts.net", "", "", true},
+		{"ftp://box", "", "", true},
+		{"https://box/cliamp", "", "", true},
+		{"https://box/?x=1", "", "", true},
+	}
+	for _, tt := range tests {
+		got, err := BasePairURL(tt.base, "tok")
+		if (err != nil) != tt.wantErr {
+			t.Errorf("BasePairURL(%q) error = %v, wantErr %v", tt.base, err, tt.wantErr)
+			continue
+		}
+		if !tt.wantErr && (got.URL != tt.wantURL || got.Label != tt.wantLabel) {
+			t.Errorf("BasePairURL(%q) = %+v, want %s (%s)", tt.base, got, tt.wantURL, tt.wantLabel)
+		}
+	}
+}
