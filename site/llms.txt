@@ -1,6 +1,6 @@
 # cliamp fork (unofficial fork of bjarneo/cliamp)
 
-> This site covers an unofficial fork of bjarneo/cliamp. cliamp is bjarneo's Winamp-style music player for the terminal, written in Go with Bubbletea; the fork is maintained separately by jarmen423 and is not affiliated with upstream. The fork adds pixel visualizers (Encore, EventHorizon, Ridgeline, Stage, Aurora, Phosphor) drawn as real images over kitty graphics or Sixel, an immersive browse mode with cover art, Spotify Browse and Spotify Connect receiver mode, song/artist/album radio, session resume, and a single static Windows exe. The page is hosted by Agent Memory Labs (https://agentmemorylabs.com).
+> This site covers an unofficial fork of bjarneo/cliamp. cliamp is bjarneo's Winamp-style music player for the terminal, written in Go with Bubbletea; the fork is maintained separately by jarmen423 and is not affiliated with upstream. The fork adds pixel visualizers (Encore, EventHorizon, Ridgeline, Stage, Aurora, Phosphor) drawn as real images over kitty graphics or Sixel, an immersive browse mode with cover art, Spotify Browse and Spotify Connect receiver mode, song/artist/album radio, session resume, a phone remote web app that switches playback between machines, and a single static Windows exe. The page is hosted by Agent Memory Labs (https://agentmemorylabs.com).
 
 - Homepage: https://cliamp.agentmemorylabs.com/
 - Source: https://github.com/jarmen423/cliamp
@@ -17,3 +17,5 @@
 - [Headless mode](https://github.com/jarmen423/cliamp/blob/main/docs/headless.md): run without a TUI and control it from scripts, status bars and hotkeys
 - [Spotify, Browse and Spotify Connect](https://github.com/jarmen423/cliamp/blob/main/docs/spotify.md)
 - [Remote control](https://github.com/jarmen423/cliamp/blob/main/docs/remote-control.md)
+- [Phone remote](https://github.com/jarmen423/cliamp/blob/main/docs/mobile-remote.md): the web app for phones, pairing, several machines, HTTPS and Windows
+- [Changelog](https://github.com/jarmen423/cliamp/blob/main/CHANGELOG.md)

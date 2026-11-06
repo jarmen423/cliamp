@@ -198,6 +198,19 @@ section{padding:clamp(56px,7vw,96px) 0;border-bottom:1px solid var(--line-2)}
 .ram .fine{font-size:13px;color:var(--mute);margin-top:12px}
 .sp-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}
 .sp-list li{border-left:2px solid var(--line);padding:2px 0 2px 14px;color:var(--fg-2);font-size:14.5px}
+
+/* phone remote */
+.phones{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;margin-top:32px;max-width:900px}
+.phone{margin:0;display:grid;gap:12px;justify-items:center;text-align:center}
+.phone .frame{width:100%;max-width:260px;border:1px solid var(--line);border-radius:30px;padding:7px;background:#000;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.phone img{display:block;width:100%;height:auto;border-radius:23px}
+.phone figcaption{font-family:var(--mono);font-size:12px;color:var(--mute);max-width:30ch}
+@media (max-width:760px){.phones{grid-template-columns:1fr;max-width:300px;margin-left:auto;margin-right:auto}}
+.remote-more{display:grid;grid-template-columns:1.2fr 1fr;gap:20px 28px;margin-top:32px;align-items:start}
+@media (max-width:860px){.remote-more{grid-template-columns:1fr}}
+.remote-more>*{min-width:0}
+.remote-more pre{margin:0;border:1px solid var(--line-2);border-radius:10px;background:var(--panel);padding:16px 18px;font-family:var(--mono);font-size:13px;color:var(--fg);overflow-x:auto}
+.remote-more pre .c{color:var(--mute)}
 .sp-list li b{color:var(--fg);font-weight:500}
 
 /* install */
@@ -240,6 +253,7 @@ footer .aml a{color:var(--accent)}
     <nav class="nav" aria-label="Primary">
       <a href="#visualizers" class="opt">visualizers</a>
       <a href="#spotify" class="opt">spotify</a>
+      <a href="#remote" class="opt">phone remote</a>
       <a href="#fork" class="opt">what's new</a>
       <a href="#install">install</a>
       <a href="#headless" class="opt">headless</a>
@@ -348,6 +362,47 @@ footer .aml a{color:var(--accent)}
             <li><b>Radio and smart shuffle.</b> Song, artist and album radio, smart shuffle, artist pages, and playlist editing, from the keyboard or the mouse.</li>
           </ul>
           <p class="sub" style="font-size:13.5px">Needs a Spotify Premium account. Press <kbd>I</kbd> to open immersive mode.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="remote">
+    <div class="wrap">
+      <div class="eyebrow">phone remote &middot; new in v3.2.0</div>
+      <h2>Your phone is the remote</h2>
+      <p class="sub">cliamp serves a small web app to your phone. It plays, seeks and sets the volume, searches Spotify and YouTube, opens your playlists and artist pages, and edits the queue. The music keeps playing on the computer, the way the Spotify app drives a speaker. Install it to the home screen, or as an app on a Windows or Mac desktop.</p>
+
+      <div class="phones">
+        <figure class="phone">
+          <div class="frame"><img src="media/remote-now.webp" width="780" height="1688" loading="lazy" alt="The cliamp phone app playing Get Lucky by Daft Punk from Spotify: album art, a seek bar drawn from the live spectrum, and the transport"></div>
+          <figcaption>Playing. The seek bar is drawn from the live spectrum of the music.</figcaption>
+        </figure>
+        <figure class="phone">
+          <div class="frame"><img src="media/remote-artist.webp" width="780" height="1688" loading="lazy" alt="The artist page for Daft Punk: a photo header, a play button and the popular tracks"></div>
+          <figcaption>Artist pages: popular tracks, then the discography.</figcaption>
+        </figure>
+        <figure class="phone">
+          <div class="frame"><img src="media/remote-machines.webp" width="780" height="1688" loading="lazy" alt="The Machines sheet listing kubuntu, which the app controls, and a Windows PC with a Play here button"></div>
+          <figcaption>Pick a machine, or move the music to it with Play here.</figcaption>
+        </figure>
+      </div>
+
+      <div class="remote-more">
+        <ul class="sp-list">
+          <li><b>Every computer, one app.</b> Linux, macOS and Windows each run their own cliamp. The app switches between them like Spotify Connect, and <b>Play here</b> moves the song, the queue and the position to another one.</li>
+          <li><b>Light.</b> No build step and no app store: about 120 KB of code in all, Preact included, served by cliamp itself. It reconnects on its own when the phone wakes up.</li>
+          <li><b>Private.</b> A pairing token in a QR code, kept on the phone. On your LAN, or anywhere on your tailnet with <code>tailscale serve</code> for HTTPS.</li>
+          <li><b>Open.</b> It speaks the same V2 protocol as <code>cliamp remote</code>, over a WebSocket, so other clients can use it too.</li>
+        </ul>
+        <div>
+<pre><span class="c"># config.toml</span>
+[remote]
+enabled = true
+
+<span class="c"># then pair, and scan the code</span>
+cliamp remote pair</pre>
+          <p class="sub" style="font-size:13.5px">Works with the TUI and with <code>cliamp --daemon</code>. Setup, Windows and HTTPS in the <a href="https://github.com/jarmen423/cliamp/blob/main/docs/mobile-remote.md">phone remote guide</a>.</p>
         </div>
       </div>
     </div>

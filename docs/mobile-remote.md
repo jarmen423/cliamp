@@ -8,7 +8,8 @@ phone is a remote, like the Spotify app is for [Spotify Connect](spotify.md#spot
 The app needs no install. It works in the phone browser, and you can add it
 to the home screen. To install it as an app, serve it over `https` (see
 [Install it as an app](#install-it-as-an-app)). It works with the TUI and with [headless mode](headless.md),
-so a headless cliamp on a home server works well.
+so a headless cliamp on a home server works well. It runs on Linux, macOS and
+[Windows](#on-windows), and one app can switch between all of them.
 
 ## Set it up
 
@@ -136,6 +137,48 @@ or set it to `"127.0.0.1:7700"`. Scan the code, then use **Install app** in
 the browser menu. `sudo tailscale set --operator=$USER` once lets you run
 `tailscale serve` without sudo. `--base` pairs through any proxy that
 serves the gateway at the root of a URL.
+
+## On Windows
+
+The gateway works the same on Windows. Use the
+[release](https://github.com/jarmen423/cliamp/releases/latest)
+`cliamp-windows-amd64.exe` from v3.2.0 or later.
+
+1. Add `[remote]` with `enabled = true` to `%APPDATA%\cliamp\config.toml`, then
+   start cliamp, as the TUI or as `cliamp --daemon`.
+2. The first time, Windows Defender Firewall asks whether `cliamp.exe` may
+   use the network. Allow it on **Private networks**. If you missed the
+   prompt, allow `cliamp.exe` in **Windows Security > Firewall & network
+   protection > Allow an app through firewall**, or allow the port in an
+   administrator PowerShell:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "cliamp remote" -Direction Inbound -Protocol TCP -LocalPort 7700 -Action Allow -Profile Private
+   ```
+
+   Tailscale traffic does not need the rule when you use `tailscale serve`.
+   That command reaches cliamp on `127.0.0.1`.
+3. Pair it. To add the Windows machine to an app you already use, give the
+   app's address:
+
+   ```powershell
+   tailscale serve --bg --https=7443 http://127.0.0.1:7700
+   cliamp remote pair --base https://<pc>.<tailnet>.ts.net:7443 --app https://<machine>.<tailnet>.ts.net:7443
+   ```
+
+   Scan the code with the phone. The Windows machine then shows in the
+   machine list. If `tailscale serve` says access is denied, run it in an
+   administrator terminal.
+
+The music plays only while cliamp runs, so keep its terminal open, or start
+`cliamp --daemon` at sign-in from Task Scheduler.
+
+### On a desktop browser
+
+The app also works on a computer. Open its `https` address in Chrome or Edge,
+for example on the Windows PC, and use **Install** in the address bar. You
+then have a small cliamp window that controls any of your machines, such as
+the headless cliamp on a home server.
 
 ## For client developers
 

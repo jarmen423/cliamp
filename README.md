@@ -13,6 +13,20 @@ https://github.com/user-attachments/assets/55e251f2-e13b-43d9-bb6a-7b1960e7d7d0
 
 ## What this fork adds
 
+- **Phone remote (new in v3.2.0).** cliamp serves a small web app to your
+  phone: play, seek, volume, Spotify and YouTube search, playlists, artist
+  pages and the queue. One app switches between every computer that runs
+  cliamp, Linux, macOS or Windows, and **Play here** moves the music from one
+  to another, like Spotify Connect. Install it to the home screen, or as an
+  app in Chrome or Edge on a desktop. Turn on `[remote]` and run
+  `cliamp remote pair`. See [docs/mobile-remote.md](docs/mobile-remote.md).
+
+  <p>
+    <img src="site/media/remote-now.webp" width="200" alt="The phone app playing a Spotify track, with album art and a spectrum seek bar">
+    <img src="site/media/remote-artist.webp" width="200" alt="An artist page in the phone app, with a photo header and popular tracks">
+    <img src="site/media/remote-machines.webp" width="200" alt="The Machines sheet, with a Play here button for a Windows PC">
+  </p>
+
 - **Immersive mode (prototype).** A browse layout like the Spotify apps:
   visualizer band, nav pills, a Now Playing and Queue column, and a list, rows
   or grid canvas with cover art. Press `I`, or set `immersive = true` in
@@ -180,7 +194,16 @@ to Recently Played when the track starts. See
 [docs/remote-control.md](docs/remote-control.md).
 
 To control cliamp from a phone, turn on `[remote]` and run
-`cliamp remote pair`. See [docs/mobile-remote.md](docs/mobile-remote.md).
+`cliamp remote pair`, then scan the code:
+
+```toml
+[remote]
+enabled = true
+```
+
+The phone app runs in the browser, installs over HTTPS, and switches
+between your machines, Windows included. See
+[docs/mobile-remote.md](docs/mobile-remote.md).
 
 ## Radio
 
@@ -282,7 +305,8 @@ A source build uses the same optional runtime dependencies as the other install 
 
 ## Docs
 
-The docs for this fork are in [docs/](docs/). Upstream's hosted docs at
+The docs for this fork are in [docs/](docs/). [CHANGELOG.md](CHANGELOG.md) lists
+what each release changed. Upstream's hosted docs at
 [whiterose.org.contextowl.co/docs/cliamp](https://whiterose.org.contextowl.co/docs/cliamp)
 cover upstream cliamp only.
 

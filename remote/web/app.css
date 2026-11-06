@@ -250,6 +250,7 @@ h1.title { font-size: 28px; font-weight: 590; letter-spacing: -0.02em; line-heig
 .machine-main:not([disabled]):active { background: var(--hover); }
 .machine-main[disabled] { cursor: default; }
 .machine[data-active] .row-title { color: var(--accent); }
+.machine .row-sub .trunc { flex: 0 1 auto; } /* .row-sub .mono would keep a long address from shrinking */
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-4); }
 .dot[data-status="online"] { background: #7bd88f; }
 .machine[data-active] .dot { background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
