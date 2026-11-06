@@ -7,6 +7,7 @@
 import { html, useEffect, useRef, useState } from '../vendor/preact-htm.js'
 import { formatTime, livePosition, trackArtist, trackTitle } from '../core/store.js'
 import { Art } from './art.js'
+import { MachineChip } from './machines.js'
 import { Icon } from './icons.js'
 import { haptic, reducedMotion, useLatest, useRemote, useTick } from './hooks.js'
 
@@ -264,14 +265,15 @@ export function sourceLabel(snap, providers) {
   return p ? p.name : list
 }
 
-export function NowPlaying({ remote, go }) {
+export function NowPlaying({ remote, go, machines }) {
   const state = useRemote(remote)
   const snap = state.snapshot
   const track = snap?.track
   // Before the first snapshot nothing is known; an empty state would flash.
-  if (!snap) return html`<div class="now"></div>`
+  const chip = machines && html`<div class="now-machine"><${MachineChip} machines=${machines} /></div>`
+  if (!snap) return html`<div class="now">${chip}</div>`
   if (!track) {
-    return html`<div class="now"><div class="now-empty">
+    return html`<div class="now">${chip}<div class="now-empty">
       <div class="art now-art" style="width:120px;margin:0 auto"><div class="art-ph">${Icon.note()}</div></div>
       <p>Nothing playing</p>
       <p>Search Spotify or YouTube to start something.</p>
@@ -285,6 +287,7 @@ export function NowPlaying({ remote, go }) {
   }
   const source = sourceLabel(snap, state.providers)
   return html`<div class="now">
+    ${chip}
     <div class="now-source">${source && html`<span class="eyebrow trunc">Playing from ${source}</span>`}</div>
     <${Art} track=${track} class="now-art" />
     <div class="now-meta"><div>

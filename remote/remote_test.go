@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -446,4 +447,119 @@ func liveConns(g *Gateway) int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return len(g.conns)
+}
+
+func TestGatewayInfo(t *testing.T) {
+	srv, token, _ := newTestGateway(t)
+	testGateways[srv].opts.Name = "Desk"
+	testGateways[srv].opts.Version = "v9"
+	tests := []struct {
+		name   string
+		method string
+		token  string
+		status int
+	}{
+		{"with token", http.MethodGet, token, http.StatusOK},
+		{"no token", http.MethodGet, "", http.StatusUnauthorized},
+		{"preflight", http.MethodOptions, "", http.StatusNoContent},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest(tt.method, srv.URL+"/info", nil)
+			req.Header.Set("Origin", "https://other.example")
+			if tt.token != "" {
+				req.Header.Set("Authorization", "Bearer "+tt.token)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tt.status {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tt.status)
+			}
+			if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+				t.Errorf("Access-Control-Allow-Origin = %q, want *", got)
+			}
+			if tt.status == http.StatusOK {
+				var info struct{ Name, Version string }
+				if err := json.NewDecoder(resp.Body).Decode(&info); err != nil || info.Name != "Desk" || info.Version != "v9" {
+					t.Errorf("info = %+v, %v", info, err)
+				}
+			}
+		})
+	}
+}
+
+func TestAddMachineURL(t *testing.T) {
+	lan := PairURL{URL: "http://192.168.1.9:7700/#t=tok"}
+	https := PairURL{URL: "https://win.tail1.ts.net:7443/#t=tok"}
+	tests := []struct {
+		name    string
+		app     string
+		pair    PairURL
+		want    string
+		wantErr bool
+	}{
+		{"https app, https machine", "https://kubuntu.tail1.ts.net:7443", https,
+			"https://kubuntu.tail1.ts.net:7443/#m=https%3A%2F%2Fwin.tail1.ts.net%3A7443&t=tok", false},
+		{"http app, LAN machine", "http://192.168.1.5:7700/", lan,
+			"http://192.168.1.5:7700/#m=http%3A%2F%2F192.168.1.9%3A7700&t=tok", false},
+		{"https app, http machine", "https://kubuntu.tail1.ts.net:7443", lan, "", true},
+		{"not a URL", "kubuntu", https, "", true},
+	}
+	for _, tt := range tests {
+		got, err := AddMachineURL(tt.app, tt.pair, "tok")
+		if (err != nil) != tt.wantErr {
+			t.Errorf("%s: error = %v, wantErr %v", tt.name, err, tt.wantErr)
+			continue
+		}
+		if got.URL != tt.want {
+			t.Errorf("%s: URL = %q, want %q", tt.name, got.URL, tt.want)
+		}
+	}
+}
+
+// TestServiceWorkerShell keeps the app-shell list in sw.js in step with the
+// files of the app: a missing file fails the worker install, and a file
+// left out does not load when the machine is off.
+func TestServiceWorkerShell(t *testing.T) {
+	src, err := webFiles.ReadFile("web/sw.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	block := regexp.MustCompile(`(?s)const SHELL = \[(.*?)\]`).FindSubmatch(src)
+	if block == nil {
+		t.Fatal("sw.js has no SHELL list")
+	}
+	listed := map[string]bool{}
+	for _, m := range regexp.MustCompile(`'([^']+)'`).FindAllSubmatch(block[1], -1) {
+		listed[string(m[1])] = true
+	}
+	var files []string
+	err = fs.WalkDir(webFiles, "web", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		if name := strings.TrimPrefix(path, "web/"); name != "sw.js" {
+			files = append(files, name)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if !listed[f] {
+			t.Errorf("sw.js SHELL leaves out %s", f)
+		}
+	}
+	for name := range listed {
+		if name == "./" {
+			continue
+		}
+		if _, err := fs.Stat(webFiles, "web/"+name); err != nil {
+			t.Errorf("sw.js SHELL lists %s, which does not exist", name)
+		}
+	}
 }

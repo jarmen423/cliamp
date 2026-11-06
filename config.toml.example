@@ -388,6 +388,7 @@ eq = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 # [remote]
 # enabled = true
 # listen = ":7700"
+# name = "Living room"   # the name in the app's machine picker; default: hostname
 
 # Destination for TUI Ctrl+S saves. Empty uses ~/Music/cliamp.
 # Use an absolute path; mount external drives before saving.

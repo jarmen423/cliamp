@@ -595,6 +595,8 @@ func startRemote(cfg config.RemoteConfig, srv *ipc.Server) *remote.Gateway {
 		Server:    srv,
 		TokenPath: tokenPath,
 		ArtDir:    artDir,
+		Name:      cfg.MachineName(),
+		Version:   appmeta.Version(),
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
