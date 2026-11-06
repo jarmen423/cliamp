@@ -52,7 +52,14 @@ export function trackArtist(t) {
 function basename(path) {
   if (!path) return ''
   const clean = path.split(/[?#]/)[0]
-  return decodeURIComponent(clean.slice(clean.lastIndexOf('/') + 1))
+  const name = clean.slice(clean.lastIndexOf('/') + 1)
+  // A local file name is literal text: "100%.mp3" is not percent-encoded.
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) return name
+  try {
+    return decodeURIComponent(name)
+  } catch {
+    return name
+  }
 }
 
 // artSource tells how to load the album art of a track: a direct URL, or

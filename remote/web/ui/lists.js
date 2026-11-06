@@ -288,7 +288,7 @@ export function Queue({ remote }) {
   const { snapshot, epoch } = useRemote(remote)
   const rev = snapshot?.playlist_revision
   const { data, loading, error } = useLoad(
-    () => Promise.all([remote.playNextList(), remote.queueList()]).then(([next, q]) => ({ next, q })),
+    () => Promise.all([remote.playNextList(), remote.queueList()]).then(([next, q]) => ({ next: next.tracks, nextRev: next.rev, q })),
     [rev, epoch],
   )
   const current = snapshot?.index ?? 0
@@ -301,13 +301,13 @@ export function Queue({ remote }) {
     ${hasNext && html`<section aria-label="Up next">
       <div class="section-head"><span class="eyebrow">Up next</span></div>
       <ul class="rows">${data.next.map((t, i) => html`<${TrackRow} track=${t}
-        onPlay=${() => remote.playTrack(t)} onRemove=${() => remote.playNextRemove(i)} />`)}</ul>
+        onPlay=${() => remote.playTrack(t)} onRemove=${() => remote.playNextRemove(i, data.nextRev)} />`)}</ul>
     </section>`}
     ${data && html`<section aria-label="Playlist">
       ${hasNext && html`<div class="section-head"><span class="eyebrow">Then</span></div>`}
       ${!data.q.tracks.length && html`<div class="empty"><strong>The queue is empty</strong>Play something from Search or Library.</div>`}
       <ul class="rows">${data.q.tracks.map((t, i) => html`<${TrackRow} track=${t} index=${i + 1} active=${i === current}
-        onPlay=${() => remote.queuePlay(i)} onRemove=${() => remote.queueRemove(i)} />`)}</ul>
+        onPlay=${() => remote.queuePlay(i, data.q.rev)} onRemove=${() => remote.queueRemove(i, data.q.rev)} />`)}</ul>
       ${data.q.total > data.q.tracks.length && html`<p class="dim" style="font-size:13px;padding:12px 0">Showing the first ${data.q.tracks.length} of ${data.q.total}.</p>`}
     </section>`}
   </div>`

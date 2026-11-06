@@ -9,6 +9,8 @@ export { RemoteError }
 // The providers the app leads with. Others the server has still show.
 export const PREFERRED_PROVIDERS = ['spotify', 'yt']
 
+const POSITION_REFRESH_MS = 5000
+
 export function createRemote({ base, token, WebSocketImpl, fetchImpl }) {
   const store = createStore({
     status: 'closed',
@@ -36,6 +38,10 @@ export function createRemote({ base, token, WebSocketImpl, fetchImpl }) {
       if (envelope.retained) refresh()
     },
   })
+
+  // A seek from the TUI or another phone changes no runtime state that
+  // cliamp publishes, so reread the position while the app is in view.
+  let positionTimer = 0
 
   async function onOpen() {
     // A restarted cliamp counts revisions from 1 again. Forget the old
@@ -89,14 +95,23 @@ export function createRemote({ base, token, WebSocketImpl, fetchImpl }) {
 
   const submit = (op, params) => conn.submit(op, params)
   const snap = () => store.get().snapshot
-  const ifRevision = () => ({ if_revision: snap()?.playlist_revision })
+  const ifRevision = (rev) => ({ if_revision: rev ?? snap()?.playlist_revision })
 
   return {
     store,
     conn,
     has: (op) => store.get().caps?.has(op) ?? true,
-    start: () => conn.start(),
-    stop: () => conn.stop(),
+    start() {
+      clearInterval(positionTimer)
+      positionTimer = setInterval(() => {
+        if (store.get().status === 'open' && globalThis.document?.visibilityState !== 'hidden') refresh()
+      }, POSITION_REFRESH_MS)
+      conn.start()
+    },
+    stop() {
+      clearInterval(positionTimer)
+      conn.stop()
+    },
     refresh,
     spectrum: () => conn.request('spectrum.get').then((r) => r.result?.bands || []),
 
@@ -123,12 +138,20 @@ export function createRemote({ base, token, WebSocketImpl, fetchImpl }) {
     playTrack: (track) => optimistic(null, () => submit('track.play', { track })),
     queueTrack: (track) => optimistic(null, () => submit('track.queue', { track })),
 
+    // The lists carry the playlist revision they were read at. Index edits
+    // send it back, so an edit of a list that changed since fails with
+    // conflict instead of hitting another track.
     queueList: (offset = 0, limit = 200) =>
-      submit('queue.list', { offset, limit }).then((r) => ({ tracks: r.result.tracks || [], total: r.result.total || 0 })),
-    playNextList: () => submit('playnext.list', {}).then((r) => r.result.tracks || []),
-    queuePlay: (index) => optimistic(null, () => submit('queue.play', { index, ...ifRevision() })),
-    queueRemove: (index) => optimistic(null, () => submit('queue.remove', { index, ...ifRevision() })),
-    playNextRemove: (index) => optimistic(null, () => submit('playnext.remove', { index })),
+      submit('queue.list', { offset, limit }).then((r) => ({
+        tracks: r.result.tracks || [],
+        total: r.result.total || 0,
+        rev: r.snapshot?.playlist_revision,
+      })),
+    playNextList: () =>
+      submit('playnext.list', {}).then((r) => ({ tracks: r.result.tracks || [], rev: r.snapshot?.playlist_revision })),
+    queuePlay: (index, rev) => optimistic(null, () => submit('queue.play', { index, ...ifRevision(rev) })),
+    queueRemove: (index, rev) => optimistic(null, () => submit('queue.remove', { index, ...ifRevision(rev) })),
+    playNextRemove: (index, rev) => optimistic(null, () => submit('playnext.remove', { index, ...ifRevision(rev) })),
   }
 }
 

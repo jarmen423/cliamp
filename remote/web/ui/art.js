@@ -12,16 +12,27 @@ export function setArtAuth(base, token) {
   auth = { base, token }
 }
 
+// cachedURL returns a blob URL for an art cache file. The cache keeps the
+// most recently used 300 and revokes the URLs it evicts, so browsing many
+// covers does not keep every image in memory.
 function cachedURL(name) {
-  if (!blobs.has(name)) {
-    const p = fetch(`${auth.base}/art/${name}`, { headers: { Authorization: 'Bearer ' + auth.token } })
-      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
-      .then((b) => URL.createObjectURL(b))
-    p.catch(() => blobs.delete(name))
+  let p = blobs.get(name)
+  if (p) {
+    blobs.delete(name) // move to the newest end
     blobs.set(name, p)
-    if (blobs.size > 300) blobs.delete(blobs.keys().next().value)
+    return p
   }
-  return blobs.get(name)
+  p = fetch(`${auth.base}/art/${name}`, { headers: { Authorization: 'Bearer ' + auth.token } })
+    .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+    .then((b) => URL.createObjectURL(b))
+  p.catch(() => blobs.get(name) === p && blobs.delete(name))
+  blobs.set(name, p)
+  if (blobs.size > 300) {
+    const [oldest, old] = blobs.entries().next().value
+    blobs.delete(oldest)
+    old.then((u) => URL.revokeObjectURL(u), () => {})
+  }
+  return p
 }
 
 export function Art({ track, class: cls = '' }) {
