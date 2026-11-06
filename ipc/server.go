@@ -224,6 +224,27 @@ func (s *Server) acceptLoop() {
 	}
 }
 
+// ServeConn serves V2 requests from conn, the way the server serves a
+// socket connection, and returns when conn closes or the server shuts down.
+// The network gateway in package remote uses it for WebSocket clients. It
+// closes conn.
+func (s *Server) ServeConn(conn net.Conn) {
+	// The Add shares connMu with the done check, the way addConn does, so
+	// it cannot race the wg.Wait of Close: Close closes done before it takes
+	// connMu in closeConns, and waits only after that.
+	s.connMu.Lock()
+	select {
+	case <-s.done:
+		s.connMu.Unlock()
+		conn.Close()
+		return
+	default:
+	}
+	s.wg.Add(1)
+	s.connMu.Unlock()
+	s.handleConn(conn)
+}
+
 // handleConn reads newline-delimited JSON requests from a single connection,
 // dispatches them, and writes JSON responses.
 func (s *Server) handleConn(conn net.Conn) {

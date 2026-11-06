@@ -191,3 +191,45 @@ func TestListening(t *testing.T) {
 		})
 	}
 }
+
+func TestServeConnServesV2AndStopsOnClose(t *testing.T) {
+	server, err := NewServer(filepath.Join(shortTempDir(t), "cliamp.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, peer := net.Pipe()
+	served := make(chan struct{})
+	go func() {
+		server.ServeConn(peer)
+		close(served)
+	}()
+
+	_ = client.SetDeadline(time.Now().Add(5 * time.Second))
+	if _, err := client.Write([]byte(`{"version":2,"id":"caps","method":"capabilities"}` + "\n")); err != nil {
+		t.Fatal(err)
+	}
+	var response V2Response
+	if err := json.NewDecoder(client).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if !response.OK || string(response.ID) != `"caps"` {
+		t.Fatalf("capabilities response = %+v", response)
+	}
+
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-served:
+	case <-time.After(5 * time.Second):
+		t.Fatal("ServeConn did not return after Close")
+	}
+
+	// A connection after Close is closed at once.
+	late, latePeer := net.Pipe()
+	server.ServeConn(latePeer)
+	_ = late.SetReadDeadline(time.Now().Add(time.Second))
+	if _, err := late.Read(make([]byte, 1)); !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("late read error = %v, want a closed pipe", err)
+	}
+}
