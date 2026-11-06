@@ -30,6 +30,17 @@ var supportedPictureExts = map[string]bool{
 	"tiff": true,
 }
 
+// AlbumArtCacheDir returns the directory that holds the embedded album art
+// of local files. A track's AlbumArtURL names a file in it with a file://
+// URL. The file names are the SHA-256 of the image with its extension.
+func AlbumArtCacheDir() (string, error) {
+	dir, err := appdir.DataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, albumArtCacheDir), nil
+}
+
 // RefreshEmbeddedMetadata returns track with embedded local-file lyrics and
 // album art populated from its current Path. Existing non-embedded fields are
 // preserved so saved playlist metadata and provider fields remain stable.
@@ -98,11 +109,10 @@ func cacheAlbumArt(picture *tag.Picture) string {
 	if picture == nil || len(picture.Data) == 0 {
 		return ""
 	}
-	dir, err := appdir.DataDir()
+	artDir, err := AlbumArtCacheDir()
 	if err != nil {
 		return ""
 	}
-	artDir := filepath.Join(dir, albumArtCacheDir)
 	if err := os.MkdirAll(artDir, 0o755); err != nil {
 		return ""
 	}

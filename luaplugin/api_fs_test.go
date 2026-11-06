@@ -232,6 +232,7 @@ func TestIsWriteAllowed(t *testing.T) {
 				{name: "IPC socket", path: filepath.Join(cfg, "cliamp.sock")},
 				{name: "IPC PID file", path: filepath.Join(cfg, "cliamp.sock.pid")},
 				{name: "plugin log", path: filepath.Join(cfg, "plugins.log")},
+				{name: "remote token", path: filepath.Join(cfg, "remote.token")},
 				{name: "plugins dir with other case", path: filepath.Join(cfg, "PLUGINS", "evil.lua"), want: !caseFolded},
 				{name: "config.toml with other case", path: filepath.Join(cfg, "Config.toml"), want: !caseFolded},
 				{name: "plugins dir with long s", path: filepath.Join(cfg, "plugin\u017f", "evil.lua"), want: !caseFolded},

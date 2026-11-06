@@ -34,6 +34,7 @@ import (
 	"github.com/bjarneo/cliamp/mediactl"
 	"github.com/bjarneo/cliamp/player"
 	"github.com/bjarneo/cliamp/playlist"
+	"github.com/bjarneo/cliamp/remote"
 	"github.com/bjarneo/cliamp/resolve"
 	"github.com/bjarneo/cliamp/theme"
 	"github.com/bjarneo/cliamp/ui/model"
@@ -386,7 +387,7 @@ func run(overrides config.Overrides, positional []string, headless, visualizer60
 		luaMgr.SetUIProvider(luaUIProvider(luaSend))
 	}
 
-	stopIPC, err := startIPC(prog.Send, pluginBroker, luaMgr, headless)
+	stopIPC, err := startIPC(prog.Send, pluginBroker, luaMgr, headless, cfg.Remote)
 	if err != nil {
 		return err
 	}
@@ -548,7 +549,7 @@ func configureModel(m *model.Model, cfg config.Config, headless, visualizer60FPS
 // send. Headless mode is controlled only through the socket, so there a
 // failure is an error. The TUI reports the failure and runs without the
 // socket.
-func startIPC(send func(tea.Msg), broker *ipc.Broker, plugins *luaplugin.Manager, headless bool) (stop func(), err error) {
+func startIPC(send func(tea.Msg), broker *ipc.Broker, plugins *luaplugin.Manager, headless bool, remoteCfg config.RemoteConfig) (stop func(), err error) {
 	srv, err := ipc.NewServerWithBroker(ipc.DefaultSocketPath(), broker)
 	if err != nil {
 		// The errors of the ipc package already start with "ipc: ".
@@ -564,10 +565,42 @@ func startIPC(send func(tea.Msg), broker *ipc.Broker, plugins *luaplugin.Manager
 	srv.SetV2Dispatcher(newV2Dispatcher(queue, srv.JobStore(), plugins))
 	srv.SetOperationRegistry(v2Operations(headless, plugins != nil))
 	go publishV2JobEvents(srv.Done(), srv.JobStore(), broker)
+	gateway := startRemote(remoteCfg, srv)
 	return func() {
+		if gateway != nil {
+			_ = gateway.Close()
+		}
 		_ = srv.Close()
 		stopQueue()
 	}, nil
+}
+
+// startRemote starts the network gateway for phones when [remote] enables
+// it. A failure leaves the socket working, so it only warns.
+func startRemote(cfg config.RemoteConfig, srv *ipc.Server) *remote.Gateway {
+	if !cfg.Enabled {
+		return nil
+	}
+	tokenPath, err := remote.TokenPath()
+	if err == nil {
+		_, err = remote.LoadOrCreateToken(tokenPath)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return nil
+	}
+	artDir, _ := playlist.AlbumArtCacheDir()
+	gateway, err := remote.Start(remote.Options{
+		Addr:      cfg.Addr(),
+		Server:    srv,
+		TokenPath: tokenPath,
+		ArtDir:    artDir,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return nil
+	}
+	return gateway
 }
 
 // mergeExitSession folds the play-next queue and the immersive page captured

@@ -363,6 +363,7 @@ footer .aml a{color:var(--accent)}
         <div class="feat"><div class="k">immersive mode</div><h3>A browse layout like the Spotify apps</h3><p>Visualizer band, nav pills, a Now Playing and Queue column, and a list, rows or grid canvas with cover art. <kbd>b</kbd> cycles the canvas view. A prototype, opened with <kbd>I</kbd>.</p></div>
         <div class="feat"><div class="k">terminal graphics</div><h3>Cover art as real images</h3><p>Album and playlist art over kitty graphics or Sixel, with a colored half-block fallback everywhere else.</p></div>
         <div class="feat"><div class="k">spotify</div><h3>Browse and Connect</h3><p>A Browse page for genres, moods and new releases; library browser and artist pages; smart shuffle; playlist editing; and Spotify Connect receiver mode, so the Spotify apps can play through cliamp.</p></div>
+        <div class="feat"><div class="k">phone remote</div><h3>Control it from your phone</h3><p>Turn on <code>[remote]</code>, run <code>cliamp remote pair</code> and scan the code. A web app plays, seeks, searches Spotify and YouTube, opens playlists and edits the queue, on your LAN or tailnet. <a href="https://github.com/jarmen423/cliamp/blob/main/docs/mobile-remote.md">Guide</a>.</p></div>
         <div class="feat"><div class="k">radio</div><h3>Song, artist and album radio</h3><p>Radio seeded from Spotify stations opens as a playlist without starting playback. When Spotify has no station for a track, cliamp says so.</p></div>
         <div class="feat"><div class="k">resume</div><h3>Picks up where you left off</h3><p>Reopen cliamp to get the last track, position, queue and immersive page back, for every provider.</p></div>
         <div class="feat"><div class="k">windows</div><h3>One static cliamp.exe</h3><p>Spotify included, credentials stored with DPAPI, sign-in over a free local port, and Sixel graphics in Windows Terminal.</p></div>
@@ -421,7 +422,7 @@ footer .aml a{color:var(--accent)}
     <div class="wrap">
       <div class="eyebrow">headless mode</div>
       <h2>Music without the TUI</h2>
-      <p class="sub"><code>cliamp --daemon</code> runs the same player with no interface. It loads your Lua plugins, sends scrobbles, keeps playback gapless, and takes commands from any terminal, script, status bar or hotkey. Stop it with <kbd>Ctrl+C</kbd> or <code>SIGTERM</code>; it saves the resume position first.</p>
+      <p class="sub"><code>cliamp --daemon</code> runs the same player with no interface. It loads your Lua plugins, sends scrobbles, keeps playback gapless, and takes commands from any terminal, script, status bar, hotkey or phone. Stop it with <kbd>Ctrl+C</kbd> or <code>SIGTERM</code>; it saves the resume position first.</p>
 
       <div class="two">
         <div>

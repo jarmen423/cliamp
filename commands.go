@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -24,6 +25,7 @@ import (
 	"github.com/bjarneo/cliamp/player"
 	"github.com/bjarneo/cliamp/playlist"
 	"github.com/bjarneo/cliamp/pluginmgr"
+	"github.com/bjarneo/cliamp/remote"
 	"github.com/bjarneo/cliamp/resolve"
 	"github.com/bjarneo/cliamp/theme"
 	"github.com/bjarneo/cliamp/ui"
@@ -1224,6 +1226,21 @@ func remoteCommand() *cli.Command {
 				},
 			},
 			{
+				Name:  "pair",
+				Usage: "print the URL and QR code that pair a phone with the remote gateway",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "rotate", Usage: "make a new token, so devices paired before must pair again"},
+					&cli.StringFlag{Name: "base", Usage: "pair through a proxy at this URL, such as the https address of tailscale serve"},
+				},
+				Action: func(ctx context.Context, c *cli.Command) error {
+					cfg, err := config.Load()
+					if err != nil {
+						return err
+					}
+					return pairRemote(c.Root().Writer, cfg.Remote, c.Bool("rotate"), c.String("base"))
+				},
+			},
+			{
 				Name:      "job",
 				Usage:     "print a v2 job",
 				ArgsUsage: "<job-id>",
@@ -1285,4 +1302,57 @@ func remoteCommand() *cli.Command {
 			},
 		},
 	}
+}
+
+// pairRemote prints the pairing URLs of the remote gateway and the QR code
+// of the first one. It makes the token when there is none.
+func pairRemote(w io.Writer, cfg config.RemoteConfig, rotate bool, base string) error {
+	path, err := remote.TokenPath()
+	if err != nil {
+		return err
+	}
+	var token string
+	if rotate {
+		token, err = remote.RotateToken(path)
+	} else {
+		token, err = remote.LoadOrCreateToken(path)
+	}
+	if err != nil {
+		return err
+	}
+	var urls []remote.PairURL
+	if base != "" {
+		u, err := remote.BasePairURL(base, token)
+		if err != nil {
+			return err
+		}
+		urls = []remote.PairURL{u}
+	} else if urls, err = remote.PairURLs(cfg.Addr(), token); err != nil {
+		return err
+	}
+	if len(urls) == 0 {
+		return fmt.Errorf("remote: no network address found; set listen in [remote]")
+	}
+	if !cfg.Enabled {
+		fmt.Fprintln(w, "The remote gateway is off. Add this to config.toml and restart cliamp:")
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "  [remote]")
+		fmt.Fprintln(w, "  enabled = true")
+		fmt.Fprintln(w)
+	}
+	fmt.Fprintln(w, "Scan with the phone camera, or open a URL on the phone:")
+	fmt.Fprintln(w)
+	if err := remote.WriteQR(w, urls[0].URL); err != nil {
+		return err
+	}
+	fmt.Fprintln(w)
+	for _, u := range urls {
+		fmt.Fprintf(w, "  %-14s %s\n", u.Label, u.URL)
+	}
+	if rotate {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "New token saved. Devices paired before must pair again; a running")
+		fmt.Fprintln(w, "cliamp disconnects them within a few seconds.")
+	}
+	return nil
 }
