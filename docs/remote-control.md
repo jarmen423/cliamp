@@ -17,6 +17,8 @@ cliamp status --json
 cliamp next
 cliamp remote state
 cliamp remote events runtime.state runtime.job
+cliamp remote pair              # pair a phone with the network gateway
+cliamp remote pair --rotate     # unpair every device
 ```
 
 `cliamp status --json` always includes `position`, `volume` and `index`,
@@ -237,6 +239,13 @@ Named CLI commands such as `cliamp volume`, `cliamp seek`, `cliamp load`, and
 `cliamp plugins call` use V2 jobs internally. `volume` sets an absolute dB
 value. `seek` is relative to the current position. V2 subscriptions read
 `plugin.*` topics and runtime events.
+
+## Network Clients
+
+The `[remote]` gateway carries V2 over a WebSocket on `/v2`, one JSON line per
+message, for phones and other devices on the network. The same operations,
+jobs and events work there. `cliamp remote pair` prints the pairing URL and
+token. See [Phone Remote](mobile-remote.md#for-client-developers).
 
 ## Headless Mode
 

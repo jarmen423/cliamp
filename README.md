@@ -179,6 +179,9 @@ to Recently Played when the track starts. See
 [docs/headless.md](docs/headless.md) and
 [docs/remote-control.md](docs/remote-control.md).
 
+To control cliamp from a phone, turn on `[remote]` and run
+`cliamp remote pair`. See [docs/mobile-remote.md](docs/mobile-remote.md).
+
 ## Radio
 
 Press `R` in the player to browse about 58,000 online radio stations in the [Radio Browser](https://www.radio-browser.info/) directory.

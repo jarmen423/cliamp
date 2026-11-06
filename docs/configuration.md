@@ -665,6 +665,19 @@ cliamp does not check mount status. The IPC `save` operation uses the same
 directory, in the TUI and in headless mode. Files remain ordinary local audio
 files and are not automatically substituted into online playlists.
 
+## Phone remote
+
+The `[remote]` section serves a web app that controls cliamp from a phone on
+your network or tailnet. It is off unless enabled:
+
+```toml
+[remote]
+enabled = true
+listen = ":7700"   # host:port; the default listens on every address
+```
+
+Pair a phone with `cliamp remote pair`. See [Phone Remote](mobile-remote.md).
+
 ## Proxy
 
 cliamp reads the proxy variables `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and

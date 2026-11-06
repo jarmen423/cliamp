@@ -192,6 +192,12 @@ ssh kitchen-pi cliamp toggle
 ssh kitchen-pi cliamp status --json
 ```
 
+### Remote control from a phone
+
+Turn on the `[remote]` gateway and pair a phone with `cliamp remote pair`.
+The phone then controls the daemon from a browser on your LAN or tailnet. See
+[Phone Remote](mobile-remote.md).
+
 ### Embedded / kiosk audio
 
 Run this mode on a Pi or small Linux computer without a display. The daemon needs no terminal allocation. It needs working ALSA, PipeWire, or PulseAudio output.

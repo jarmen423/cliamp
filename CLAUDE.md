@@ -53,6 +53,7 @@ Each directory below is a Go package:
 | `luaplugin/` | The Gopher-Lua VMs, the sandbox, the per-plugin event queues, the plugin visualizers and the plugin APIs in `api_*.go` |
 | `plugins/` | First-party example plugins. `luaplugin/regression_bundled_test.go` loads each one |
 | `pluginmgr/` | `cliamp plugins install`, `remove`, `list` and `trust`. Resolves GitHub, GitLab, Codeberg and direct URL sources |
+| `remote/` | The `[remote]` network gateway for phones: the V2 stream over a WebSocket on `/v2`, the pairing token, `cliamp remote pair`, and the embedded web app in `remote/web/`. `remote/web/core/` is the protocol client and uses no DOM, so a native app can reuse it. See `docs/mobile-remote.md` |
 | `ipc/` | The V2 protocol over a Unix socket: the envelope, the operation registry, jobs and the event broker. See [IPC](#ipc) |
 | `mediactl/` | Media controls: MPRIS over D-Bus on Linux, NowPlaying on macOS with cgo, media-key hotkeys on Windows, and `service_stub.go` for the other builds |
 | `lyrics/` | The lyrics lookup: embedded lyrics, the provider sources, LRCLIB and NetEase |
