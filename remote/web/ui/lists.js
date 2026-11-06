@@ -9,7 +9,7 @@ import { toast } from './toast.js'
 
 const failed = (what) => (err) => toast(`${what}: ${err.message}`, 'error')
 
-function Skeleton({ rows = 6 }) {
+export function Skeleton({ rows = 6 }) {
   return html`<div class="skel-wrap" aria-hidden="true">
     ${Array.from({ length: rows }, () => html`<div class="skel"><i></i><div><i></i><i></i></div></div>`)}
   </div>`
@@ -31,7 +31,7 @@ function useLoad(fn, deps) {
   return { ...st, reload: run }
 }
 
-function PlayNextButton({ onQueue }) {
+export function PlayNextButton({ onQueue }) {
   const [done, setDone] = useState(false)
   const click = () => {
     haptic()
@@ -109,7 +109,7 @@ const recent = () => {
 }
 const remember = (q) => localStorage.setItem(RECENT_KEY, JSON.stringify([q, ...recent().filter((r) => r !== q)].slice(0, 8)))
 
-export function Search({ remote }) {
+export function Search({ remote, openArtist }) {
   const { providers } = useRemote(remote)
   const searchable = mainProviders(providers, (p) => p.searchable)
   const leading = searchable.filter((p) => PREFERRED_PROVIDERS.includes(p.key))
@@ -168,7 +168,7 @@ export function Search({ remote }) {
 
   if (album) {
     return html`<${Album} remote=${remote} provider=${album.provider} track=${album.track}
-      backLabel="Search" back=${() => setAlbum(null)} />`
+      backLabel="Search" back=${() => setAlbum(null)} openArtist=${openArtist} />`
   }
   return html`<div>
     <form class="search-form" role="search" onSubmit=${onSubmit}>
@@ -201,7 +201,7 @@ const playlistCache = new Map()
 
 // Collection shows the tracks of a playlist or an album. load returns the
 // tracks; start(i) loads the list into cliamp and plays from track i.
-function Collection({ remote, title, backLabel, count, numbered, load, start, back }) {
+function Collection({ remote, title, backLabel, count, numbered, load, start, back, onArtist }) {
   const { data: tracks, loading, error } = useLoad(load, [title])
   const [starting, setStarting] = useState(false)
   const playAt = async (i) => {
@@ -220,6 +220,8 @@ function Collection({ remote, title, backLabel, count, numbered, load, start, ba
     <div class="pl-head">
       <div style="min-width:0">
         <h1 class="title">${title}</h1>
+        ${onArtist && tracks?.[0]?.artist && html`<button class="artist-link" onClick=${() => onArtist(tracks[0])}>
+          ${tracks[0].artist.split(', ')[0]}${Icon.chevron()}</button>`}
         ${n > 0 && html`<div class="dim mono" style="font-size:12px">${n} ${n === 1 ? 'track' : 'tracks'}</div>`}
       </div>
       <button class="pill" disabled=${starting || !tracks?.length} onClick=${() => { haptic(); playAt(0).catch(failed('Could not play')) }}>${Icon.play()} Play</button>
@@ -240,9 +242,10 @@ const playFrom = (remote, load) => async (i) => {
   if (i > 0) await remote.queuePlay(i)
 }
 
-function Album({ remote, provider, track, back, backLabel }) {
+export function Album({ remote, provider, track, back, backLabel, openArtist }) {
   const id = albumID(track)
   return html`<${Collection} remote=${remote} title=${trackTitle(track)} backLabel=${backLabel} numbered
+    onArtist=${openArtist && provider.artist_profiles ? (t) => openArtist(provider, { track: t }) : null}
     load=${() => remote.albumTracks(provider.key, id)}
     start=${playFrom(remote, () => remote.loadAlbum(provider.key, id))} back=${back} />`
 }

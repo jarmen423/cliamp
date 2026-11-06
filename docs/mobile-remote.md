@@ -39,6 +39,7 @@ tailnet (see [Away from home](#away-from-home)).
 | Search | Searches Spotify, YouTube, or both at once. Tap a result to play it. The play-next button queues it after the current track |
 | Library | The playlists of each provider. Open one, then play it from the start or from a track |
 | Queue | The play-next list and the live playlist. Tap to play a track, or remove it |
+| Artist | Tap the artist on Playing, or under an album title. The artist page shows the photo, the popular tracks with your liked ones marked, and the discography by albums, singles and EPs, and compilations. Spotify only |
 
 The app takes the accent color of the cliamp theme, so it matches the
 terminal. A mini player sits above the tabs on every screen but Playing.

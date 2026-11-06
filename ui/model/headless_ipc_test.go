@@ -49,6 +49,23 @@ func (libraryTestProvider) AlbumSortTypes() []provider.SortType {
 	return []provider.SortType{{ID: "name", Label: "By name"}}
 }
 func (libraryTestProvider) DefaultAlbumSort() string { return "name" }
+func (libraryTestProvider) ArtistDetail(id string) (provider.ArtistDetail, error) {
+	if id != "artist" {
+		return provider.ArtistDetail{}, errors.New("no such artist")
+	}
+	return provider.ArtistDetail{
+		Info:        provider.ArtistInfo{ID: "artist", Name: "Artist", ImageURL: "https://img/artist"},
+		Genres:      []string{"rap"},
+		Followers:   7,
+		Popular:     []playlist.Track{{Title: "Hit", Path: "test:hit"}, {Title: "Deep cut", Path: "test:cut"}},
+		Discography: []provider.AlbumInfo{{ID: "album", Name: "Album", Type: "single", ImageURL: "https://img/album"}},
+	}, nil
+}
+
+func (libraryTestProvider) ArtistForTrack(t playlist.Track) (provider.ArtistInfo, bool) {
+	return provider.ArtistInfo{ID: "artist", Name: "Artist"}, t.Artist == "Artist"
+}
+
 func (libraryTestProvider) AlbumTracks(string) ([]playlist.Track, error) {
 	return []playlist.Track{{Path: "/album.flac", Title: "Album track"}}, nil
 }
@@ -340,7 +357,8 @@ func TestHeadlessLibraryRequests(t *testing.T) {
 		ok     func(ipc.Response) bool
 	}{
 		{"provider.list", ipc.Request{}, func(r ipc.Response) bool {
-			return len(r.Providers) == 1 && r.Providers[0].Searchable && r.Providers[0].BrowseArtists && r.Providers[0].BrowseAlbums
+			return len(r.Providers) == 1 && r.Providers[0].Searchable && r.Providers[0].BrowseArtists && r.Providers[0].BrowseAlbums &&
+				r.Providers[0].ArtistProfiles
 		}},
 		{"provider.playlists", ipc.Request{Provider: "test"}, func(r ipc.Response) bool {
 			return len(r.Playlists) == 1 && r.Playlists[0].ID == "mix" && r.Playlists[0].Provider == "test"
@@ -363,6 +381,17 @@ func TestHeadlessLibraryRequests(t *testing.T) {
 		{"provider.tracks", ipc.Request{Provider: "test", Playlist: "mix"}, func(r ipc.Response) bool {
 			return len(r.Tracks) == 2 && r.Total == 2 && r.Playlist == "mix"
 		}},
+		{"provider.artist", ipc.Request{Provider: "test", Artist: "artist"}, func(r ipc.Response) bool {
+			return len(r.Artists) == 1 && r.Artists[0].Followers == 7 && r.Artists[0].ImageURL == "https://img/artist" &&
+				len(r.Artists[0].Genres) == 1 && len(r.Tracks) == 2 && r.Tracks[0].Title == "Hit" &&
+				len(r.Albums) == 1 && r.Albums[0].Type == "single" && r.Albums[0].ImageURL == "https://img/album"
+		}},
+		{"provider.artist", ipc.Request{Provider: "test", Track: &ipc.TrackInfo{Title: "Song", Artist: "Artist", Path: "test:song"}}, func(r ipc.Response) bool {
+			return len(r.Artists) == 1 && r.Artists[0].Name == "Artist" && len(r.Tracks) == 2
+		}},
+		{"provider.load_artist", ipc.Request{Provider: "test", Artist: "artist"}, func(r ipc.Response) bool {
+			return len(r.Tracks) == 2 && r.Tracks[0].Title == "Hit"
+		}},
 	} {
 		t.Run(tc.op, func(t *testing.T) {
 			m := newHeadlessModel(t, &headlessEngine{}, providers)
@@ -370,6 +399,11 @@ func TestHeadlessLibraryRequests(t *testing.T) {
 				t.Fatalf("%s = %+v", tc.op, response)
 			}
 		})
+	}
+	// A track whose artist the provider cannot resolve fails the request.
+	m := newHeadlessModel(t, &headlessEngine{}, providers)
+	if r := runV2(t, &m, "provider.artist", ipc.Request{Provider: "test", Track: &ipc.TrackInfo{Title: "Song", Artist: "Someone", Path: "test:x"}}); r.OK {
+		t.Fatalf("provider.artist of an unknown artist = %+v, want an error", r)
 	}
 }
 

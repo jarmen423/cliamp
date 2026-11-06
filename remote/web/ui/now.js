@@ -5,7 +5,7 @@
 // lights in the accent. When playback stops, the bars settle into a quiet
 // silhouette that is fixed for each track, so the timeline never goes flat.
 import { html, useEffect, useRef, useState } from '../vendor/preact-htm.js'
-import { formatTime, livePosition, trackArtist, trackTitle } from '../core/store.js'
+import { formatTime, livePosition, providerOf, trackArtist, trackTitle } from '../core/store.js'
 import { Art } from './art.js'
 import { MachineChip } from './machines.js'
 import { Icon } from './icons.js'
@@ -265,7 +265,7 @@ export function sourceLabel(snap, providers) {
   return p ? p.name : list
 }
 
-export function NowPlaying({ remote, go, machines }) {
+export function NowPlaying({ remote, go, machines, openArtist }) {
   const state = useRemote(remote)
   const snap = state.snapshot
   const track = snap?.track
@@ -286,13 +286,18 @@ export function NowPlaying({ remote, go, machines }) {
     fn().catch(() => {})
   }
   const source = sourceLabel(snap, state.providers)
+  const trackProvider = providerOf(track, state.providers)
+  const artistProvider = trackProvider?.artist_profiles ? trackProvider : null
   return html`<div class="now">
     ${chip}
     <div class="now-source">${source && html`<span class="eyebrow trunc">Playing from ${source}</span>`}</div>
     <${Art} track=${track} class="now-art" />
     <div class="now-meta"><div>
       <div class="now-title trunc">${trackTitle(track)}</div>
-      <div class="now-artist trunc">${trackArtist(track) || ' '}</div>
+      ${artistProvider && openArtist
+        ? html`<button class="now-artist artist-link" onClick=${() => openArtist(artistProvider, { track })}>
+            <span class="trunc">${trackArtist(track)}</span>${Icon.chevron()}</button>`
+        : html`<div class="now-artist trunc">${trackArtist(track) || ' '}</div>`}
     </div></div>
     <${Scrubber} remote=${remote} state=${state} />
     <div class="transport">

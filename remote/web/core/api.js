@@ -137,6 +137,14 @@ export function createRemote({ base, token, WebSocketImpl, fetchImpl }) {
     albumTracks: (provider, album) =>
       submit('provider.album_tracks', { provider, album, limit: 200 }).then((r) => r.result.tracks || []),
     loadAlbum: (provider, album) => optimistic(null, () => submit('provider.load_album', { provider, album })),
+    // artist reads a profile by artist id, or the artist of a track.
+    artist: (provider, { artist, track } = {}) =>
+      submit('provider.artist', { provider, artist, track }).then((r) => ({
+        info: r.result.artists?.[0] || null,
+        popular: r.result.tracks || [],
+        albums: r.result.albums || [],
+      })),
+    loadArtist: (provider, artist) => optimistic(null, () => submit('provider.load_artist', { provider, artist })),
     playTrack: (track) => optimistic(null, () => submit('track.play', { track })),
     queueTrack: (track) => optimistic(null, () => submit('track.queue', { track })),
 

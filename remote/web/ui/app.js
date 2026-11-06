@@ -9,6 +9,7 @@ import { trackTitle } from '../core/store.js'
 import { setArtAuth } from './art.js'
 import { Icon } from './icons.js'
 import { useRemote } from './hooks.js'
+import { ArtistPage } from './artist.js'
 import { Library, Queue, Search } from './lists.js'
 import { machineLabel } from './machines.js'
 import { MiniPlayer, NowPlaying } from './now.js'
@@ -98,9 +99,13 @@ function Shell({ remote, machines }) {
     addEventListener('hashchange', on)
     return () => removeEventListener('hashchange', on)
   }, [])
+  // An artist page stacks over the current tab; a tab tap closes it.
+  const [page, setPage] = useState(null)
   const go = (to) => {
+    setPage(null)
     location.hash = '#/' + to
   }
+  const openArtist = (provider, { artist, track }) => setPage({ provider, artist, track, from: r })
 
   const snap = state.snapshot
   const accent = accentOf(snap)
@@ -113,11 +118,14 @@ function Shell({ remote, machines }) {
   }, [snap?.track])
 
   const View = { now: NowPlaying, search: Search, library: Library, queue: Queue }[r]
-  const mini = r !== 'now' && !!snap?.track
+  const mini = (r !== 'now' || page) && !!snap?.track
   return html`<div class="shell">
     <${ConnectionPill} remote=${remote} />
-    <main class=${'view' + (mini ? ' has-mini' : '')} id="view" key=${r}>
-      <${View} remote=${remote} go=${go} machines=${machines} />
+    <main class=${'view' + (mini || page ? ' has-mini' : '')} id="view" key=${page ? 'artist:' + (page.artist || page.track?.path) : r}>
+      ${page
+        ? html`<${ArtistPage} remote=${remote} provider=${page.provider} artist=${page.artist} track=${page.track}
+            backLabel=${TABS.find((t) => t.key === page.from)?.name || 'Back'} back=${() => setPage(null)} />`
+        : html`<${View} remote=${remote} go=${go} machines=${machines} openArtist=${openArtist} />`}
     </main>
     ${mini && html`<${MiniPlayer} remote=${remote} go=${go} />`}
     <${Toasts} />

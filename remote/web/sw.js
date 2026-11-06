@@ -2,12 +2,12 @@
 // the machine it was installed from is off and another one plays.
 // Network first: a running cliamp always serves its current app, and the
 // cache is only the fallback. The API, art and info never touch the cache.
-const CACHE = 'cliamp-shell-v1'
+const CACHE = 'cliamp-shell-v2'
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png',
   'vendor/preact-htm.js',
   'core/api.js', 'core/conn.js', 'core/machines.js', 'core/store.js',
-  'ui/app.js', 'ui/art.js', 'ui/hooks.js', 'ui/icons.js', 'ui/lists.js', 'ui/machines.js', 'ui/now.js', 'ui/toast.js',
+  'ui/app.js', 'ui/art.js', 'ui/artist.js', 'ui/hooks.js', 'ui/icons.js', 'ui/lists.js', 'ui/machines.js', 'ui/now.js', 'ui/toast.js',
 ]
 
 self.addEventListener('install', (e) => {

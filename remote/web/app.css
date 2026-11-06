@@ -159,6 +159,68 @@ h1.title { font-size: 28px; font-weight: 590; letter-spacing: -0.02em; line-heig
 .now-empty p:first-of-type { color: var(--text-2); font-size: 17px; font-weight: 510; margin: 18px 0 6px; }
 .stream-error { margin-top: 14px; font-size: 13px; color: var(--danger); text-align: center; }
 
+/* ---------- artist ---------- */
+.artist-link {
+  display: inline-flex; align-items: center; gap: 2px; max-width: 100%; text-align: left; color: var(--text-2);
+}
+.artist-link svg { width: 16px; height: 16px; flex: none; color: var(--text-3); }
+.artist-link:active { color: var(--text); }
+.pl-head .artist-link { margin-top: 6px; font-size: 15px; }
+
+.artist-hero {
+  position: relative; margin: calc(-1 * (var(--safe-t) + 12px)) calc(-1 * var(--pad)) 0;
+  min-height: calc(var(--safe-t) + 210px); display: flex; align-items: flex-end;
+  background: var(--panel); overflow: hidden;
+}
+.artist-photo {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%;
+  opacity: 0; transition: opacity 300ms ease;
+  -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent);
+  mask-image: linear-gradient(to bottom, #000 45%, transparent);
+}
+.artist-photo.ready { opacity: 1; }
+.artist-hero:has(.artist-photo) { aspect-ratio: 1 / 0.92; background: var(--bg); }
+.hero-back {
+  position: absolute; top: calc(var(--safe-t) + 10px); left: 12px; z-index: 1;
+  width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+  background: rgb(12 12 11 / 0.55); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: var(--text);
+}
+.hero-back svg { width: 20px; height: 20px; }
+.artist-head { position: relative; padding: 0 var(--pad) 4px; min-width: 0; }
+.artist-name {
+  font-size: clamp(34px, 11vw, 52px); font-weight: 680; letter-spacing: -0.035em; line-height: 1;
+  text-wrap: balance; text-shadow: 0 2px 24px rgb(0 0 0 / 0.5);
+}
+.artist-meta { display: flex; gap: 10px; margin-top: 10px; font-size: 12px; color: var(--text-2); min-width: 0; }
+.artist-meta span + span::before { content: "·"; margin-right: 10px; color: var(--text-3); }
+.artist-actions { display: flex; align-items: center; gap: 14px; margin: 18px 0 6px; }
+.play.play-sm { width: 56px; height: 56px; }
+.play.play-sm svg { width: 24px; height: 24px; }
+.artist-liked { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.artist-liked svg, .liked svg { width: 14px; height: 14px; color: var(--accent); }
+.liked { display: inline-flex; align-items: center; flex: none; }
+.section-title { font-size: 20px; font-weight: 590; letter-spacing: -0.015em; margin: 24px 0 6px; }
+.chip.more { margin: 6px 0 0 4px; }
+.chip[aria-pressed="true"] { background: var(--text); color: var(--bg); box-shadow: none; }
+.chips[role="group"] { margin: 4px 0 14px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.chips[role="group"]::-webkit-scrollbar { display: none; }
+.chips[role="group"] .chip { flex: none; }
+
+.shelf {
+  list-style: none; padding: 0 var(--pad); margin: 0 calc(-1 * var(--pad)); display: flex; gap: 14px;
+  overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding: 0 var(--pad); scrollbar-width: none;
+}
+.shelf::-webkit-scrollbar { display: none; }
+.shelf li { flex: none; width: 140px; scroll-snap-align: start; }
+.release { display: grid; gap: 4px; width: 100%; text-align: left; }
+.release:active .release-art { transform: scale(0.97); }
+.release-art { width: 140px; height: 140px; border-radius: 8px; margin-bottom: 4px; transition: transform 160ms var(--ease-out); }
+.release-name {
+  font-size: 14px; font-weight: 510; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.release-sub { font-size: 11.5px; color: var(--text-3); }
+
 /* ---------- machines ---------- */
 .machine-chip {
   display: inline-flex; align-items: center; gap: 6px; max-width: 70%; height: 32px; padding: 0 10px 0 9px;

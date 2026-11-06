@@ -137,8 +137,12 @@ export async function movePlayback(from, to) {
   if (needs && !providers.has(kind)) throw new Error(`${to.name || 'That machine'} has no ${needs.name}`)
 
   const album = /^([\w-]+):album:(.+)$/.exec(snap.playlist || '')
-  const list = !album && /^([\w-]+):(.+)$/.exec(snap.playlist || '')
-  if (album && providers.has(album[1])) {
+  const artist = /^([\w-]+):artist:(.+)$/.exec(snap.playlist || '')
+  const list = !album && !artist && /^([\w-]+):(.+)$/.exec(snap.playlist || '')
+  if (artist && providers.has(artist[1])) {
+    await to.loadArtist(artist[1], artist[2])
+    if (index > 0) await to.queuePlay(index)
+  } else if (album && providers.has(album[1])) {
     await to.loadAlbum(album[1], album[2])
     if (index > 0) await to.queuePlay(index)
   } else if (list && providers.has(list[1])) {

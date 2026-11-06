@@ -123,12 +123,18 @@ type ProviderInfo struct {
 	BrowseArtists bool   `json:"browse_artists,omitempty"`
 	BrowseAlbums  bool   `json:"browse_albums,omitempty"`
 	Catalog       bool   `json:"catalog,omitempty"`
+	// ArtistProfiles reports provider.artist support: popular tracks and a
+	// discography for an artist.
+	ArtistProfiles bool `json:"artist_profiles,omitempty"`
 }
 
 type ArtistInfo struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	AlbumCount int    `json:"album_count,omitempty"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	AlbumCount int      `json:"album_count,omitempty"`
+	ImageURL   string   `json:"image_url,omitempty"`
+	Followers  int      `json:"followers,omitempty"`
+	Genres     []string `json:"genres,omitempty"`
 }
 
 type AlbumInfo struct {
@@ -139,6 +145,8 @@ type AlbumInfo struct {
 	Year       int    `json:"year,omitempty"`
 	TrackCount int    `json:"track_count,omitempty"`
 	Genre      string `json:"genre,omitempty"`
+	ImageURL   string `json:"image_url,omitempty"`
+	Type       string `json:"type,omitempty"` // album, single or compilation
 }
 
 type SortInfo struct {

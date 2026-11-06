@@ -129,7 +129,7 @@ Run `cliamp remote capabilities` to get the current machine-readable list.
 | Live playlist | `queue`, `queue.list`, `queue.play`, `queue.enqueue`, `queue.remove`, `queue.move`, `queue.clear`, `track.play`, `track.queue` |
 | Play-next | `playnext.list`, `playnext.remove`, `playnext.move`, `playnext.clear` |
 | Sources | `load`, `url.load`, `save`, `lyrics`, `history`, `history.clear` |
-| Providers | `provider.list`, `provider.playlists`, `provider.tracks`, `provider.load`, `provider.search`, `provider.artists`, `provider.artist_albums`, `provider.albums`, `provider.album_tracks`, `provider.load_album`, `provider.favorite`, `provider.catalog` |
+| Providers | `provider.list`, `provider.playlists`, `provider.tracks`, `provider.load`, `provider.search`, `provider.artists`, `provider.artist_albums`, `provider.albums`, `provider.album_tracks`, `provider.load_album`, `provider.artist`, `provider.load_artist`, `provider.favorite`, `provider.catalog` |
 | Saved playlists | `playlist.create`, `playlist.rename`, `playlist.delete`, `playlist.add`, `playlist.add_many`, `playlist.replace`, `playlist.remove`, `playlist.bookmark` |
 | Plugins | `plugin.call`, `plugin.commands` |
 
@@ -188,6 +188,16 @@ and its `bookmark` field in provider lists changes too. A station
 that is a row of a loaded saved playlist toggles the favorites store instead.
 The `bookmark` field of that row in `queue.list` changes. cliamp matches the
 row by path.
+
+`provider.artist` returns an artist profile, the data of the TUI artist
+screen: `artists` holds the artist with `image_url`, `followers` and
+`genres`, `tracks` holds the popular tracks, and `albums` holds the
+discography, each release with `image_url` and a `type` of `album`,
+`single` or `compilation`. Pass the artist `id` in `artist`, or a `track`
+to open the artist of that track. `provider.load_artist` loads the popular
+tracks as the live playlist and plays the first. `provider.list` reports
+`artist_profiles` for the providers that support both; today that is
+Spotify.
 
 Use IDs returned by `provider.playlists` for subsequent provider operations.
 Radio favorite IDs are stable `f:<station URL>` values, not positional
