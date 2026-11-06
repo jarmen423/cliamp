@@ -69,7 +69,7 @@ img { display: block; }
 }
 .tab {
   display: grid; place-items: center; align-content: center; gap: 3px;
-  color: var(--text-4); font-size: 10.5px; font-weight: 510; letter-spacing: 0.02em;
+  color: var(--text-3); font-size: 11px; font-weight: 510; letter-spacing: 0.02em;
 }
 .tab svg { width: 22px; height: 22px; }
 .tab[aria-current="page"] { color: var(--text); }
@@ -200,7 +200,7 @@ h1.title { font-size: 28px; font-weight: 590; letter-spacing: -0.02em; line-heig
   background: var(--panel); box-shadow: inset 0 0 0 1px var(--line);
 }
 .seg::-webkit-scrollbar { display: none; }
-.seg button { flex: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 510; color: var(--text-3); }
+.seg button { flex: none; min-height: 36px; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 510; color: var(--text-3); }
 .seg button[aria-pressed="true"] { background: var(--hover); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
 
 .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 22px 0 6px; }

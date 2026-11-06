@@ -83,6 +83,10 @@ func (echoServer) ServeConn(conn net.Conn) {
 	}
 }
 
+// testGateways maps each test server to its gateway. Tests in this file
+// do not run in parallel.
+var testGateways = map[*httptest.Server]*Gateway{}
+
 func newTestGateway(t *testing.T) (*httptest.Server, string, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -97,9 +101,11 @@ func newTestGateway(t *testing.T) (*httptest.Server, string, string) {
 	}
 	g := newGateway(Options{Server: echoServer{}, TokenPath: tokenPath, ArtDir: artDir})
 	srv := httptest.NewServer(g.http.Handler)
+	testGateways[srv] = g
 	t.Cleanup(func() {
 		g.cancel()
 		srv.Close()
+		delete(testGateways, srv)
 	})
 	return srv, token, artDir
 }
@@ -188,6 +194,9 @@ func TestGatewayArt(t *testing.T) {
 			resp.Body.Close()
 			if resp.StatusCode != tt.status {
 				t.Errorf("status = %d, want %d", resp.StatusCode, tt.status)
+			}
+			if cc := resp.Header.Get("Cache-Control"); resp.StatusCode != http.StatusOK && strings.Contains(cc, "immutable") {
+				t.Errorf("a %d response is cached as immutable: %q", resp.StatusCode, cc)
 			}
 		})
 	}
@@ -397,4 +406,44 @@ func TestBasePairURL(t *testing.T) {
 			t.Errorf("BasePairURL(%q) = %+v, want %s (%s)", tt.base, got, tt.wantURL, tt.wantLabel)
 		}
 	}
+}
+
+// TestGatewayRotationClosesLiveSockets checks that a WebSocket opened with
+// the old token closes once the token is rotated.
+func TestGatewayRotationClosesLiveSockets(t *testing.T) {
+	srv, token, _ := newTestGateway(t)
+	g := testGateways[srv]
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+"/v2",
+		&websocket.DialOptions{Subprotocols: []string{Subprotocol, tokenSubprotocolPrefix + token}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	// The handler registers the socket just after the upgrade.
+	for i := 0; i < 100 && liveConns(g) == 0; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if liveConns(g) != 1 {
+		t.Fatalf("live sockets = %d, want 1", liveConns(g))
+	}
+	g.closeStale(token) // unchanged token: stays open
+	if liveConns(g) != 1 {
+		t.Fatal("closeStale closed a socket with the saved token")
+	}
+	rotated, err := RotateToken(g.opts.TokenPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.closeStale(rotated)
+	if _, _, err := conn.Read(ctx); err == nil {
+		t.Fatal("Read succeeded on a socket opened with the old token")
+	}
+}
+
+func liveConns(g *Gateway) int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return len(g.conns)
 }

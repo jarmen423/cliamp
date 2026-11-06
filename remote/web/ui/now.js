@@ -52,6 +52,7 @@ function Scrubber({ remote, state }) {
   const wrap = useRef(null)
   const canvas = useRef(null)
   const drag = useRef(null)
+  const wake = useRef(() => {})
   const [dragPos, setDragPos] = useState(null)
   const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#f2b33d'
   const latest = useLatest({ state, accent })
@@ -85,8 +86,11 @@ function Scrubber({ remote, state }) {
     ro.observe(el)
     resize()
 
+    let idleTimer = 0
+    let lastSig = ''
     const frame = (t) => {
-      raf = requestAnimationFrame(frame)
+      raf = 0
+      idleTimer = 0
       const { state: s, accent } = latest.current
       const sn = s.snapshot
       const playing = sn?.state === 'playing' && s.status === 'open'
@@ -117,26 +121,52 @@ function Scrubber({ remote, state }) {
       const step = w / n
       let energy = 0
       if (bands?.length) energy = Math.min(1, bands.reduce((a, b) => a + (b || 0), 0) / bands.length)
-      ctx.clearRect(0, 0, w, h)
+      let moving = false
       for (let i = 0; i < n; i++) {
         const target = barLevel(shape.idle[i], shape.band[i], bands, energy)
-        if (!reduce) levels[i] += (target - levels[i]) * (target > levels[i] ? 0.55 : 0.12)
-        const bh = Math.max(2, levels[i] * h)
-        const x = i * step + (step - BAR_W) / 2
-        const played = (i + 0.5) / n <= progress
-        ctx.fillStyle = played ? accent : 'rgba(255,255,255,0.16)'
-        ctx.beginPath()
-        ctx.roundRect(x, (h - bh) / 2, BAR_W, bh, 1.5)
-        ctx.fill()
+        const delta = reduce ? 0 : (target - levels[i]) * (target > levels[i] ? 0.55 : 0.12)
+        if (Math.abs(delta) > 0.0005) moving = true
+        levels[i] += delta
       }
-      if (drag.current) {
-        ctx.fillStyle = accent
-        ctx.fillRect(Math.round(progress * w) - 0.5, 0, 1, h)
+      // Paused and settled: draw only when something on it changed, and
+      // check four times a second instead of every frame, to spare the
+      // battery.
+      const sig = [Math.floor(progress * n), accent, w, h, idleKey, !!drag.current].join('|')
+      const idle = !playing && !drag.current && !moving
+      if (!idle || sig !== lastSig) {
+        lastSig = sig
+        ctx.clearRect(0, 0, w, h)
+        for (let i = 0; i < n; i++) {
+          const bh = Math.max(2, levels[i] * h)
+          const x = i * step + (step - BAR_W) / 2
+          ctx.fillStyle = (i + 0.5) / n <= progress ? accent : 'rgba(255,255,255,0.16)'
+          if (ctx.roundRect) {
+            ctx.beginPath()
+            ctx.roundRect(x, (h - bh) / 2, BAR_W, bh, 1.5)
+            ctx.fill()
+          } else {
+            ctx.fillRect(x, (h - bh) / 2, BAR_W, bh) // Safari before 16
+          }
+        }
+        if (drag.current) {
+          ctx.fillStyle = accent
+          ctx.fillRect(Math.round(progress * w) - 0.5, 0, 1, h)
+        }
       }
+      if (idle) idleTimer = setTimeout(() => { raf = requestAnimationFrame(frame) }, 250)
+      else raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
+    // A drag starts while the loop sleeps; wake it for the first frame.
+    wake.current = () => {
+      if (raf || !idleTimer) return
+      clearTimeout(idleTimer)
+      idleTimer = 0
+      raf = requestAnimationFrame(frame)
+    }
     return () => {
       cancelAnimationFrame(raf)
+      clearTimeout(idleTimer)
       ro.disconnect()
     }
   }, [remote])
@@ -152,6 +182,7 @@ function Scrubber({ remote, state }) {
     } catch {}
     drag.current = { pos: posAt(e) }
     setDragPos(drag.current.pos)
+    wake.current()
   }
   const onMove = (e) => {
     if (!drag.current) return
@@ -194,11 +225,19 @@ function Volume({ remote, snap }) {
   const db = snap.volume ?? 0
   const [local, setLocal] = useState(null)
   const timer = useRef(0)
+  const release = useRef(0)
+  useEffect(() => () => {
+    clearTimeout(timer.current)
+    clearTimeout(release.current)
+  }, [])
   const value = local ?? db
-  const pct = ((value + 50) / 56) * 100
+  // volume_min can go below the slider's -50 dB; widen the range to fit.
+  const min = Math.min(-50, Math.floor(value))
+  const pct = ((value - min) / (6 - min)) * 100
   const send = (v) => remote.volume(v).catch(() => {})
   const onInput = (e) => {
     const v = Number(e.currentTarget.value)
+    clearTimeout(release.current) // a new drag keeps its own thumb position
     setLocal(v)
     clearTimeout(timer.current)
     timer.current = setTimeout(() => send(v), 120)
@@ -207,11 +246,12 @@ function Volume({ remote, snap }) {
     clearTimeout(timer.current)
     send(Number(e.currentTarget.value))
     // Hold the thumb where the finger left it until the snapshot catches up.
-    setTimeout(() => setLocal(null), 400)
+    clearTimeout(release.current)
+    release.current = setTimeout(() => setLocal(null), 400)
   }
   return html`<div class="volume">
     ${Icon.volLow()}
-    <input class="range" type="range" min="-50" max="6" step="1" value=${value} style=${`--pct:${pct}%`}
+    <input class="range" type="range" min=${min} max="6" step="1" value=${value} style=${`--pct:${pct}%`}
       aria-label="Volume" aria-valuetext=${`${value > 0 ? '+' : ''}${value} dB`} onInput=${onInput} onChange=${onChange} />
     ${Icon.volHigh()}
   </div>`

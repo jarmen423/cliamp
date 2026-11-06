@@ -263,6 +263,9 @@ export class Connection {
       waiter.timer = setInterval(async () => {
         if (Date.now() - started > timeout) {
           this.dropJob(job.id)
+          // Cancel it, so a job the user gave up on does not finish later
+          // and replace what they did since.
+          this.request('job.cancel', { job_id: job.id }).catch(() => {})
           reject(new RemoteError('timeout', 'The operation took too long'))
           return
         }

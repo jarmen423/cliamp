@@ -18,6 +18,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -44,6 +45,10 @@ const Subprotocol = "cliamp.v2"
 // tokenSubprotocolPrefix starts the subprotocol that carries the token from
 // a browser, which cannot set headers on a WebSocket.
 const tokenSubprotocolPrefix = "cliamp.token."
+
+// tokenCheckInterval is how often the gateway rereads the token file. When
+// the token changes, it closes the WebSockets that opened with the old one.
+const tokenCheckInterval = 2 * time.Second
 
 // maxConns bounds the open WebSockets. A client uses two: one for requests
 // and one for events.
@@ -73,8 +78,11 @@ type Gateway struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	slots    chan struct{}
-	wg       sync.WaitGroup
+	wg       sync.WaitGroup // the serve goroutine, the token watcher and every WebSocket
 	once     sync.Once
+
+	mu    sync.Mutex
+	conns map[net.Conn]string // live WebSockets and the token each opened with
 }
 
 // Start listens on opts.Addr and serves until Close.
@@ -88,12 +96,16 @@ func Start(opts Options) (*Gateway, error) {
 	}
 	g := newGateway(opts)
 	g.listener = ln
-	g.wg.Add(1)
+	g.wg.Add(2)
 	go func() {
 		defer g.wg.Done()
 		if err := g.http.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			applog.Warn("remote: serve: %v", err)
 		}
+	}()
+	go func() {
+		defer g.wg.Done()
+		g.watchToken(tokenCheckInterval)
 	}()
 	applog.Info("remote: listening on %s", ln.Addr())
 	return g, nil
@@ -106,6 +118,7 @@ func newGateway(opts Options) *Gateway {
 		ctx:    ctx,
 		cancel: cancel,
 		slots:  make(chan struct{}, maxConns),
+		conns:  make(map[net.Conn]string),
 	}
 	g.http = &http.Server{
 		Handler:           g.handler(),
@@ -118,17 +131,68 @@ func newGateway(opts Options) *Gateway {
 // Addr returns the address the gateway listens on.
 func (g *Gateway) Addr() net.Addr { return g.listener.Addr() }
 
-// Close stops the gateway and closes every WebSocket.
+// Close stops the gateway, closes every WebSocket, and returns when their
+// handlers have finished.
 func (g *Gateway) Close() error {
 	var err error
 	g.once.Do(func() {
 		// Canceling the context ends the hijacked WebSockets, which
-		// http.Server.Close does not track.
+		// http.Server.Close does not track. It shares mu with track, so no
+		// WebSocket is added to wg once Wait may run.
+		g.mu.Lock()
 		g.cancel()
+		g.mu.Unlock()
 		err = g.http.Close()
 		g.wg.Wait()
 	})
 	return err
+}
+
+// watchToken closes the WebSockets that opened with a token that is no
+// longer saved, so cliamp remote pair --rotate also cuts off the devices
+// that are connected.
+func (g *Gateway) watchToken(every time.Duration) {
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-g.ctx.Done():
+			return
+		case <-ticker.C:
+			saved, _ := LoadToken(g.opts.TokenPath) // a missing token closes them all
+			g.closeStale(saved)
+		}
+	}
+}
+
+// closeStale closes every WebSocket whose token differs from saved.
+func (g *Gateway) closeStale(saved string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for conn, token := range g.conns {
+		if !tokenEqual(token, saved) {
+			conn.Close()
+			delete(g.conns, conn)
+		}
+	}
+}
+
+// track registers a live WebSocket and returns its release. It returns
+// false once Close has begun; the caller must then close conn.
+func (g *Gateway) track(conn net.Conn, token string) (func(), bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.ctx.Err() != nil {
+		return nil, false
+	}
+	g.wg.Add(1)
+	g.conns[conn] = token
+	return func() {
+		g.mu.Lock()
+		delete(g.conns, conn)
+		g.mu.Unlock()
+		g.wg.Done()
+	}, true
 }
 
 func (g *Gateway) handler() http.Handler {
@@ -155,23 +219,25 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// authorized reports whether r carries the saved token. It reads the token
-// file each time, so cliamp remote pair --rotate takes effect at once.
-func (g *Gateway) authorized(r *http.Request) bool {
+// authorized returns the token that r carries when it is the saved one. It
+// reads the token file each time, so cliamp remote pair --rotate takes
+// effect at once for new requests.
+func (g *Gateway) authorized(r *http.Request) (string, bool) {
 	saved, err := LoadToken(g.opts.TokenPath)
 	if err != nil {
 		applog.Warn("remote: %v", err)
-		return false
+		return "", false
 	}
 	if bearer, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
-		return tokenEqual(strings.TrimSpace(bearer), saved)
+		bearer = strings.TrimSpace(bearer)
+		return bearer, tokenEqual(bearer, saved)
 	}
 	for _, protocol := range requestedSubprotocols(r) {
 		if token, ok := strings.CutPrefix(protocol, tokenSubprotocolPrefix); ok {
-			return tokenEqual(token, saved)
+			return token, tokenEqual(token, saved)
 		}
 	}
-	return false
+	return "", false
 }
 
 // requestedSubprotocols returns the subprotocols a WebSocket request offers.
@@ -188,7 +254,8 @@ func requestedSubprotocols(r *http.Request) []string {
 }
 
 func (g *Gateway) serveV2(w http.ResponseWriter, r *http.Request) {
-	if !g.authorized(r) {
+	token, ok := g.authorized(r)
+	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -209,11 +276,18 @@ func (g *Gateway) serveV2(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return // Accept has written the error response.
 	}
-	g.opts.Server.ServeConn(websocket.NetConn(g.ctx, conn, websocket.MessageText))
+	nc := websocket.NetConn(g.ctx, conn, websocket.MessageText)
+	release, ok := g.track(nc, token)
+	if !ok {
+		nc.Close()
+		return
+	}
+	defer release()
+	g.opts.Server.ServeConn(nc)
 }
 
 func (g *Gateway) serveArt(w http.ResponseWriter, r *http.Request) {
-	if !g.authorized(r) {
+	if _, ok := g.authorized(r); !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -222,7 +296,13 @@ func (g *Gateway) serveArt(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	path := filepath.Join(g.opts.ArtDir, name)
+	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
+		// Not cached, or not yet: a 404 must not be cached for a year.
+		http.NotFound(w, r)
+		return
+	}
 	// The name is a content hash, so a cached copy never goes stale.
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
-	http.ServeFile(w, r, filepath.Join(g.opts.ArtDir, name))
+	http.ServeFile(w, r, path)
 }

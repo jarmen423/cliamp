@@ -65,9 +65,9 @@ saves the token and removes it from the address bar.
 
 Anyone with the token can control cliamp, so keep the URL private.
 
-- **Unpair every device:** run `cliamp remote pair --rotate`. New connections
-  need the new token at once. A phone that is connected keeps its
-  connection until it reconnects or cliamp restarts.
+- **Unpair every device:** run `cliamp remote pair --rotate`. A running
+  cliamp disconnects the paired devices within a few seconds, and they must
+  pair again with the new token.
 - **The gateway is plain HTTP.** On a home network that is usually fine. For a
   network you share, listen on the Tailscale address only (see below), or use
   `tailscale serve` for HTTPS.

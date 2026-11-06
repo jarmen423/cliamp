@@ -1351,7 +1351,8 @@ func pairRemote(w io.Writer, cfg config.RemoteConfig, rotate bool, base string) 
 	}
 	if rotate {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "New token saved. Devices paired before must pair again.")
+		fmt.Fprintln(w, "New token saved. Devices paired before must pair again; a running")
+		fmt.Fprintln(w, "cliamp disconnects them within a few seconds.")
 	}
 	return nil
 }

@@ -93,7 +93,9 @@ export function createRemote({ base, token, WebSocketImpl, fetchImpl }) {
     }
   }
 
-  const submit = (op, params) => conn.submit(op, params)
+  // Provider work goes over the network to Spotify or YouTube and can be
+  // slow; give it longer before cancelling it.
+  const submit = (op, params) => conn.submit(op, params, op.startsWith('provider.') ? { timeout: 90000 } : undefined)
   const snap = () => store.get().snapshot
   const ifRevision = (rev) => ({ if_revision: rev ?? snap()?.playlist_revision })
 

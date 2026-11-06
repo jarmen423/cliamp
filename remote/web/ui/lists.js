@@ -123,6 +123,7 @@ export function Search({ remote }) {
   const seq = useRef(0)
   const timer = useRef(0)
   const input = useRef(null)
+  useEffect(() => () => clearTimeout(timer.current), [])
 
   const targets = active === 'all' ? leading : searchable.filter((p) => p.key === active)
   // The debounce timer fires after later renders, so it reads the scope
@@ -211,7 +212,9 @@ function Collection({ remote, title, backLabel, count, numbered, load, start, ba
       setStarting(false)
     }
   }
-  const n = tracks ? tracks.length : count
+  // The server sends at most 200 tracks; name the real count and say so.
+  const n = Math.max(tracks?.length || 0, count || 0)
+  const truncated = tracks && count > tracks.length
   return html`<div>
     <button class="back" onClick=${back}>${Icon.back()} ${backLabel}</button>
     <div class="pl-head">
@@ -226,6 +229,7 @@ function Collection({ remote, title, backLabel, count, numbered, load, start, ba
     ${tracks && !tracks.length && html`<div class="empty"><strong>Nothing here</strong></div>`}
     <ul class="rows">${(tracks || []).map((t, i) => html`<${TrackRow} track=${t} index=${numbered ? i + 1 : undefined}
       onPlay=${() => playAt(i)} onQueue=${() => remote.queueTrack(t)} />`)}</ul>
+    ${truncated && html`<p class="dim" style="font-size:13px;padding:12px 0">Showing the first ${tracks.length} of ${count}. Play loads them all.</p>`}
   </div>`
 }
 
@@ -250,16 +254,18 @@ function Playlist({ remote, provider, list, back }) {
 }
 
 export function Library({ remote }) {
-  const { providers } = useRemote(remote)
+  const { providers, epoch } = useRemote(remote)
   const list = mainProviders(providers).slice(0, 5)
   const [key, setKey] = useState(null)
   const [open, setOpen] = useState(null)
   const provider = list.find((p) => p.key === (key ?? list[0]?.key))
   const { data, loading, error, reload } = useLoad(async () => {
     if (!provider) return []
-    if (!playlistCache.has(provider.key)) playlistCache.set(provider.key, await remote.playlists(provider.key))
-    return playlistCache.get(provider.key)
-  }, [provider?.key])
+    // Cached per connection: reconnecting, or reopening the app, rereads it.
+    const key = epoch + ':' + provider.key
+    if (!playlistCache.has(key)) playlistCache.set(key, await remote.playlists(provider.key))
+    return playlistCache.get(key)
+  }, [provider?.key, epoch])
 
   if (open && provider) return html`<${Playlist} remote=${remote} provider=${provider} list=${open} back=${() => setOpen(null)} />`
   return html`<div>
@@ -267,7 +273,7 @@ export function Library({ remote }) {
     <${Segments} items=${list} value=${provider?.key} onChange=${(k) => { setKey(k); setOpen(null) }} label="Provider" />
     ${!provider && html`<div class="empty"><strong>No providers yet</strong>cliamp has not reported its providers.</div>`}
     ${loading && html`<${Skeleton} />`}
-    ${error && html`<p class="error-line">${error.message} <button class="chip" onClick=${() => { playlistCache.delete(provider.key); reload() }}>Retry</button></p>`}
+    ${error && html`<p class="error-line">${error.message} <button class="chip" onClick=${() => { playlistCache.delete(epoch + ':' + provider.key); reload() }}>Retry</button></p>`}
     ${data && !data.length && !loading && html`<div class="empty"><strong>No playlists</strong>${provider?.name} has no playlists for this account.</div>`}
     <ul class="rows" style="margin-top:8px">
       ${(data || []).map((pl) => html`<li class="row">
@@ -293,6 +299,13 @@ export function Queue({ remote }) {
   )
   const current = snapshot?.index ?? 0
   const hasNext = data?.next.length > 0
+  // An Up next entry points at a row of the playlist. Playing it means
+  // taking it off Up next and playing that row; track.play would add a
+  // second copy of the track and leave the entry queued.
+  const playUpNext = async (i, t) => {
+    await remote.playNextRemove(i, data.nextRev)
+    await remote.queuePlay(t.index ?? 0)
+  }
   return html`<div>
     <div class="pl-head"><h1 class="title">Queue</h1>
       ${data && html`<span class="dim mono" style="font-size:12px;padding-bottom:6px">${data.q.total} ${data.q.total === 1 ? 'track' : 'tracks'}</span>`}</div>
@@ -301,7 +314,7 @@ export function Queue({ remote }) {
     ${hasNext && html`<section aria-label="Up next">
       <div class="section-head"><span class="eyebrow">Up next</span></div>
       <ul class="rows">${data.next.map((t, i) => html`<${TrackRow} track=${t}
-        onPlay=${() => remote.playTrack(t)} onRemove=${() => remote.playNextRemove(i, data.nextRev)} />`)}</ul>
+        onPlay=${() => playUpNext(i, t)} onRemove=${() => remote.playNextRemove(i, data.nextRev)} />`)}</ul>
     </section>`}
     ${data && html`<section aria-label="Playlist">
       ${hasNext && html`<div class="section-head"><span class="eyebrow">Then</span></div>`}
