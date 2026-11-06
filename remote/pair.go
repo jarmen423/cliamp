@@ -58,7 +58,7 @@ func interfaceAddrs() []netip.Addr {
 	}
 	var out, loopback []netip.Addr
 	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 {
+		if iface.Flags&net.FlagUp == 0 || virtualBridge(iface.Name) {
 			continue
 		}
 		addrs, err := iface.Addrs()
@@ -81,6 +81,20 @@ func interfaceAddrs() []netip.Addr {
 		}
 	}
 	return append(out, loopback...)
+}
+
+// bridgePrefixes start the names of the bridges that Docker, Podman,
+// libvirt, LXC, VirtualBox and VMware make for their guests. A phone cannot
+// reach those addresses.
+var bridgePrefixes = []string{"docker", "br-", "virbr", "veth", "podman", "cni", "lxc", "lxd", "vboxnet", "vmnet"}
+
+func virtualBridge(name string) bool {
+	for _, p := range bridgePrefixes {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func addrLabel(addr netip.Addr) string {

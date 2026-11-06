@@ -189,6 +189,7 @@ h1.title { font-size: 28px; font-weight: 590; letter-spacing: -0.02em; line-heig
 }
 .field:focus-within { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--accent) 60%, transparent); }
 .field svg { width: 18px; height: 18px; flex: none; }
+.field input:focus-visible { box-shadow: none; } /* the field draws the ring */
 .field input { flex: 1; min-width: 0; height: 100%; background: none; border: 0; outline: none; font-size: 16px; color: var(--text); }
 .field input::placeholder { color: var(--text-4); }
 .field input::-webkit-search-cancel-button { -webkit-appearance: none; }
@@ -216,7 +217,7 @@ h1.title { font-size: 28px; font-weight: 590; letter-spacing: -0.02em; line-heig
 .row-text { flex: 1; min-width: 0; }
 .row-title { font-size: 15px; font-weight: 510; }
 .row-sub { font-size: 13px; color: var(--text-3); display: flex; gap: 6px; }
-.row-sub .mono { flex: none; }
+.row-sub .mono { flex: none; font-size: 11.5px; padding-top: 1px; }
 .row[data-active] .row-title { color: var(--accent); }
 .row-index { width: 22px; flex: none; text-align: right; font-size: 12px; color: var(--text-4); }
 .row[data-active] .row-index { color: var(--accent); }
@@ -233,10 +234,10 @@ h1.title { font-size: 28px; font-weight: 590; letter-spacing: -0.02em; line-heig
 
 .skel { display: flex; align-items: center; gap: 12px; padding: 8px 12px; height: 60px; }
 .skel i { display: block; background: var(--panel); border-radius: 6px; }
-.skel i:first-child { width: 44px; height: 44px; flex: none; }
-.skel div { flex: 1; display: grid; gap: 7px; }
-.skel div i { height: 11px; }
-.skel div i:last-child { width: 40%; }
+.skel > i { width: 44px; height: 44px; flex: none; }
+.skel > div { flex: 1; display: grid; gap: 7px; }
+.skel > div i { height: 11px; width: 70%; }
+.skel > div i:last-child { width: 40%; }
 .skel-wrap { animation: fade-in 1ms 200ms both; } /* show-delay: fast answers never flash */
 @keyframes fade-in { from { opacity: 0; } }
 

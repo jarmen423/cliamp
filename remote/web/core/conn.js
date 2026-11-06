@@ -13,6 +13,7 @@
 const TERMINAL = new Set(['succeeded', 'failed', 'canceled'])
 const KEEPALIVE_MS = 25000 // the server closes a request socket idle for 60s
 const JOB_POLL_MS = 2000 // fallback when the events socket misses a job
+const REQUEST_TIMEOUT_MS = 10000 // a request with no answer means a dead socket
 const DEFAULT_TIMEOUT_MS = 30000
 const TOPICS = ['runtime.state', 'runtime.job']
 
@@ -95,6 +96,10 @@ export class Connection {
       opened = true
       this.failedOpens = 0
       this.backoff = 500
+      // After a reconnect the events socket may be as dead as the old
+      // request socket was, so resubscribe; that also resends the state.
+      if (this.everOpened) this.dropEvents()
+      this.everOpened = true
       this.setStatus('open')
       clearInterval(this.keepalive)
       this.keepalive = setInterval(() => this.request('capabilities').catch(() => {}), KEEPALIVE_MS)
@@ -107,6 +112,31 @@ export class Connection {
       this.failAll(new RemoteError('disconnected', 'Disconnected'))
       this.reconnect(opened)
     }
+  }
+
+  // dropRequests abandons a request socket that stopped answering. A
+  // half-open socket, such as after the phone slept or the network changed,
+  // may never fire close, so the client reconnects without waiting for it.
+  dropRequests() {
+    const ws = this.req
+    if (!ws) return
+    ws.onclose = null
+    ws.onmessage = null
+    try { ws.close() } catch {}
+    this.req = null
+    clearInterval(this.keepalive)
+    this.failAll(new RemoteError('disconnected', 'Connection lost'))
+    this.reconnect(true)
+  }
+
+  dropEvents() {
+    const ws = this.evt
+    if (!ws) return
+    ws.onclose = null
+    ws.onmessage = null
+    try { ws.close() } catch {}
+    this.evt = null
+    if (!this.stopped) this.openEvents()
   }
 
   openEvents() {
@@ -203,7 +233,17 @@ export class Connection {
     const id = 'r' + this.nextID++
     const line = JSON.stringify({ version: 2, id, method, ...fields }) + '\n'
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject })
+      const timer = setTimeout(() => {
+        if (!this.pending.has(id)) return
+        this.pending.delete(id)
+        reject(new RemoteError('timeout', 'cliamp did not answer'))
+        this.dropRequests()
+      }, REQUEST_TIMEOUT_MS)
+      const done = (fn) => (v) => {
+        clearTimeout(timer)
+        fn(v)
+      }
+      this.pending.set(id, { resolve: done(resolve), reject: done(reject) })
       this.req.send(line)
     })
   }

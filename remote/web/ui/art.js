@@ -27,20 +27,26 @@ function cachedURL(name) {
 export function Art({ track, class: cls = '' }) {
   const src = artSource(track)
   const key = src?.url || src?.cached || ''
-  const [url, setURL] = useState(src?.url || null)
-  const [ready, setReady] = useState(false)
+  const [blob, setBlob] = useState({ key: '', url: null })
+  // loaded holds the URL that finished loading. Readiness is per URL, so a
+  // cached image that loads before an effect runs is never reset to hidden.
+  const [loaded, setLoaded] = useState('')
+  const [failed, setFailed] = useState('')
   useEffect(() => {
-    setReady(false)
-    if (!src) return setURL(null)
-    if (src.url) return setURL(src.url)
+    if (!src?.cached || !auth) return
     let live = true
-    setURL(null)
-    if (auth) cachedURL(src.cached).then((u) => live && setURL(u), () => {})
+    cachedURL(src.cached).then((u) => live && setBlob({ key, url: u }), () => {})
     return () => { live = false }
   }, [key])
+  const url = src?.url || (src?.cached && blob.key === key ? blob.url : null)
+  const show = url && failed !== url
+  const ready = show && loaded === url
+  const onRef = (el) => {
+    if (el?.complete && el.naturalWidth > 0 && loaded !== url) setLoaded(url)
+  }
   return html`<div class="art ${cls}">
     ${!ready && html`<div class="art-ph">${Icon.note()}</div>`}
-    ${url && html`<img src=${url} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"
-      class=${ready ? 'ready' : ''} onLoad=${() => setReady(true)} onError=${() => setURL(null)} />`}
+    ${show && html`<img key=${url} ref=${onRef} src=${url} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"
+      class=${ready ? 'ready' : ''} onLoad=${() => setLoaded(url)} onError=${() => setFailed(url)} />`}
   </div>`
 }

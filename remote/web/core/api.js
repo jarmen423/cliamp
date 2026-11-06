@@ -16,6 +16,7 @@ export function createRemote({ base, token, WebSocketImpl, fetchImpl }) {
     anchor: { position: 0, at: 0 },
     caps: null, // Set of operation names, or null before the first answer
     providers: [],
+    epoch: 0, // counts connections; views that list server state reload on change
   })
 
   const conn = new Connection({
@@ -37,6 +38,9 @@ export function createRemote({ base, token, WebSocketImpl, fetchImpl }) {
   })
 
   async function onOpen() {
+    // A restarted cliamp counts revisions from 1 again. Forget the old
+    // revision, or applySnapshot would drop every snapshot as stale.
+    store.set((s) => ({ epoch: s.epoch + 1, snapshot: s.snapshot && { ...s.snapshot, revision: -1 } }))
     refresh()
     try {
       const caps = await conn.request('capabilities')
@@ -113,6 +117,9 @@ export function createRemote({ base, token, WebSocketImpl, fetchImpl }) {
     tracks: (provider, playlist) =>
       submit('provider.tracks', { provider, playlist, limit: 200 }).then((r) => r.result.tracks || []),
     loadPlaylist: (provider, playlist) => optimistic(null, () => submit('provider.load', { provider, playlist })),
+    albumTracks: (provider, album) =>
+      submit('provider.album_tracks', { provider, album, limit: 200 }).then((r) => r.result.tracks || []),
+    loadAlbum: (provider, album) => optimistic(null, () => submit('provider.load_album', { provider, album })),
     playTrack: (track) => optimistic(null, () => submit('track.play', { track })),
     queueTrack: (track) => optimistic(null, () => submit('track.queue', { track })),
 

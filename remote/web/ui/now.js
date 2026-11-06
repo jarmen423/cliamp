@@ -21,12 +21,15 @@ function silhouette(key, n) {
   let h = 2166136261
   for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619)
   const idle = new Float32Array(n)
-  const band = new Uint8Array(n)
+  const band = new Float32Array(n) // 0..1: where in the spectrum the bar listens
   for (let i = 0; i < n; i++) {
     h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0
     const r = (h % 1000) / 1000
     idle[i] = 0.08 + 0.22 * (0.55 * r + 0.45 * Math.abs(Math.sin(i * 0.37 + r)))
-    band[i] = (h >>> 10) % 64
+    // Squared, so most bars listen to the low bands, where music has its
+    // energy; a uniform pick leaves most bars on near-silent high bands.
+    const b = ((h >>> 10) % 1000) / 1000
+    band[i] = b * b
   }
   return { idle, band }
 }
@@ -36,9 +39,9 @@ function silhouette(key, n) {
 // lives in the low bands. Instead each bar follows one band picked by the
 // silhouette and swells with the overall energy, so the shape of the track
 // stays and the whole bar breathes with the music.
-function barLevel(idle, bandIndex, bands, energy) {
+function barLevel(idle, bandPos, bands, energy) {
   if (!bands?.length) return idle
-  const v = bands[bandIndex % bands.length] || 0
+  const v = bands[Math.min(bands.length - 1, Math.floor(bandPos * bands.length))] || 0
   return Math.min(1, idle * (1 + 3 * energy) + 0.65 * v)
 }
 
@@ -63,6 +66,7 @@ function Scrubber({ remote, state }) {
     let shape = { idle: new Float32Array(0), band: new Uint8Array(0) }
     let idleKey = ''
     let bands = null
+    let peak = 0.04
     let inflight = false
     let lastFetch = 0
     const reduce = reducedMotion()
@@ -95,7 +99,13 @@ function Scrubber({ remote, state }) {
       if (playing && !reduce && !document.hidden && !inflight && t - lastFetch > FRAME_MS) {
         inflight = true
         lastFetch = t
-        remote.spectrum().then((b) => { bands = b }, () => { bands = null }).finally(() => { inflight = false })
+        remote.spectrum().then((b) => {
+          // The bands follow the volume, so normalize by a slowly falling
+          // peak: the bars move the same at -20 dB as at 0 dB.
+          const top = Math.max(...b, 0)
+          peak = Math.max(top, peak * 0.985, 0.04)
+          bands = b.map((v) => Math.min(1, (v || 0) / peak))
+        }, () => { bands = null }).finally(() => { inflight = false })
       }
       if (!playing) bands = null
 

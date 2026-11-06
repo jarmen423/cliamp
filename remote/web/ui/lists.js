@@ -1,7 +1,7 @@
 // Search, Library and Queue, and the track row they share.
 import { html, useEffect, useRef, useState } from '../vendor/preact-htm.js'
 import { PREFERRED_PROVIDERS } from '../core/api.js'
-import { formatTime, trackArtist, trackTitle } from '../core/store.js'
+import { albumID, formatTime, isAlbum, trackArtist, trackTitle } from '../core/store.js'
 import { Art } from './art.js'
 import { Icon } from './icons.js'
 import { haptic, useLatest, useRemote } from './hooks.js'
@@ -45,7 +45,8 @@ function PlayNextButton({ onQueue }) {
   </button>`
 }
 
-export function TrackRow({ track, index, active, onPlay, onQueue, onRemove }) {
+export function TrackRow({ track, index, active, onPlay, onQueue, onRemove, onOpen }) {
+  if (onOpen && isAlbum(track)) return html`<${AlbumRow} track=${track} onOpen=${onOpen} />`
   const dur = track.duration_secs
   return html`<li class="row" data-active=${active ? '' : undefined}>
     <button class="row-main" onClick=${() => { haptic(); onPlay().catch(failed('Could not play')) }}
@@ -60,6 +61,19 @@ export function TrackRow({ track, index, active, onPlay, onQueue, onRemove }) {
     ${onQueue && html`<${PlayNextButton} onQueue=${onQueue} />`}
     ${onRemove && html`<button class="icon-btn small" aria-label=${'Remove ' + trackTitle(track)}
       onClick=${() => onRemove().catch(failed('Could not remove'))}>${Icon.close()}</button>`}
+  </li>`
+}
+
+function AlbumRow({ track, onOpen }) {
+  return html`<li class="row">
+    <button class="row-main" onClick=${onOpen}>
+      <${Art} track=${track} />
+      <span class="row-text">
+        <div class="row-title trunc">${trackTitle(track)}</div>
+        <div class="row-sub"><span class="mono">Album</span><span class="trunc">${[trackArtist(track), track.year].filter(Boolean).join(' · ')}</span></div>
+      </span>
+      <span class="row-chev">${Icon.chevron()}</span>
+    </button>
   </li>`
 }
 
@@ -105,6 +119,7 @@ export function Search({ remote }) {
   const [query, setQuery] = useState('')
   const [submitted, setSubmitted] = useState('')
   const [results, setResults] = useState(null) // [{provider, tracks, error}]
+  const [album, setAlbum] = useState(null) // {provider, track} while an album is open
   const seq = useRef(0)
   const timer = useRef(0)
   const input = useRef(null)
@@ -150,6 +165,10 @@ export function Search({ remote }) {
     return remote.playTrack(t)
   }
 
+  if (album) {
+    return html`<${Album} remote=${remote} provider=${album.provider} track=${album.track}
+      backLabel="Search" back=${() => setAlbum(null)} />`
+  }
   return html`<div>
     <form class="search-form" role="search" onSubmit=${onSubmit}>
       <label class="field">${Icon.search()}<span class="sr">Search</span>
@@ -169,7 +188,8 @@ export function Search({ remote }) {
       ${targets.length > 1 && html`<div class="section-head"><span class="eyebrow">${g.provider.name}</span></div>`}
       ${g.error && html`<p class="error-line">${g.error.message}</p>`}
       ${!g.error && !g.tracks.length && !results.loading && html`<p class="dim" style="padding:12px 0">No results for “${submitted}”.</p>`}
-      <ul class="rows">${g.tracks.map((t) => html`<${TrackRow} track=${t} onPlay=${() => play(t)} onQueue=${() => remote.queueTrack(t)} />`)}</ul>
+      <ul class="rows">${g.tracks.map((t) => html`<${TrackRow} track=${t} onPlay=${() => play(t)} onQueue=${() => remote.queueTrack(t)}
+        onOpen=${() => { if (submitted) remember(submitted); setAlbum({ provider: g.provider, track: t }) }} />`)}</ul>
     </section>`)}
   </div>`
 }
@@ -178,32 +198,55 @@ export function Search({ remote }) {
 
 const playlistCache = new Map()
 
-function Playlist({ remote, provider, list, back }) {
-  const { data: tracks, loading, error } = useLoad(() => remote.tracks(provider.key, list.id), [provider.key, list.id])
+// Collection shows the tracks of a playlist or an album. load returns the
+// tracks; start(i) loads the list into cliamp and plays from track i.
+function Collection({ remote, title, backLabel, count, numbered, load, start, back }) {
+  const { data: tracks, loading, error } = useLoad(load, [title])
   const [starting, setStarting] = useState(false)
   const playAt = async (i) => {
     setStarting(true)
     try {
-      await remote.loadPlaylist(provider.key, list.id)
-      if (i > 0) await remote.queuePlay(i)
+      await start(i)
     } finally {
       setStarting(false)
     }
   }
+  const n = tracks ? tracks.length : count
   return html`<div>
-    <button class="back" onClick=${back}>${Icon.back()} ${provider.name}</button>
+    <button class="back" onClick=${back}>${Icon.back()} ${backLabel}</button>
     <div class="pl-head">
       <div style="min-width:0">
-        <h1 class="title">${list.name}</h1>
-        <div class="dim mono" style="font-size:12px">${tracks ? tracks.length : list.track_count || ''} ${tracks || list.track_count ? 'tracks' : ''}</div>
+        <h1 class="title">${title}</h1>
+        ${n > 0 && html`<div class="dim mono" style="font-size:12px">${n} ${n === 1 ? 'track' : 'tracks'}</div>`}
       </div>
       <button class="pill" disabled=${starting || !tracks?.length} onClick=${() => { haptic(); playAt(0).catch(failed('Could not play')) }}>${Icon.play()} Play</button>
     </div>
     ${loading && html`<${Skeleton} />`}
     ${error && html`<p class="error-line">${error.message}</p>`}
-    ${tracks && !tracks.length && html`<div class="empty"><strong>Empty playlist</strong></div>`}
-    <ul class="rows">${(tracks || []).map((t, i) => html`<${TrackRow} track=${t} onPlay=${() => playAt(i)} onQueue=${() => remote.queueTrack(t)} />`)}</ul>
+    ${tracks && !tracks.length && html`<div class="empty"><strong>Nothing here</strong></div>`}
+    <ul class="rows">${(tracks || []).map((t, i) => html`<${TrackRow} track=${t} index=${numbered ? i + 1 : undefined}
+      onPlay=${() => playAt(i)} onQueue=${() => remote.queueTrack(t)} />`)}</ul>
   </div>`
+}
+
+// playFrom loads a list into cliamp, which starts at its first track, then
+// jumps to track i.
+const playFrom = (remote, load) => async (i) => {
+  await load()
+  if (i > 0) await remote.queuePlay(i)
+}
+
+function Album({ remote, provider, track, back, backLabel }) {
+  const id = albumID(track)
+  return html`<${Collection} remote=${remote} title=${trackTitle(track)} backLabel=${backLabel} numbered
+    load=${() => remote.albumTracks(provider.key, id)}
+    start=${playFrom(remote, () => remote.loadAlbum(provider.key, id))} back=${back} />`
+}
+
+function Playlist({ remote, provider, list, back }) {
+  return html`<${Collection} remote=${remote} title=${list.name} backLabel=${provider.name} count=${list.track_count}
+    load=${() => remote.tracks(provider.key, list.id)}
+    start=${playFrom(remote, () => remote.loadPlaylist(provider.key, list.id))} back=${back} />`
 }
 
 export function Library({ remote }) {
@@ -242,11 +285,11 @@ export function Library({ remote }) {
 // ---------- queue ----------
 
 export function Queue({ remote }) {
-  const { snapshot } = useRemote(remote)
+  const { snapshot, epoch } = useRemote(remote)
   const rev = snapshot?.playlist_revision
   const { data, loading, error } = useLoad(
     () => Promise.all([remote.playNextList(), remote.queueList()]).then(([next, q]) => ({ next, q })),
-    [rev],
+    [rev, epoch],
   )
   const current = snapshot?.index ?? 0
   const hasNext = data?.next.length > 0

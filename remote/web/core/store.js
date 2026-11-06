@@ -64,3 +64,13 @@ export function artSource(t) {
   const m = /\/album-art\/([0-9a-f]{64}\.[a-z]+)$/i.exec(url)
   return m ? { cached: m[1] } : null
 }
+
+// isAlbum reports whether a search result is an album placeholder, which
+// opens as a list instead of playing. Spotify search returns them first.
+export function isAlbum(t) {
+  return t?.provider_meta?.kind === 'album'
+}
+
+export function albumID(t) {
+  return t?.provider_meta?.albumID || ''
+}

@@ -350,3 +350,24 @@ func TestGatewayCarriesIPC(t *testing.T) {
 		t.Fatalf("event = %v", got)
 	}
 }
+
+func TestVirtualBridge(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"docker0", true},
+		{"br-3f2a9c", true},
+		{"virbr0", true},
+		{"veth12ab", true},
+		{"wlp0s20f3", false},
+		{"eth0", false},
+		{"tailscale0", false},
+		{"enp3s0", false},
+	}
+	for _, tt := range tests {
+		if got := virtualBridge(tt.name); got != tt.want {
+			t.Errorf("virtualBridge(%q) = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
