@@ -119,6 +119,8 @@ type RuntimeSnapshot struct {
 	Total            int        `json:"total,omitempty"`
 	PlayNextTotal    int        `json:"play_next_total,omitempty"`
 	Shuffle          *bool      `json:"shuffle,omitempty"`
+	SmartShuffle     *bool      `json:"smart_shuffle,omitempty"`
+	SmartAvailable   bool       `json:"smart_available,omitempty"`
 	Repeat           string     `json:"repeat,omitempty"`
 	Mono             *bool      `json:"mono,omitempty"`
 	Speed            float64    `json:"speed,omitempty"`
@@ -184,6 +186,10 @@ func cloneSnapshot(snapshot *RuntimeSnapshot) *RuntimeSnapshot {
 	if snapshot.Shuffle != nil {
 		shuffle := *snapshot.Shuffle
 		snapshotCopy.Shuffle = &shuffle
+	}
+	if snapshot.SmartShuffle != nil {
+		smart := *snapshot.SmartShuffle
+		snapshotCopy.SmartShuffle = &smart
 	}
 	if snapshot.Mono != nil {
 		mono := *snapshot.Mono

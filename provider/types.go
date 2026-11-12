@@ -83,6 +83,36 @@ type CategoryInfo struct {
 	ImageURL string
 }
 
+// LinkKind names what a resolved provider link points at.
+const (
+	LinkPlaylist = "playlist"
+	LinkAlbum    = "album"
+	LinkArtist   = "artist"
+	LinkTrack    = "track"
+	LinkEpisode  = "episode"
+)
+
+// Link is what a provider share link (a URL or URI pasted or shared by the
+// user) points at: a playlist, an album or an artist to open by ID, or a
+// single track or episode to play, carried in Track. Name and ImageURL are
+// best-effort display data and may be empty.
+type Link struct {
+	Kind     string
+	ID       string
+	Name     string
+	ImageURL string
+	Track    *playlist.Track // set for LinkTrack and LinkEpisode
+}
+
+// Account is the account a provider is signed in as. Detail is optional
+// service wording, such as a Spotify plan (premium, free).
+type Account struct {
+	ID       string
+	Name     string
+	Detail   string
+	ImageURL string
+}
+
 // SearchResults carries multi-type search results from a MultiSearcher.
 type SearchResults struct {
 	Tracks    []playlist.Track

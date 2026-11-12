@@ -36,14 +36,44 @@ tailnet (see [Away from home](#away-from-home)).
 
 | Screen | What it does |
 |--------|--------------|
-| Playing | Art, title and artist, the transport, the volume and the seek bar. The seek bar is drawn from the live spectrum of the music. Drag it to seek |
-| Search | Searches Spotify, YouTube, or both at once. Tap a result to play it. The play-next button queues it after the current track |
-| Library | The playlists of each provider. Open one, then play it from the start or from a track |
+| Playing | Art, title and artist, the transport, the volume and the seek bar. The seek bar is drawn from the live spectrum of the music. Drag it to seek. Swipe the art left for the next track and right for the previous one; the mini player swipes the same way. The shuffle button cycles shuffle off, shuffle and Smart Shuffle. Smart Shuffle appears when the queue comes from Spotify |
+| Search | Searches Spotify, YouTube, or both at once, in sections: artists, songs, albums and playlists. Tap a song to play it, an artist for their page, an album or playlist to open it. **More songs** loads the next page. The play-next button queues a song after the current track |
+| Library | Each provider, viewed as Playlists, Artists, Albums, Songs or Podcasts — the views it can fill. Open a list, then play it from the start or from a track. The header also opens [a Spotify link](#open-a-spotify-link), and Spotify shows the signed-in account with a [switch](#switch-the-spotify-account) |
 | Queue | The play-next list and the live playlist. Tap to play a track, or remove it |
-| Artist | Tap the artist on Playing, or under an album title. The artist page shows the photo, the popular tracks with your liked ones marked, and the discography by albums, singles and EPs, and compilations. Spotify only |
+| Artist | Tap the artist on Playing, under an album title, or in Search and Library. The artist page shows the photo, the popular tracks with your liked ones marked, the discography by albums, singles and EPs, and compilations, and a Follow button. Spotify only |
 
 The app takes the accent color of the cliamp theme, so it matches the
-terminal. A mini player sits above the tabs on every screen but Playing.
+terminal. Swipe a song in Search, Library and artist pages left to play it next. A mini player sits above the tabs on every screen but Playing.
+
+## Open a Spotify link
+
+Someone sends you a Spotify playlist and you want it on the computer, not
+in the Spotify app. Two ways:
+
+- **Share it to cliamp (Android).** The [installed app](#install-it-as-an-app)
+  appears in the Android Share sheet as **cliamp**. In Spotify, or anywhere
+  a link shows, tap Share, then cliamp. The app opens the playlist, album
+  or artist, or plays the song.
+- **Paste it.** **Open link** at the top of Library takes a pasted
+  `open.spotify.com` link, a `spotify:` URI, or a whole shared message that
+  contains one. This is the way on iPhone: iOS does not let web apps into
+  its Share sheet.
+
+Playlist, album, artist, song, episode and podcast (show) links all open.
+A song or episode plays at once; the rest open as a page with a Play
+button. Tapping a Spotify link in another app cannot open cliamp by
+itself: only Spotify can claim its own links, so the Share sheet and
+pasting are as close as a web app gets.
+
+## Switch the Spotify account
+
+Library shows who Spotify is signed in as. **Switch** signs that account
+out and opens the sign-in in the browser **on the computer running
+cliamp** — the phone only starts it. Spotify asks which account to use,
+so pick the other one there. Playback from Spotify stops while you
+switch; the library then shows the new account's playlists. The same
+switch exists at the terminal as `cliamp spotify switch`, and
+`cliamp spotify whoami` prints the current account.
 
 ## Several machines
 

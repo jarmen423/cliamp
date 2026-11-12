@@ -11,6 +11,7 @@ export const Icon = {
   next: () => svg(html`<path d="M5 6.2v11.6a.8.8 0 0 0 1.25.66L15 12.66a.8.8 0 0 0 0-1.32L6.25 5.54A.8.8 0 0 0 5 6.2Z"/><rect x="16.5" y="5" width="2.5" height="14" rx="1"/>`, true),
   prev: () => svg(html`<path d="M19 6.2v11.6a.8.8 0 0 1-1.25.66L9 12.66a.8.8 0 0 1 0-1.32l8.75-5.8A.8.8 0 0 1 19 6.2Z"/><rect x="5" y="5" width="2.5" height="14" rx="1"/>`, true),
   shuffle: () => svg(html`<path d="M3 7h3.5c2 0 3.2 1 4.3 2.6l2.4 3.8C14.3 15 15.5 17 17.5 17H21"/><path d="M3 17h3.5c1.4 0 2.4-.6 3.2-1.5M13.3 8.5c.9-.9 2-1.5 4.2-1.5H21"/><path d="m18.5 4.5 2.5 2.5-2.5 2.5M18.5 14.5l2.5 2.5-2.5 2.5"/>`),
+  smartShuffle: () => svg(html`<path d="M3 7h3.5c2 0 3.2 1 4.3 2.6l2.4 3.8C14.3 15 15.5 17 17.5 17H21"/><path d="M3 17h3.5c1.4 0 2.4-.6 3.2-1.5M13.3 8.5c.9-.9 2-1.5 4.2-1.5H21"/><path d="m18.5 14.5 2.5 2.5-2.5 2.5"/><path d="M19 2.5v4M17 4.5h4"/>`),
   repeat: () => svg(html`<path d="M4 11V9.5A3.5 3.5 0 0 1 7.5 6H20"/><path d="m17 3 3 3-3 3"/><path d="M20 13v1.5a3.5 3.5 0 0 1-3.5 3.5H4"/><path d="m7 21-3-3 3-3"/>`),
   now: () => svg(html`<path d="M4 18V10M8 18V6M12 18v-9M16 18V4M20 18v-6"/>`),
   search: () => svg(html`<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>`),
@@ -26,4 +27,6 @@ export const Icon = {
   speaker: () => svg(html`<rect x="6" y="3" width="12" height="18" rx="2.5"/><circle cx="12" cy="14" r="3"/><path d="M12 7.5h.01"/>`),
   chevronDown: () => svg(html`<path d="m6.5 9.5 5.5 5.5 5.5-5.5"/>`),
   note: () => svg(html`<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>`),
+  link: () => svg(html`<path d="M10 14a4.5 4.5 0 0 0 6.4.4l3-3a4.5 4.5 0 1 0-6.4-6.4l-1.5 1.5"/><path d="M14 10a4.5 4.5 0 0 0-6.4-.4l-3 3a4.5 4.5 0 1 0 6.4 6.4l1.5-1.5"/>`),
+  user: () => svg(html`<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.2 3.4-5 7-5s6.2 1.8 7 5"/>`),
 }

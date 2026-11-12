@@ -9,7 +9,8 @@ import { formatTime, livePosition, providerOf, trackArtist, trackTitle } from '.
 import { Art } from './art.js'
 import { MachineChip } from './machines.js'
 import { Icon } from './icons.js'
-import { haptic, reducedMotion, useLatest, useRemote, useTick } from './hooks.js'
+import { haptic, reducedMotion, Swipe, useLatest, useRemote, useTick } from './hooks.js'
+import { toast } from './toast.js'
 
 const BAR_W = 3
 const BAR_GAP = 2
@@ -265,6 +266,19 @@ export function sourceLabel(snap, providers) {
   return p ? p.name : list
 }
 
+// shuffleMode reads the snapshot as one of 'off', 'on' and 'smart'.
+const shuffleMode = (snap) => (snap.smart_shuffle ? 'smart' : snap.shuffle ? 'on' : 'off')
+const SHUFFLE_LABEL = { off: 'Shuffle off', on: 'Shuffle on', smart: 'Smart shuffle on' }
+
+// cycleShuffle steps off, shuffle, smart shuffle and back. Smart shuffle
+// only joins the cycle when the playing queue's provider can recommend.
+function cycleShuffle(remote, snap) {
+  const mode = shuffleMode(snap)
+  const next = mode === 'off' ? 'on' : mode === 'on' && snap.smart_available ? 'smart' : 'off'
+  haptic()
+  remote.setShuffle(next).then(() => toast(SHUFFLE_LABEL[next]), (err) => toast(err.message, 'error'))
+}
+
 export function NowPlaying({ remote, go, machines, openArtist }) {
   const state = useRemote(remote)
   const snap = state.snapshot
@@ -291,6 +305,7 @@ export function NowPlaying({ remote, go, machines, openArtist }) {
   return html`<div class="now">
     ${chip}
     <div class="now-source">${source && html`<span class="eyebrow trunc">Playing from ${source}</span>`}</div>
+    <${Swipe} class="now-swipe" fly onLeft=${act(remote.next)} onRight=${act(remote.prev)}>
     <${Art} track=${track} class="now-art" />
     <div class="now-meta"><div>
       <div class="now-title trunc">${trackTitle(track)}</div>
@@ -299,9 +314,11 @@ export function NowPlaying({ remote, go, machines, openArtist }) {
             <span class="trunc">${trackArtist(track)}</span>${Icon.chevron()}</button>`
         : html`<div class="now-artist trunc">${trackArtist(track) || ' '}</div>`}
     </div></div>
+    </${Swipe}>
     <${Scrubber} remote=${remote} state=${state} />
     <div class="transport">
-      <button class="icon-btn" aria-label="Shuffle" aria-pressed=${snap.shuffle ? 'true' : 'false'} onClick=${act(remote.shuffle)}>${Icon.shuffle()}</button>
+      <button class="icon-btn" aria-label=${SHUFFLE_LABEL[shuffleMode(snap)]} aria-pressed=${snap.shuffle ? 'true' : 'false'}
+        onClick=${() => cycleShuffle(remote, snap)}>${shuffleMode(snap) === 'smart' ? Icon.smartShuffle() : Icon.shuffle()}</button>
       <button class="icon-btn" aria-label="Previous" onClick=${act(remote.prev)}>${Icon.prev()}</button>
       <button class="play" aria-label=${playing ? 'Pause' : 'Play'} onClick=${act(remote.toggle)}>${playing ? Icon.pause() : Icon.play()}</button>
       <button class="icon-btn" aria-label="Next" onClick=${act(remote.next)}>${Icon.next()}</button>
@@ -321,6 +338,7 @@ export function MiniPlayer({ remote, go }) {
   const playing = snap.state === 'playing'
   const pct = snap.duration > 0 ? livePosition(state) / snap.duration : 0
   return html`<div class="mini">
+    <${Swipe} class="mini-swipe" fly onLeft=${() => { haptic(); remote.next().catch(() => {}) }} onRight=${() => { haptic(); remote.prev().catch(() => {}) }}>
     <button class="mini-open" onClick=${() => go('now')} aria-label=${'Now playing: ' + trackTitle(snap.track)}>
       <${Art} track=${snap.track} />
       <div class="mini-text">
@@ -328,6 +346,7 @@ export function MiniPlayer({ remote, go }) {
         <div class="trunc">${trackArtist(snap.track)}</div>
       </div>
     </button>
+    </${Swipe}>
     <button class="icon-btn" aria-label=${playing ? 'Pause' : 'Play'} onClick=${() => { haptic(); remote.toggle().catch(() => {}) }}>
       ${playing ? Icon.pause() : Icon.play()}
     </button>

@@ -509,6 +509,22 @@ type PlaylistFollower interface {
 	UnfollowPlaylistByID(ctx context.Context, playlistID string) error
 }
 
+// LinkResolver is implemented by providers that can resolve their own
+// share links (URLs or URIs, possibly inside shared text) into the
+// playlist, album, artist or track they point at.
+type LinkResolver interface {
+	ResolveLink(ctx context.Context, text string) (Link, error)
+}
+
+// AccountSwitcher is implemented by providers that can report the account
+// they are signed in as and switch to a different one. SwitchAccount signs
+// the current account out and runs an interactive sign-in, returning the
+// account that signed in. Playback from the old session does not survive it.
+type AccountSwitcher interface {
+	Account(ctx context.Context) (Account, error)
+	SwitchAccount(ctx context.Context) (Account, error)
+}
+
 // ArtistFollower is implemented by providers that support following and
 // unfollowing artists by ID.
 type ArtistFollower interface {

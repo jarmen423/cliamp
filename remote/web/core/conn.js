@@ -26,7 +26,10 @@ export class RemoteError extends Error {
 }
 
 function v2Error(err) {
-  return new RemoteError(err?.code || 'error', err?.message)
+  // The job message is a fixed phrase ("operation failed"); the reason a
+  // person can act on rides in detail.
+  const detail = err?.detail && err.detail !== err?.message ? ` (${err.detail})` : ''
+  return new RemoteError(err?.code || 'error', (err?.message || '') + detail)
 }
 
 // wsURL turns the http(s) base of the gateway into its /v2 WebSocket URL.

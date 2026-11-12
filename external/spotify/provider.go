@@ -32,8 +32,10 @@ type SpotifyProvider struct {
 	session    *Session
 	clientID   string
 	bitrate    int
-	userID     string // Spotify user ID, fetched lazily on first Playlists() call
-	meFetched  bool   // /v1/me has been attempted this session; suppresses retry on failure
+	userID     string           // Spotify user ID, fetched lazily on first Playlists() call
+	meFetched  bool             // /v1/me has been attempted this session; suppresses retry on failure
+	account    provider.Account // signed-in account, from /v1/me (account.go)
+	accountSet bool             // account holds a fetched answer for this session
 	mu         sync.Mutex
 	trackCache map[string]*playlistCache // playlist ID → cache entry
 	pending    map[string]*pendingTracks
@@ -256,6 +258,13 @@ func (p *SpotifyProvider) Refresh() {
 func (p *SpotifyProvider) resetSessionScopedStateLocked() {
 	p.userID = ""
 	p.meFetched = false
+	p.account = provider.Account{}
+	p.accountSet = false
+	// Cached track lists are account-shaped: Liked Songs is keyed by its
+	// synthetic ID, so a rebuilt session must never serve the previous
+	// account's copy (SwitchAccount relies on this).
+	clear(p.trackCache)
+	clear(p.pending)
 	p.albumCache = nil
 	p.albumRows = nil
 	p.albumCacheAt = time.Time{}

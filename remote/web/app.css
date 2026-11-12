@@ -98,7 +98,8 @@ h1.title { font-size: 28px; font-weight: 590; letter-spacing: -0.02em; line-heig
 .now-source { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; min-height: 14px; }
 .now-source .eyebrow { max-width: 80%; }
 .now-art {
-  width: min(100%, 44vh); aspect-ratio: 1; margin: 0 auto; border-radius: 12px; overflow: hidden;
+  /* Shrinks on short screens so the transport and the volume stay in view. */
+  width: clamp(140px, calc(100svh - 500px), min(100%, 44vh)); aspect-ratio: 1; margin: 0 auto; border-radius: 12px; overflow: hidden;
   background: var(--panel);
   box-shadow: inset 0 0 0 1px var(--line), 0 24px 60px -20px rgb(0 0 0 / 0.8);
 }
@@ -308,12 +309,25 @@ h1.title { font-size: 28px; font-weight: 590; letter-spacing: -0.02em; line-heig
 .seg button[aria-pressed="true"] { background: var(--hover); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
 
 .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 22px 0 6px; }
+.account-row { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 10px 0 2px; font-size: 14px; color: var(--text-2); }
+.account-row svg { width: 20px; height: 20px; flex: none; color: var(--text-3); }
+.account-row .chip { flex: none; }
 
 .rows { list-style: none; padding: 0; margin: 0 calc(-1 * var(--pad) + 8px); }
 .row {
   display: flex; align-items: center; gap: 4px; padding-right: 4px; border-radius: 10px;
   content-visibility: auto; contain-intrinsic-size: auto 60px;
 }
+.row { position: relative; }
+.row-slide { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; touch-action: pan-y; background: var(--bg, inherit); will-change: transform; }
+.row-hint {
+  position: absolute; inset: 0 0 0 auto; width: 50%; display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding-right: 18px; border-radius: 10px; color: var(--accent); font-size: 13px; font-weight: 510;
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+}
+.row-hint svg { width: 20px; height: 20px; }
+.now-swipe { touch-action: pan-y; will-change: transform; }
+.mini-swipe { flex: 1; min-width: 0; height: 100%; touch-action: pan-y; display: flex; }
 .row-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 8px 12px; min-height: 60px; text-align: left; border-radius: 10px; }
 .row-main:active { background: var(--hover); }
 @media (hover: hover) and (pointer: fine) { .row-main:hover { background: var(--panel); } }

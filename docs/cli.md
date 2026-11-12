@@ -230,12 +230,16 @@ Playlists provider shows this data in the virtual "Recently Played" entry. See
 
 ```sh
 cliamp spotify reset                          # clear stored Spotify credentials
+cliamp spotify whoami                         # show the signed-in Spotify account
+cliamp spotify switch                         # sign in with a different Spotify account
 cliamp qobuz reset                            # clear stored Qobuz credentials
 cliamp tidal reset                            # clear stored Tidal credentials
 cliamp ytmusic reset                          # clear stored YouTube Music credentials
 ```
 
 Use `spotify reset` for stale authentication errors, such as `401 Unauthorized` or a repeated sign-in prompt. Then restart cliamp and select Spotify to sign in again. It does not fix `rate-limited on /v1/me` warnings: those are `429` responses to an accepted token, so the app is out of quota rather than unauthorized. See [spotify.md](spotify.md) for the setup guide.
+
+`spotify switch` clears the stored credentials and opens the browser sign-in, which asks Spotify to show its account chooser so you can pick another account. When cliamp is running it switches the live session — Spotify playback stops — and otherwise it signs in here for the next start. `spotify whoami` prints the live account of a running cliamp, or the owner of the stored credentials. The [phone app](mobile-remote.md#switch-the-spotify-account) has the same switch in Library.
 
 `qobuz reset`, `tidal reset` and `ytmusic reset` work the same way for their providers. See [qobuz.md](qobuz.md), [tidal.md](tidal.md) and [youtube-music.md](youtube-music.md).
 

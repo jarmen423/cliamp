@@ -44,6 +44,21 @@ const savedTracksPlaylistID = "YOUR MUSIC"
 // savedAlbumSection is the UI section header for the user's saved albums.
 const savedAlbumSection = "Saved albums"
 
+// savedShowIDPrefix marks a PlaylistInfo.ID as a saved podcast show rather
+// than a playlist, so Tracks() routes it to the show's episodes. It follows
+// savedAlbumIDPrefix, for the same reason.
+const savedShowIDPrefix = "spotify:show:"
+
+// savedShowSection is the UI section header for the user's saved shows.
+const savedShowSection = "Podcasts"
+
+// isSavedShowID reports whether id is a saved-show playlist entry and
+// returns the bare show ID.
+func isSavedShowID(id string) (showID string, ok bool) {
+	rest, ok := strings.CutPrefix(id, savedShowIDPrefix)
+	return rest, ok
+}
+
 // isSavedAlbumID reports whether id is a saved-album playlist entry and returns
 // the bare album ID.
 func isSavedAlbumID(id string) (albumID string, ok bool) {

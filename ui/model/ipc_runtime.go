@@ -48,6 +48,7 @@ type ipcRuntimeFingerprint struct {
 	volume           float64
 	playlist         string
 	shuffle          bool
+	smart            bool
 	repeat           string
 	mono             bool
 	speed            float64
@@ -476,6 +477,34 @@ func (m *Model) handleV2EQ(jobs *ipc.JobStore, jobID string, request ipc.Request
 	return nil
 }
 
+// setV2Shuffle applies a shuffle name. "on" is plain shuffle, so it turns
+// Smart Shuffle off, and "off" turns both off. "smart" turns Smart Shuffle on,
+// which implies shuffle, and does nothing when the queue's provider cannot
+// recommend. "toggle" or no name flips shuffle, and Smart Shuffle with it.
+// ok is false for an unknown name.
+func (m *Model) setV2Shuffle(name string) (cmd tea.Cmd, ok bool) {
+	dropSmart := func() tea.Cmd {
+		if !m.playlist.Smart() {
+			return nil
+		}
+		return m.toggleSmartShuffle()
+	}
+	switch name {
+	case "smart":
+		if m.playlist.Smart() {
+			return nil, true
+		}
+		return m.toggleSmartShuffle(), true
+	case "on", "off", "", "toggle":
+		on, _ := switchValue(name, m.playlist.Shuffled())
+		if on {
+			return tea.Batch(dropSmart(), m.setShuffle(true)), true
+		}
+		return tea.Batch(dropSmart(), m.setShuffle(false)), true
+	}
+	return nil, false
+}
+
 // handleV2Mode sets shuffle, repeat or mono. Shuffle and mono take on, off
 // or toggle, and repeat takes off, all, one or cycle. No name toggles or
 // cycles. Any other name is an error and changes nothing.
@@ -483,12 +512,15 @@ func (m *Model) handleV2Mode(jobs *ipc.JobStore, jobID string, request ipc.Reque
 	name := strings.ToLower(request.Name)
 	switch request.Cmd {
 	case "shuffle":
-		on, ok := switchValue(name, m.playlist.Shuffled())
+		cmd, ok := m.setV2Shuffle(name)
 		if !ok {
 			m.failV2Job(jobs, jobID, v2InvalidParamsError())
 			return nil
 		}
-		cmd := m.setShuffle(on)
+		if name == "smart" && !m.playlist.Smart() {
+			m.failV2Job(jobs, jobID, &ipc.V2Error{Code: ipc.V2ErrorCodeUnavailable, Message: "Smart Shuffle needs a supporting provider"})
+			return nil
+		}
 		value := m.playlist.Shuffled()
 		m.completeV2Job(jobs, jobID, ipc.Response{OK: true, Shuffle: &value})
 		return cmd
@@ -543,8 +575,8 @@ func switchValue(name string, current bool) (on, ok bool) {
 func (m *Model) handleV2LibraryRequest(ctx context.Context, jobs *ipc.JobStore, jobID string, request ipc.Request) tea.Cmd {
 	reply := make(chan ipc.Response, 1)
 	cmd := m.handleIPCLibrary(ipcLibraryRequest{
-		Op: request.Cmd, Provider: request.Provider, Playlist: request.Playlist, Query: request.Query,
-		Artist: request.Artist, Album: request.Album, Sort: request.Sort, Offset: request.Offset,
+		Op: request.Cmd, Provider: request.Provider, Playlist: request.Playlist, Path: request.Path, Query: request.Query,
+		Artist: request.Artist, Album: request.Album, Sort: request.Sort, Follow: request.Follow, Offset: request.Offset,
 		Limit: request.Limit, Index: request.Index, NewName: request.NewName, Track: request.Track, Tracks: request.Tracks, Context: ctx, Reply: reply,
 	})
 	return tea.Batch(cmd, waitV2ResponseCmd(ctx, jobs, jobID, reply))
@@ -637,6 +669,10 @@ func (m *Model) runtimeSnapshot() ipc.RuntimeSnapshot {
 		snapshot.PlayNextTotal = m.playlist.QueueLen()
 		shuffled := m.playlist.Shuffled()
 		snapshot.Shuffle = &shuffled
+		smart := m.playlist.Smart()
+		snapshot.SmartShuffle = &smart
+		rec, _ := m.recommenderForQueue()
+		snapshot.SmartAvailable = rec != nil
 		snapshot.Repeat = m.playlist.Repeat().String()
 		if track, index := m.playlist.Current(); index >= 0 {
 			info := ipcTrackInfo(track, index, m.playlist.QueuePosition(index), m.playlistTrackFavorited(track))
@@ -728,6 +764,7 @@ func (m *Model) runtimeFingerprint() ipcRuntimeFingerprint {
 	fingerprint.total = m.playlist.Len()
 	fingerprint.playNextTotal = m.playlist.QueueLen()
 	fingerprint.shuffle = m.playlist.Shuffled()
+	fingerprint.smart = m.playlist.Smart()
 	fingerprint.repeat = m.playlist.Repeat().String()
 	fingerprint.volume = m.player.Volume()
 	fingerprint.mono = m.player.Mono()

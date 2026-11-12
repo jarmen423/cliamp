@@ -11,6 +11,7 @@ import { Icon } from './icons.js'
 import { useRemote } from './hooks.js'
 import { ArtistPage } from './artist.js'
 import { Library, Queue, Search } from './lists.js'
+import { OpenLink } from './openlink.js'
 import { machineLabel } from './machines.js'
 import { MiniPlayer, NowPlaying } from './now.js'
 import { toast, Toasts } from './toast.js'
@@ -31,6 +32,17 @@ function takePairing() {
   if (blockedByScheme(p.base, location.protocol)) return ''
   saveMachines(localStorage, addMachine(loadMachines(localStorage), p))
   return p.base
+}
+
+// takeShared reads a link shared into the installed app (the manifest's
+// share_target sends title, text and url as query parameters) and cleans
+// the address bar. Spotify puts the link in text, sometimes in url.
+function takeShared() {
+  const q = new URLSearchParams(location.search)
+  const shared = q.get('url') || q.get('text') || ''
+  if (!shared) return ''
+  history.replaceState(null, '', location.pathname + (location.hash || '#/now'))
+  return shared
 }
 
 const route = () => {
@@ -91,7 +103,7 @@ function ConnectionPill({ remote }) {
   return html`<div class="conn" role="status"><i></i>Reconnecting to cliamp…</div>`
 }
 
-function Shell({ remote, machines }) {
+function Shell({ remote, machines, shared }) {
   const [r, setR] = useState(route())
   const state = useRemote(remote)
   useEffect(() => {
@@ -101,11 +113,16 @@ function Shell({ remote, machines }) {
   }, [])
   // An artist page stacks over the current tab; a tab tap closes it.
   const [page, setPage] = useState(null)
+  // The Open-a-link page stacks the same way, and opens itself when the
+  // app was launched from a share.
+  const [linkPage, setLinkPage] = useState(shared ? { text: shared } : null)
   const go = (to) => {
     setPage(null)
+    setLinkPage(null)
     location.hash = '#/' + to
   }
-  const openArtist = (provider, { artist, track }) => setPage({ provider, artist, track, from: r })
+  const openArtist = (provider, { artist, track }) => setPage({ provider, artist, track, from: linkPage ? 'library' : r })
+  const openLinks = (text) => setLinkPage({ text })
 
   const snap = state.snapshot
   const accent = accentOf(snap)
@@ -118,14 +135,17 @@ function Shell({ remote, machines }) {
   }, [snap?.track])
 
   const View = { now: NowPlaying, search: Search, library: Library, queue: Queue }[r]
-  const mini = (r !== 'now' || page) && !!snap?.track
+  const stacked = page || linkPage
+  const mini = (r !== 'now' || stacked) && !!snap?.track
   return html`<div class="shell">
     <${ConnectionPill} remote=${remote} />
-    <main class=${'view' + (mini || page ? ' has-mini' : '')} id="view" key=${page ? 'artist:' + (page.artist || page.track?.path) : r}>
+    <main class=${'view' + (mini || stacked ? ' has-mini' : '')} id="view" key=${page ? 'artist:' + (page.artist || page.track?.path) : linkPage ? 'openlink' : r}>
       ${page
         ? html`<${ArtistPage} remote=${remote} provider=${page.provider} artist=${page.artist} track=${page.track}
             backLabel=${TABS.find((t) => t.key === page.from)?.name || 'Back'} back=${() => setPage(null)} />`
-        : html`<${View} remote=${remote} go=${go} machines=${machines} openArtist=${openArtist} />`}
+        : linkPage
+          ? html`<${OpenLink} remote=${remote} text=${linkPage.text} backLabel="Library" back=${() => setLinkPage(null)} openArtist=${openArtist} go=${go} />`
+          : html`<${View} remote=${remote} go=${go} machines=${machines} openArtist=${openArtist} openLinks=${openLinks} />`}
     </main>
     ${mini && html`<${MiniPlayer} remote=${remote} go=${go} />`}
     <${Toasts} />
@@ -136,7 +156,7 @@ function Shell({ remote, machines }) {
   </div>`
 }
 
-function App({ added }) {
+function App({ added, shared }) {
   const [list, setList] = useState(() => loadMachines(localStorage))
   const [active, setActive] = useState(() => {
     const all = loadMachines(localStorage)
@@ -237,10 +257,10 @@ function App({ added }) {
   if (!current) {
     return html`<${Pair} reason=${reason} onAdd=${(p) => { update((prev) => addMachine(prev, p)); setReason(''); choose(p.base) }} />`
   }
-  return html`<${Shell} key=${current.base} remote=${remote} machines=${machines} />`
+  return html`<${Shell} key=${current.base} remote=${remote} machines=${machines} shared=${shared} />`
 }
 
-render(html`<${App} added=${takePairing()} />`, document.getElementById('app'))
+render(html`<${App} added=${takePairing()} shared=${takeShared()} />`, document.getElementById('app'))
 
 // The service worker keeps the app on the phone. Browsers allow it only on
 // https (or localhost), the same pages that can install the app.

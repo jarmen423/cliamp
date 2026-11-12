@@ -111,6 +111,17 @@ func saveCreds(creds *storedCreds) error {
 	return fileutil.WriteFileAtomic(path, data, 0o600)
 }
 
+// StoredUsername returns the username of the stored credentials, or ""
+// when none are stored. It answers who would sign in without opening a
+// session, for `cliamp spotify whoami` while cliamp is not running.
+func StoredUsername() string {
+	creds, err := loadCreds()
+	if err != nil {
+		return ""
+	}
+	return creds.Username
+}
+
 // DeleteCreds removes the stored Spotify credentials file.
 // Returns true if a file was removed, false if it did not exist.
 func DeleteCreds() (bool, error) {

@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -23,10 +24,12 @@ type ipcLibraryRequest struct {
 	Op       string
 	Provider string
 	Playlist string
+	Path     string
 	Query    string
 	Artist   string
 	Album    string
 	Sort     string
+	Follow   bool
 	Offset   int
 	Limit    int
 	Index    int
@@ -226,9 +229,11 @@ func (m *Model) handleIPCLibrary(request ipcLibraryRequest) tea.Cmd {
 			_, browseAlbums := entry.Provider.(provider.AlbumBrowser)
 			_, catalog := entry.Provider.(provider.CatalogLoader)
 			_, profiles := entry.Provider.(provider.ArtistDetailLoader)
+			_, links := entry.Provider.(provider.LinkResolver)
+			_, account := entry.Provider.(provider.AccountSwitcher)
 			items = append(items, ipc.ProviderInfo{
 				Key: entry.Key, Name: entry.Name, Searchable: searchable, BrowseArtists: browseArtists,
-				BrowseAlbums: browseAlbums, Catalog: catalog, ArtistProfiles: profiles,
+				BrowseAlbums: browseAlbums, Catalog: catalog, ArtistProfiles: profiles, Links: links, Account: account,
 			})
 		}
 		request.Reply <- ipc.Response{OK: true, Providers: items}
@@ -419,6 +424,27 @@ func (m *Model) handleIPCLibrary(request ipcLibraryRequest) tea.Cmd {
 			if limit <= 0 || limit > 100 {
 				limit = 25
 			}
+			// The first page of a multi-type provider carries the artists,
+			// albums and playlists the query matched, as the TUI search
+			// tabs show. Later pages (offset > 0) extend the tracks only.
+			if request.Offset == 0 {
+				if multi, ok := entry.Provider.(provider.MultiSearcher); ok {
+					ctx, cancel := context.WithTimeout(requestContext(request.Context), 30*time.Second)
+					defer cancel()
+					results, err := multi.SearchAll(ctx, request.Query, limit)
+					if err != nil {
+						request.Reply <- ipc.Response{OK: false, Error: err.Error()}
+						return nil
+					}
+					page, total := ipcPage(results.Tracks, 0, limit, 100)
+					request.Reply <- ipc.Response{
+						OK: true, Tracks: ipcTrackInfos(page, favorite), Total: total,
+						Artists: ipcArtistInfos(results.Artists), Albums: ipcAlbumInfos(results.Albums),
+						Playlists: ipcSearchPlaylistInfos(entry.Key, results.Playlists),
+					}
+					return nil
+				}
+			}
 			tracks, err := ipcSearchProvider(requestContext(request.Context), entry.Provider, request.Query, min(100, request.Offset+limit))
 			if err != nil {
 				request.Reply <- ipc.Response{OK: false, Error: err.Error()}
@@ -440,10 +466,7 @@ func (m *Model) handleIPCLibrary(request ipcLibraryRequest) tea.Cmd {
 				request.Reply <- ipcResponseError(err)
 				return nil
 			}
-			items := make([]ipc.ArtistInfo, len(artists))
-			for i, artist := range artists {
-				items[i] = ipc.ArtistInfo{ID: artist.ID, Name: artist.Name, AlbumCount: artist.AlbumCount}
-			}
+			items := ipcArtistInfos(artists)
 			page, total := ipcPage(items, request.Offset, request.Limit, 200)
 			request.Reply <- ipc.Response{OK: true, Artists: page, Total: total}
 			return nil
@@ -556,6 +579,76 @@ func (m *Model) handleIPCLibrary(request ipcLibraryRequest) tea.Cmd {
 			}
 			return nil
 		}
+	case "provider.open_link":
+		resolver, ok := entry.Provider.(provider.LinkResolver)
+		if !ok {
+			request.Reply <- ipc.Response{OK: false, Error: "provider does not open share links"}
+			return nil
+		}
+		favorite := m.trackFavoriteLookup(false)
+		return func() tea.Msg {
+			link, err := resolver.ResolveLink(requestContext(request.Context), request.Path)
+			if err != nil {
+				request.Reply <- ipcResponseError(err)
+				return nil
+			}
+			info := &ipc.LinkInfo{Kind: link.Kind, ID: link.ID, Name: link.Name, ImageURL: link.ImageURL}
+			if link.Track != nil {
+				track := ipcTrackInfo(*link.Track, 0, 0, favorite(*link.Track))
+				info.Track = &track
+			}
+			request.Reply <- ipc.Response{OK: true, Link: info}
+			return nil
+		}
+	case "provider.account", "provider.switch_account":
+		switcher, ok := entry.Provider.(provider.AccountSwitcher)
+		if !ok {
+			request.Reply <- ipc.Response{OK: false, Error: "provider has no switchable account"}
+			return nil
+		}
+		if request.Op == "provider.switch_account" {
+			// The old session's streams die with it; stop now instead of
+			// letting the player error through the queue mid-switch.
+			if track, index := m.currentPlaybackTrack(); index >= 0 && strings.HasPrefix(track.Path, entry.Key+":") {
+				m.stopPlayback()
+			}
+		}
+		return func() tea.Msg {
+			if request.Context != nil && request.Context.Err() != nil {
+				return nil
+			}
+			var account provider.Account
+			var err error
+			if request.Op == "provider.switch_account" {
+				account, err = switcher.SwitchAccount(requestContext(request.Context))
+			} else {
+				account, err = switcher.Account(requestContext(request.Context))
+			}
+			// Not signed in is an answer, not a failure: clients show it
+			// and offer the switch (which is also the first sign-in).
+			if errors.Is(err, playlist.ErrNeedsAuth) && request.Op == "provider.account" {
+				request.Reply <- ipc.Response{OK: true}
+				return nil
+			}
+			if err != nil {
+				request.Reply <- ipcResponseError(err)
+				return nil
+			}
+			request.Reply <- ipc.Response{OK: true, Account: &ipc.AccountInfo{ID: account.ID, Name: account.Name, Detail: account.Detail, ImageURL: account.ImageURL}}
+			return nil
+		}
+	case "provider.follow_artist":
+		follower, ok := entry.Provider.(provider.ArtistFollower)
+		if !ok {
+			request.Reply <- ipc.Response{OK: false, Error: "provider does not support following artists"}
+			return nil
+		}
+		return ipcMutationCmd(request.Context, request.Reply, func() error {
+			if request.Follow {
+				return follower.FollowArtist(requestContext(request.Context), request.Artist)
+			}
+			return follower.UnfollowArtist(requestContext(request.Context), request.Artist)
+		})
 	case "provider.favorite":
 		favorites, ok := entry.Provider.(provider.FavoriteToggler)
 		if !ok {
@@ -580,7 +673,7 @@ func ipcProviderPlaylistInfos(entry provider.Entry) ([]ipc.PlaylistInfo, error) 
 	}
 	items := make([]ipc.PlaylistInfo, len(lists))
 	for i, list := range lists {
-		items[i] = ipc.PlaylistInfo{ID: list.ID, Name: list.Name, Provider: entry.Key, Section: list.Section, TrackCount: list.TrackCount, DurationSecs: list.DurationSecs, Favorite: list.Favorite}
+		items[i] = ipc.PlaylistInfo{ID: list.ID, Name: list.Name, Provider: entry.Key, Section: list.Section, TrackCount: list.TrackCount, DurationSecs: list.DurationSecs, Favorite: list.Favorite, ImageURL: list.ImageURL}
 		if sectioned, ok := entry.Provider.(provider.SectionedList); ok {
 			items[i].Favoritable = sectioned.IsFavoritableID(list.ID)
 		}
@@ -757,6 +850,24 @@ func ipcTrackInfos(tracks []playlist.Track, favorite func(playlist.Track) bool) 
 	items := make([]ipc.TrackInfo, len(tracks))
 	for i, track := range tracks {
 		items[i] = ipcTrackInfo(track, i, 0, favorite(track))
+	}
+	return items
+}
+
+func ipcArtistInfos(artists []provider.ArtistInfo) []ipc.ArtistInfo {
+	items := make([]ipc.ArtistInfo, len(artists))
+	for i, artist := range artists {
+		items[i] = ipc.ArtistInfo{ID: artist.ID, Name: artist.Name, AlbumCount: artist.AlbumCount, ImageURL: artist.ImageURL}
+	}
+	return items
+}
+
+// ipcSearchPlaylistInfos converts the playlist hits of a multi-type
+// search, which carry no section or favorite state.
+func ipcSearchPlaylistInfos(key string, lists []playlist.PlaylistInfo) []ipc.PlaylistInfo {
+	items := make([]ipc.PlaylistInfo, len(lists))
+	for i, list := range lists {
+		items[i] = ipc.PlaylistInfo{ID: list.ID, Name: list.Name, Provider: key, TrackCount: list.TrackCount, ImageURL: list.ImageURL}
 	}
 	return items
 }

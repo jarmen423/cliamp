@@ -36,6 +36,10 @@ To register an app:
 
 Run `cliamp`, select Spotify, and press Enter to sign in. With your own `client_id`, the browser completes two authorization steps in one tab: one for Web API access and one for playback. The built-in client path needs one step. cliamp stores credentials in `~/.config/cliamp/spotify_credentials.json`. Later launches refresh them without a message.
 
+### Change the signed-in account
+
+`cliamp spotify whoami` prints the account cliamp is signed in as. To use a different account, run `cliamp spotify switch`, or tap **Switch** next to the account in the [phone app's](mobile-remote.md#switch-the-spotify-account) Library while cliamp runs. The switch clears the stored credentials and opens the browser sign-in on the computer running cliamp (the phone only starts it). Every interactive sign-in asks Spotify to show its account chooser (`show_dialog`), so the browser offers a different account instead of silently re-authorizing the one it is already signed in to. Playback from Spotify stops while you switch, and a running cliamp picks the new account up without a restart.
+
 ### Development Mode search page size
 
 Spotify introduced the current Development Mode restrictions for new apps on February 11, 2026. It migrated existing Development Mode apps on March 9, 2026. Extended Quota Mode apps are not affected. See the Spotify [February 2026 migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide) for the full timeline.
@@ -216,7 +220,7 @@ cliamp. Episodes stay local favorites only.
 
 ## Podcasts
 
-Podcast episodes work as tracks. Press `Ctrl+F` to search Spotify. Matching episodes, such as "Joe Rogan", appear with songs. Press `Enter` to play. Playlists can load and play both songs and episodes.
+The shows you saved in Spotify list under a **Podcasts** section in the library, next to your saved albums. Open one to load its episodes, newest first. Podcast episodes also work as ordinary tracks: press `Ctrl+F` to search Spotify, and matching episodes, such as "Joe Rogan", appear with songs. Press `Enter` to play. Playlists can load and play both songs and episodes. A show plays its episodes in the order Spotify lists them.
 
 ## Troubleshooting
 

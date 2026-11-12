@@ -424,7 +424,88 @@ func setupCommand() *cli.Command {
 }
 
 func spotifyCommand() *cli.Command {
-	return providerCredsCommand("spotify", "Spotify", spotify.CredsPath, spotify.DeleteCreds)
+	cmd := providerCredsCommand("spotify", "Spotify", spotify.CredsPath, spotify.DeleteCreds)
+	cmd.Commands = append(cmd.Commands,
+		&cli.Command{
+			Name:  "whoami",
+			Usage: "show the Spotify account cliamp is signed in as",
+			Action: func(ctx context.Context, c *cli.Command) error {
+				return spotifyWhoami(ctx)
+			},
+		},
+		&cli.Command{
+			Name:  "switch",
+			Usage: "sign out and sign in with a different Spotify account",
+			Description: "Clears the stored credentials and opens the browser sign-in,\n" +
+				"which asks Spotify to show its account chooser. When cliamp is\n" +
+				"running the switch happens live; otherwise the new account is\n" +
+				"signed in here and cliamp uses it from the next start.",
+			Action: func(ctx context.Context, c *cli.Command) error {
+				return spotifySwitch(ctx)
+			},
+		})
+	return cmd
+}
+
+// spotifyAccountLine renders one account for the CLI.
+func spotifyAccountLine(account *ipc.AccountInfo) string {
+	line := account.Name
+	if account.Detail != "" {
+		line += " (" + account.Detail + ")"
+	}
+	return line
+}
+
+func spotifyWhoami(ctx context.Context) error {
+	if running, err := ipc.Listening(ipc.DefaultSocketPath()); err == nil && running {
+		result, err := ipcSend("provider.account", ipc.Request{Provider: "spotify"})
+		if err != nil {
+			return err
+		}
+		if result.Account == nil || result.Account.Name == "" {
+			fmt.Println("Not signed in to Spotify.")
+			return nil
+		}
+		fmt.Printf("Signed in as %s\n", spotifyAccountLine(result.Account))
+		return nil
+	}
+	if username := spotify.StoredUsername(); username != "" {
+		fmt.Printf("Stored sign-in for %s (start cliamp for the live account).\n", username)
+		return nil
+	}
+	fmt.Println("Not signed in to Spotify.")
+	return nil
+}
+
+func spotifySwitch(ctx context.Context) error {
+	if running, err := ipc.Listening(ipc.DefaultSocketPath()); err == nil && running {
+		fmt.Println("Finish signing in in your browser…")
+		result, err := ipcSendWithin("provider.switch_account", ipc.Request{Provider: "spotify"}, ipcLoadWait)
+		if err != nil {
+			return err
+		}
+		if result.Account != nil {
+			fmt.Printf("Now signed in as %s\n", spotifyAccountLine(result.Account))
+		}
+		return nil
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+	fmt.Println("Finish signing in in your browser…")
+	p := spotify.New(nil, cfg.Spotify.ResolveClientID(spotify.DefaultClientID), cfg.Spotify.Bitrate)
+	defer p.Close()
+	account, err := p.SwitchAccount(ctx)
+	if err != nil {
+		return err
+	}
+	line := account.Name
+	if account.Detail != "" {
+		line += " (" + account.Detail + ")"
+	}
+	fmt.Printf("Now signed in as %s\n", line)
+	return nil
 }
 
 func qobuzCommand() *cli.Command {

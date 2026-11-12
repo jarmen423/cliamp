@@ -4,7 +4,8 @@ import { PREFERRED_PROVIDERS } from '../core/api.js'
 import { albumID, formatTime, isAlbum, trackArtist, trackTitle } from '../core/store.js'
 import { Art } from './art.js'
 import { Icon } from './icons.js'
-import { haptic, useLatest, useRemote } from './hooks.js'
+import { haptic, Swipe, useLatest, useRemote } from './hooks.js'
+import { machineLabel } from './machines.js'
 import { toast } from './toast.js'
 
 const failed = (what) => (err) => toast(`${what}: ${err.message}`, 'error')
@@ -48,8 +49,9 @@ export function PlayNextButton({ onQueue }) {
 export function TrackRow({ track, index, active, onPlay, onQueue, onRemove, onOpen }) {
   if (onOpen && isAlbum(track)) return html`<${AlbumRow} track=${track} onOpen=${onOpen} />`
   const dur = track.duration_secs
-  return html`<li class="row" data-active=${active ? '' : undefined}>
-    <button class="row-main" onClick=${() => { haptic(); onPlay().catch(failed('Could not play')) }}
+  // Swiping a row left queues it to play next, as the button does.
+  const swipeQueue = onQueue && (() => onQueue().then(() => toast('Playing next'), failed('Could not queue')))
+  const body = html`<button class="row-main" onClick=${() => { haptic(); onPlay().catch(failed('Could not play')) }}
       aria-current=${active ? 'true' : undefined}>
       ${index !== undefined ? html`<span class="row-index mono">${index}</span>` : html`<${Art} track=${track} />`}
       <span class="row-text">
@@ -60,7 +62,10 @@ export function TrackRow({ track, index, active, onPlay, onQueue, onRemove, onOp
     </button>
     ${onQueue && html`<${PlayNextButton} onQueue=${onQueue} />`}
     ${onRemove && html`<button class="icon-btn small" aria-label=${'Remove ' + trackTitle(track)}
-      onClick=${() => onRemove().catch(failed('Could not remove'))}>${Icon.close()}</button>`}
+      onClick=${() => onRemove().catch(failed('Could not remove'))}>${Icon.close()}</button>`}`
+  return html`<li class="row" data-active=${active ? '' : undefined} data-swipe-queue=${onQueue ? '' : undefined}>
+    ${onQueue && html`<span class="row-hint" aria-hidden="true">${Icon.playNext()}<span>Play next</span></span>`}
+    <${Swipe} class="row-slide" onLeft=${swipeQueue}>${body}</${Swipe}>
   </li>`
 }
 
@@ -109,6 +114,28 @@ const recent = () => {
 }
 const remember = (q) => localStorage.setItem(RECENT_KEY, JSON.stringify([q, ...recent().filter((r) => r !== q)].slice(0, 8)))
 
+// albumPlace turns an album result into the placeholder track the Album
+// view opens: albumID reads the meta, trackTitle and Art the rest.
+export function albumPlace(album) {
+  return {
+    title: album.name, artist: album.artist, year: album.year, album_art_url: album.image_url,
+    provider_meta: { kind: 'album', albumID: album.id },
+  }
+}
+
+export function ArtistRow({ artist, sub, onOpen }) {
+  return html`<li class="row">
+    <button class="row-main" onClick=${onOpen}>
+      <${Art} track=${{ album_art_url: artist.image_url }} />
+      <span class="row-text">
+        <div class="row-title trunc">${artist.name}</div>
+        <div class="row-sub"><span class="trunc">${sub || 'Artist'}</span></div>
+      </span>
+      <span class="row-chev">${Icon.chevron()}</span>
+    </button>
+  </li>`
+}
+
 export function Search({ remote, openArtist }) {
   const { providers } = useRemote(remote)
   const searchable = mainProviders(providers, (p) => p.searchable)
@@ -118,8 +145,9 @@ export function Search({ remote, openArtist }) {
   const active = scope ?? scopes[0]?.key
   const [query, setQuery] = useState('')
   const [submitted, setSubmitted] = useState('')
-  const [results, setResults] = useState(null) // [{provider, tracks, error}]
+  const [results, setResults] = useState(null) // [{provider, tracks, artists, albums, playlists, error, done, busy}]
   const [album, setAlbum] = useState(null) // {provider, track} while an album is open
+  const [list, setList] = useState(null) // {provider, list} while a playlist is open
   const seq = useRef(0)
   const timer = useRef(0)
   const input = useRef(null)
@@ -136,8 +164,30 @@ export function Search({ remote, openArtist }) {
     if (!q) return setResults(null)
     setResults((r) => (r && r.loading ? r : { loading: true, groups: r?.groups || [] }))
     Promise.all(
-      latest.current.targets.map((p) => remote.search(p.key, q).then((tracks) => ({ provider: p, tracks }), (error) => ({ provider: p, tracks: [], error }))),
+      latest.current.targets.map((p) =>
+        remote.search(p.key, q).then(
+          (r) => ({ provider: p, ...r, fetched: r.tracks.length, done: r.tracks.length < 10 }),
+          (error) => ({ provider: p, tracks: [], artists: [], albums: [], playlists: [], error }),
+        ),
+      ),
     ).then((groups) => n === seq.current && setResults({ loading: false, groups }))
+  }
+  // more extends one group's songs. The server repeats the search, so
+  // tracks already shown are dropped by path.
+  const more = (g) => {
+    setResults((r) => ({ ...r, groups: r.groups.map((x) => (x === g ? { ...x, busy: true } : x)) }))
+    remote.searchMore(g.provider.key, submitted, g.fetched || 0).then(
+      (page) =>
+        setResults((r) => ({
+          ...r,
+          groups: r.groups.map((x) => {
+            if (x.provider.key !== g.provider.key) return x
+            const seen = new Set(x.tracks.map((t) => t.path))
+            return { ...x, busy: false, fetched: (x.fetched || 0) + page.length, done: page.length < 25, tracks: [...x.tracks, ...page.filter((t) => !seen.has(t.path))] }
+          }),
+        })),
+      failed('Could not load more'),
+    )
   }
   useEffect(() => {
     if (submitted) run(submitted)
@@ -170,6 +220,9 @@ export function Search({ remote, openArtist }) {
     return html`<${Album} remote=${remote} provider=${album.provider} track=${album.track}
       backLabel="Search" back=${() => setAlbum(null)} openArtist=${openArtist} />`
   }
+  if (list) {
+    return html`<${Playlist} remote=${remote} provider=${list.provider} list=${list.list} back=${() => setList(null)} />`
+  }
   return html`<div>
     <form class="search-form" role="search" onSubmit=${onSubmit}>
       <label class="field">${Icon.search()}<span class="sr">Search</span>
@@ -185,14 +238,41 @@ export function Search({ remote, openArtist }) {
       ${!searchable.length && html`<div class="empty"><strong>No searchable providers</strong>Set up Spotify or YouTube in cliamp's config.toml.</div>`}
     </div>`}
     ${results?.loading && !results.groups.length && html`<${Skeleton} />`}
-    ${results?.groups.map((g) => html`<section aria-label=${g.provider.name}>
+    ${results?.groups.map((g) => {
+      const empty = !g.tracks.length && !g.artists.length && !g.albums.length && !g.playlists.length
+      const sections = [g.artists.length, g.tracks.length, g.albums.length, g.playlists.length].filter(Boolean).length
+      const head = (label) => sections > 1 && html`<div class="section-head"><span class="eyebrow">${label}</span></div>`
+      return html`<section aria-label=${g.provider.name}>
       ${targets.length > 1 && html`<div class="section-head"><span class="eyebrow">${g.provider.name}</span></div>`}
       ${g.error && html`<p class="error-line">${g.error.message}</p>`}
-      ${!g.error && !g.tracks.length && !results.loading && html`<p class="dim" style="padding:12px 0">No results for “${submitted}”.</p>`}
-      <ul class="rows">${g.tracks.map((t) => html`<${TrackRow} track=${t} onPlay=${() => play(t)} onQueue=${() => remote.queueTrack(t)}
-        onOpen=${() => { if (submitted) remember(submitted); setAlbum({ provider: g.provider, track: t }) }} />`)}</ul>
-    </section>`)}
+      ${!g.error && empty && !results.loading && html`<p class="dim" style="padding:12px 0">No results for “${submitted}”.</p>`}
+      ${g.artists.length > 0 && html`${head('Artists')}
+        <ul class="rows">${g.artists.map((a) => html`<${ArtistRow} artist=${a}
+          onOpen=${() => openArtist && g.provider.artist_profiles && openArtist(g.provider, { artist: a.id })} />`)}</ul>`}
+      ${g.tracks.length > 0 && html`${head('Songs')}
+        <ul class="rows">${g.tracks.map((t) => html`<${TrackRow} track=${t} onPlay=${() => play(t)} onQueue=${() => remote.queueTrack(t)}
+          onOpen=${() => { if (submitted) remember(submitted); setAlbum({ provider: g.provider, track: t }) }} />`)}</ul>
+        ${!g.done && html`<button class="chip more" disabled=${g.busy} onClick=${() => more(g)}>More songs</button>`}`}
+      ${g.albums.length > 0 && html`${head('Albums')}
+        <ul class="rows">${g.albums.map((a) => html`<${TrackRow} track=${albumPlace(a)} onPlay=${() => play(albumPlace(a))}
+          onOpen=${() => { if (submitted) remember(submitted); setAlbum({ provider: g.provider, track: albumPlace(a) }) }} />`)}</ul>`}
+      ${g.playlists.length > 0 && html`${head('Playlists')}
+        <ul class="rows">${g.playlists.map((pl) => html`<${PlaylistRow} list=${pl} onOpen=${() => setList({ provider: g.provider, list: pl })} />`)}</ul>`}
+    </section>`
+    })}
   </div>`
+}
+
+export function PlaylistRow({ list, onOpen }) {
+  return html`<li class="row">
+    <button class="row-main" onClick=${onOpen}>
+      <${Art} track=${{ album_art_url: list.image_url }} />
+      <span class="row-text"><div class="row-title trunc">${list.name}</div>
+        ${list.section && html`<div class="row-sub"><span class="trunc">${list.section}</span></div>`}</span>
+      ${list.track_count > 0 && html`<span class="row-count mono">${list.track_count}</span>`}
+      <span class="row-chev">${Icon.chevron()}</span>
+    </button>
+  </li>`
 }
 
 // ---------- library ----------
@@ -250,17 +330,145 @@ export function Album({ remote, provider, track, back, backLabel, openArtist }) 
     start=${playFrom(remote, () => remote.loadAlbum(provider.key, id))} back=${back} />`
 }
 
-function Playlist({ remote, provider, list, back }) {
+export function Playlist({ remote, provider, list, back }) {
   return html`<${Collection} remote=${remote} title=${list.name} backLabel=${provider.name} count=${list.track_count}
     load=${() => remote.tracks(provider.key, list.id)}
     start=${playFrom(remote, () => remote.loadPlaylist(provider.key, list.id))} back=${back} />`
 }
 
-export function Library({ remote }) {
+// The library views a provider can fill. Songs and Podcasts are sections
+// of its playlist list (Spotify calls them Library and Podcasts);
+// Artists and Albums come from its browse endpoints when it has them.
+const SECTION_CATS = [
+  { key: 'songs', name: 'Songs', section: 'Library' },
+  { key: 'podcasts', name: 'Podcasts', section: 'Podcasts' },
+]
+
+function libraryCats(provider, rows) {
+  const cats = [{ key: 'playlists', name: 'Playlists' }]
+  if (provider?.browse_artists) cats.push({ key: 'artists', name: 'Artists' })
+  if (provider?.browse_albums) cats.push({ key: 'albums', name: 'Albums' })
+  for (const cat of SECTION_CATS) {
+    if (rows?.some((pl) => pl.section === cat.section)) cats.push(cat)
+  }
+  return cats
+}
+
+// PagedList appends pages from load(offset), which resolves {items,
+// done}. deps reset it.
+function usePaged(load, deps) {
+  const [st, setSt] = useState({ items: [], loading: true, error: null, done: false })
+  const seq = useRef(0)
+  const page = (offset, append) => {
+    const n = ++seq.current
+    if (!append) setSt({ items: [], loading: true, error: null, done: false })
+    load(offset).then(
+      ({ items, done }) => n === seq.current && setSt((s) => ({ items: append ? [...s.items, ...items] : items, loading: false, error: null, done })),
+      (error) => n === seq.current && setSt((s) => ({ ...s, loading: false, error })),
+    )
+  }
+  useEffect(() => page(0, false), deps)
+  return { ...st, more: () => page(st.items.length, true) }
+}
+
+function ArtistsView({ remote, provider, openArtist, onAlbums }) {
+  const { items, loading, error, done, more } = usePaged(
+    (offset) => remote.artists(provider.key, offset).then((r) => ({ items: r.artists, done: offset + r.artists.length >= r.total || !r.artists.length })),
+    [provider.key],
+  )
+  const open = (a) => (openArtist && provider.artist_profiles ? openArtist(provider, { artist: a.id }) : onAlbums(a))
+  return html`<div>
+    ${loading && !items.length && html`<${Skeleton} />`}
+    ${error && html`<p class="error-line">${error.message}</p>`}
+    ${!loading && !error && !items.length && html`<div class="empty"><strong>No artists</strong>${provider.name} lists none for this account.</div>`}
+    <ul class="rows">${items.map((a) => html`<${ArtistRow} artist=${a}
+      sub=${a.album_count > 0 ? a.album_count + (a.album_count === 1 ? ' album' : ' albums') : 'Artist'} onOpen=${() => open(a)} />`)}</ul>
+    ${!done && items.length > 0 && html`<button class="chip more" disabled=${loading} onClick=${more}>More artists</button>`}
+  </div>`
+}
+
+function ArtistAlbumsView({ remote, provider, artist, back, onAlbum }) {
+  const { data, loading, error } = useLoad(() => remote.artistAlbums(provider.key, artist.id).then((r) => r.albums), [provider.key, artist.id])
+  return html`<div>
+    <button class="back" onClick=${back}>${Icon.back()} Artists</button>
+    <h1 class="title">${artist.name}</h1>
+    ${loading && html`<${Skeleton} />`}
+    ${error && html`<p class="error-line">${error.message}</p>`}
+    <ul class="rows">${(data || []).map((a) => html`<${TrackRow} track=${albumPlace(a)} onPlay=${() => onAlbum(a)} onOpen=${() => onAlbum(a)} />`)}</ul>
+  </div>`
+}
+
+function AlbumsView({ remote, provider, onAlbum }) {
+  const [sort, setSort] = useState(null)
+  const [sorts, setSorts] = useState([])
+  const { items, loading, error, done, more } = usePaged(
+    (offset) =>
+      remote.albums(provider.key, sort || undefined, offset).then((r) => {
+        if (r.sorts.length) setSorts(r.sorts)
+        return { items: r.albums, done: r.albums.length < 100 }
+      }),
+    [provider.key, sort],
+  )
+  return html`<div>
+    ${sorts.length > 1 && html`<div class="chips" role="group" aria-label="Sort albums" style="margin-top:0">
+      ${sorts.map((s) => html`<button class="chip" aria-pressed=${(sort ?? sorts[0].id) === s.id ? 'true' : 'false'} onClick=${() => setSort(s.id)}>${s.label}</button>`)}
+    </div>`}
+    ${loading && !items.length && html`<${Skeleton} />`}
+    ${error && html`<p class="error-line">${error.message}</p>`}
+    ${!loading && !error && !items.length && html`<div class="empty"><strong>No albums</strong>${provider.name} lists none for this account.</div>`}
+    <ul class="rows">${items.map((a) => html`<${TrackRow} track=${albumPlace(a)} onPlay=${() => onAlbum(a)} onOpen=${() => onAlbum(a)} />`)}</ul>
+    ${!done && items.length > 0 && html`<button class="chip more" disabled=${loading} onClick=${more}>More albums</button>`}
+  </div>`
+}
+
+// AccountRow shows who a provider is signed in as, and switches account.
+// Signing in happens in the browser on the cliamp machine, so the wait
+// says where to finish it.
+function AccountRow({ remote, provider, machine, onSwitched }) {
+  const { data, loading, error, reload } = useLoad(() => remote.account(provider.key), [provider.key])
+  const [stage, setStage] = useState('idle') // idle | confirm | waiting
+  const [switched, setSwitched] = useState(null)
+  const account = switched || data
+  const go = () => {
+    setStage('waiting')
+    remote.switchAccount(provider.key).then(
+      (next) => {
+        setSwitched(next)
+        setStage('idle')
+        onSwitched()
+        toast('Signed in as ' + (next?.name || provider.name))
+      },
+      (err) => {
+        setStage('idle')
+        toast('Could not switch account: ' + err.message, 'error')
+        reload()
+      },
+    )
+  }
+  if (error && !account) return null
+  const signedOut = !loading && !account
+  return html`<div class="account-row">
+    ${Icon.user()}
+    ${stage === 'waiting'
+      ? html`<span class="row-text trunc">Finish signing in in the browser on ${machine}…</span>`
+      : stage === 'confirm'
+        ? html`<span class="row-text">Switch ${provider.name} account? Playback from ${provider.name} stops.</span>
+          <button class="chip" onClick=${go}>Switch account</button>
+          <button class="chip" onClick=${() => setStage('idle')}>Cancel</button>`
+        : html`<span class="row-text trunc">${account ? 'Signed in as ' + account.name : signedOut ? 'Not signed in to ' + provider.name : 'Reading account…'}${account?.detail ? ' · ' + account.detail : ''}</span>
+          ${signedOut && html`<button class="chip" onClick=${go}>Sign in</button>`}
+          ${account && html`<button class="chip" onClick=${() => setStage('confirm')}>Switch</button>`}`}
+  </div>`
+}
+
+export function Library({ remote, machines, openArtist, openLinks }) {
   const { providers, epoch } = useRemote(remote)
   const list = mainProviders(providers).slice(0, 5)
   const [key, setKey] = useState(null)
   const [open, setOpen] = useState(null)
+  const [cat, setCat] = useState('playlists')
+  const [album, setAlbum] = useState(null)
+  const [artist, setArtist] = useState(null)
   const provider = list.find((p) => p.key === (key ?? list[0]?.key))
   const { data, loading, error, reload } = useLoad(async () => {
     if (!provider) return []
@@ -271,23 +479,43 @@ export function Library({ remote }) {
   }, [provider?.key, epoch])
 
   if (open && provider) return html`<${Playlist} remote=${remote} provider=${provider} list=${open} back=${() => setOpen(null)} />`
+  if (album && provider)
+    return html`<${Album} remote=${remote} provider=${provider} track=${albumPlace(album)} backLabel="Library" back=${() => setAlbum(null)} openArtist=${openArtist} />`
+  if (artist && provider)
+    return html`<${ArtistAlbumsView} remote=${remote} provider=${provider} artist=${artist} back=${() => setArtist(null)} onAlbum=${setAlbum} />`
+
+  const cats = libraryCats(provider, data)
+  const activeCat = cats.some((c) => c.key === cat) ? cat : 'playlists'
+  const sectionCat = SECTION_CATS.find((c) => c.key === activeCat)
+  const rows = sectionCat ? (data || []).filter((pl) => pl.section === sectionCat.section) : data || []
+  const grouped = new Set(rows.map((pl) => pl.section)).size > 1
+  const resolver = providers.find((p) => p.links)
+  let lastSection = null
   return html`<div>
-    <h1 class="title">Library</h1>
-    <${Segments} items=${list} value=${provider?.key} onChange=${(k) => { setKey(k); setOpen(null) }} label="Provider" />
+    <div class="pl-head">
+      <h1 class="title">Library</h1>
+      ${openLinks && resolver && html`<button class="pill small" onClick=${() => openLinks('')}>${Icon.link()} Open link</button>`}
+    </div>
+    <${Segments} items=${list} value=${provider?.key} onChange=${(k) => { setKey(k); setOpen(null); setCat('playlists') }} label="Provider" />
+    ${provider?.account && html`<${AccountRow} remote=${remote} provider=${provider} machine=${machineLabel(machines?.current)}
+      onSwitched=${() => { playlistCache.delete(epoch + ':' + provider.key); reload() }} />`}
+    ${provider && cats.length > 1 && html`<${Segments} items=${cats} value=${activeCat} onChange=${setCat} label="View" />`}
     ${!provider && html`<div class="empty"><strong>No providers yet</strong>cliamp has not reported its providers.</div>`}
-    ${loading && html`<${Skeleton} />`}
-    ${error && html`<p class="error-line">${error.message} <button class="chip" onClick=${() => { playlistCache.delete(epoch + ':' + provider.key); reload() }}>Retry</button></p>`}
-    ${data && !data.length && !loading && html`<div class="empty"><strong>No playlists</strong>${provider?.name} has no playlists for this account.</div>`}
-    <ul class="rows" style="margin-top:8px">
-      ${(data || []).map((pl) => html`<li class="row">
-        <button class="row-main" onClick=${() => setOpen(pl)}>
-          <span class="row-text"><div class="row-title trunc">${pl.name}</div>
-            ${pl.section && html`<div class="row-sub"><span class="trunc">${pl.section}</span></div>`}</span>
-          ${pl.track_count > 0 && html`<span class="row-count mono">${pl.track_count}</span>`}
-          <span class="row-chev">${Icon.chevron()}</span>
-        </button>
-      </li>`)}
-    </ul>
+    ${provider && activeCat === 'artists' && html`<${ArtistsView} remote=${remote} provider=${provider} openArtist=${openArtist} onAlbums=${setArtist} />`}
+    ${provider && activeCat === 'albums' && html`<${AlbumsView} remote=${remote} provider=${provider} onAlbum=${setAlbum} />`}
+    ${provider && activeCat !== 'artists' && activeCat !== 'albums' && html`<div>
+      ${loading && html`<${Skeleton} />`}
+      ${error && html`<p class="error-line">${error.message} <button class="chip" onClick=${() => { playlistCache.delete(epoch + ':' + provider.key); reload() }}>Retry</button></p>`}
+      ${data && !rows.length && !loading && html`<div class="empty"><strong>Nothing here</strong>${provider?.name} has none for this account.</div>`}
+      <ul class="rows" style="margin-top:8px">
+        ${rows.map((pl) => {
+          const head = !sectionCat && grouped && pl.section !== lastSection
+          lastSection = pl.section
+          return html`${head && html`<li class="section-head" style="margin-left:12px"><span class="eyebrow">${pl.section}</span></li>`}
+            <${PlaylistRow} list=${pl} onOpen=${() => setOpen(pl)} />`
+        })}
+      </ul>
+    </div>`}
   </div>`
 }
 

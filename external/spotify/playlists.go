@@ -91,13 +91,22 @@ func (p *SpotifyProvider) fetchPlaylists() ([]playlist.PlaylistInfo, error) {
 		albums, albumsErr = p.savedAlbumSet()
 	}()
 
+	var shows []playlist.PlaylistInfo
+	showsDone := make(chan struct{})
+	go func() {
+		defer close(showsDone)
+		shows = p.savedShows()
+	}()
+
 	rows, err := p.rowsFlight.do(p.fetchPlaylistRows)
 	<-albumsDone
+	<-showsDone
 	if err != nil {
 		return nil, err
 	}
 	all := slices.Clone(rows)
 	all = append(all, albums.rows...)
+	all = append(all, shows...)
 
 	// Saved albums are extra. When they fail, show the playlists and report
 	// the error, and do not cache the partial list.

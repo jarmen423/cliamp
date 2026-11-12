@@ -85,6 +85,7 @@ export function ArtistPage({ remote, provider, artist, track, back, backLabel })
     ${data && html`<div class="artist-actions">
       <button class="play play-sm" aria-label=${'Play ' + (info?.name || 'artist')} disabled=${starting || !popular.length}
         onClick=${() => { haptic(); playFrom(0) }}>${Icon.play()}</button>
+      ${info?.id && html`<${FollowButton} remote=${remote} provider=${provider} artist=${info} />`}
       ${liked > 0 && html`<span class="dim artist-liked">${Icon.check()} You liked ${liked} of these</span>`}
     </div>`}
 
@@ -110,6 +111,32 @@ export function ArtistPage({ remote, provider, artist, track, back, backLabel })
       </li>`)}</ul>
     </section>`}
   </div>`
+}
+
+// FollowButton follows or unfollows the artist. No provider reports the
+// current state, so like the TUI it remembers this session's choice and
+// starts at Follow.
+function FollowButton({ remote, provider, artist }) {
+  const key = 'cliamp.follow:' + provider.key + ':' + artist.id
+  const [following, setFollowing] = useState(() => sessionStorage.getItem(key) === '1')
+  const [busy, setBusy] = useState(false)
+  const toggle = () => {
+    const next = !following
+    setBusy(true)
+    remote.followArtist(provider.key, artist.id, next).then(
+      () => {
+        sessionStorage.setItem(key, next ? '1' : '0')
+        setFollowing(next)
+        setBusy(false)
+      },
+      (err) => {
+        setBusy(false)
+        toast('Could not ' + (next ? 'follow' : 'unfollow') + ': ' + err.message, 'error')
+      },
+    )
+  }
+  return html`<button class="chip" aria-pressed=${following ? 'true' : 'false'} disabled=${busy} onClick=${toggle}>
+    ${following ? 'Following' : 'Follow'}</button>`
 }
 
 function Photo({ url }) {

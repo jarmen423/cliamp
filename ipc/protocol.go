@@ -29,6 +29,7 @@ type Request struct {
 	Tracks   []TrackInfo `json:"tracks,omitempty"`
 	Topics   []string    `json:"topics,omitempty"`
 	Play     bool        `json:"play,omitempty"`
+	Follow   bool        `json:"follow,omitempty"`
 }
 
 // Response is the operation-specific data embedded in a successful V2 job.
@@ -56,6 +57,8 @@ type Response struct {
 	Theme      *ThemeInfo     `json:"theme,omitempty"`
 	Bands      []float64      `json:"bands,omitempty"`
 	EQBands    []float64      `json:"eq_bands,omitempty"`
+	Link       *LinkInfo      `json:"link,omitempty"`
+	Account    *AccountInfo   `json:"account,omitempty"`
 	Tracks     []TrackInfo    `json:"tracks,omitempty"`
 	Playlists  []PlaylistInfo `json:"playlists,omitempty"`
 	Providers  []ProviderInfo `json:"providers,omitempty"`
@@ -114,6 +117,27 @@ type PlaylistInfo struct {
 	DurationSecs int    `json:"duration_secs,omitempty"`
 	Favoritable  bool   `json:"favoritable,omitempty"`
 	Favorite     bool   `json:"favorite,omitempty"`
+	ImageURL     string `json:"image_url,omitempty"`
+}
+
+// LinkInfo is what a provider share link resolved to: a playlist, album
+// or artist ID to open, or a track to play (Track, for kind track and
+// episode).
+type LinkInfo struct {
+	Kind     string     `json:"kind"`
+	ID       string     `json:"id"`
+	Name     string     `json:"name,omitempty"`
+	ImageURL string     `json:"image_url,omitempty"`
+	Track    *TrackInfo `json:"track,omitempty"`
+}
+
+// AccountInfo is the account a provider is signed in as. Detail is
+// optional service wording, such as a Spotify plan.
+type AccountInfo struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Detail   string `json:"detail,omitempty"`
+	ImageURL string `json:"image_url,omitempty"`
 }
 
 type ProviderInfo struct {
@@ -126,6 +150,12 @@ type ProviderInfo struct {
 	// ArtistProfiles reports provider.artist support: popular tracks and a
 	// discography for an artist.
 	ArtistProfiles bool `json:"artist_profiles,omitempty"`
+	// Links reports provider.open_link support: resolving the provider's
+	// share links.
+	Links bool `json:"links,omitempty"`
+	// Account reports provider.account and provider.switch_account
+	// support: reading and changing the signed-in account.
+	Account bool `json:"account,omitempty"`
 }
 
 type ArtistInfo struct {

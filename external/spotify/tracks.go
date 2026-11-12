@@ -46,6 +46,9 @@ func (p *SpotifyProvider) Tracks(playlistID string) ([]playlist.Track, error) {
 	if albumID, ok := isSavedAlbumID(playlistID); ok {
 		return p.AlbumTracks(albumID)
 	}
+	if showID, ok := isSavedShowID(playlistID); ok {
+		return p.showEpisodes(showID)
+	}
 	if isLibraryRowID(playlistID) {
 		return p.libraryRowTracks(playlistID)
 	}
@@ -249,6 +252,10 @@ func (p *SpotifyProvider) TracksPage(playlistID string, offset int) ([]playlist.
 	// leaving them out here would build a playlist-items URL from an album ID.
 	if albumID, ok := isSavedAlbumID(playlistID); ok {
 		tracks, err := p.AlbumTracks(albumID)
+		return tracks, 0, err
+	}
+	if showID, ok := isSavedShowID(playlistID); ok {
+		tracks, err := p.showEpisodes(showID)
 		return tracks, 0, err
 	}
 	// Synthetic library rows (top tracks, recently played) are cached wholes

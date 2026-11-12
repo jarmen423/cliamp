@@ -371,7 +371,7 @@ footer .aml a{color:var(--accent)}
     <div class="wrap">
       <div class="eyebrow">phone remote &middot; new in v3.2.0</div>
       <h2>Your phone is the remote</h2>
-      <p class="sub">cliamp serves a small web app to your phone. It plays, seeks and sets the volume, searches Spotify and YouTube, opens your playlists and artist pages, and edits the queue. The music keeps playing on the computer, the way the Spotify app drives a speaker. Install it to the home screen, or as an app on a Windows or Mac desktop.</p>
+      <p class="sub">cliamp serves a small web app to your phone. It plays, seeks and sets the volume, searches Spotify and YouTube by artist, song, album and playlist, browses your library by playlists, artists, albums, songs and podcasts, opens artist pages, and edits the queue. Share a Spotify link to it from any app, or paste one, and it opens on the computer; Library also switches the Spotify account. The music keeps playing on the computer, the way the Spotify app drives a speaker. Install it to the home screen, or as an app on a Windows or Mac desktop.</p>
 
       <div class="phones">
         <figure class="phone">
@@ -391,6 +391,7 @@ footer .aml a{color:var(--accent)}
       <div class="remote-more">
         <ul class="sp-list">
           <li><b>Every computer, one app.</b> Linux, macOS and Windows each run their own cliamp. The app switches between them like Spotify Connect, and <b>Play here</b> moves the song, the queue and the position to another one.</li>
+          <li><b>Swipe and shuffle.</b> Swipe the art left or right to skip forward or back, and swipe a song in a list to play it next. The shuffle button cycles shuffle off, shuffle and Smart Shuffle, which mixes recommendations into a Spotify queue.</li>
           <li><b>Light.</b> No build step and no app store: about 120 KB of code in all, Preact included, served by cliamp itself. It reconnects on its own when the phone wakes up.</li>
           <li><b>Private.</b> A pairing token in a QR code, kept on the phone. On your LAN, or anywhere on your tailnet with <code>tailscale serve</code> for HTTPS.</li>
           <li><b>Open.</b> It speaks the same V2 protocol as <code>cliamp remote</code>, over a WebSocket, so other clients can use it too.</li>
@@ -418,7 +419,7 @@ cliamp remote pair</pre>
         <div class="feat"><div class="k">immersive mode</div><h3>A browse layout like the Spotify apps</h3><p>Visualizer band, nav pills, a Now Playing and Queue column, and a list, rows or grid canvas with cover art. <kbd>b</kbd> cycles the canvas view. A prototype, opened with <kbd>I</kbd>.</p></div>
         <div class="feat"><div class="k">terminal graphics</div><h3>Cover art as real images</h3><p>Album and playlist art over kitty graphics or Sixel, with a colored half-block fallback everywhere else.</p></div>
         <div class="feat"><div class="k">spotify</div><h3>Browse and Connect</h3><p>A Browse page for genres, moods and new releases; library browser and artist pages; smart shuffle; playlist editing; and Spotify Connect receiver mode, so the Spotify apps can play through cliamp.</p></div>
-        <div class="feat"><div class="k">phone remote</div><h3>Control it from your phone</h3><p>Turn on <code>[remote]</code>, run <code>cliamp remote pair</code> and scan the code. A web app plays, seeks, searches Spotify and YouTube, opens playlists and artist pages, edits the queue, on your LAN or tailnet, and switches between your computers or moves the music from one to another. <a href="https://github.com/jarmen423/cliamp/blob/main/docs/mobile-remote.md">Guide</a>.</p></div>
+        <div class="feat"><div class="k">phone remote</div><h3>Control it from your phone</h3><p>Turn on <code>[remote]</code>, run <code>cliamp remote pair</code> and scan the code. A web app plays, seeks, searches Spotify and YouTube by artist, song, album and playlist, browses playlists, artists, albums, songs and podcasts, opens artist pages, opens shared Spotify links, switches the Spotify account, edits the queue, on your LAN or tailnet, and switches between your computers or moves the music from one to another. <a href="https://github.com/jarmen423/cliamp/blob/main/docs/mobile-remote.md">Guide</a>.</p></div>
         <div class="feat"><div class="k">radio</div><h3>Song, artist and album radio</h3><p>Radio seeded from Spotify stations opens as a playlist without starting playback. When Spotify has no station for a track, cliamp says so.</p></div>
         <div class="feat"><div class="k">resume</div><h3>Picks up where you left off</h3><p>Reopen cliamp to get the last track, position, queue and immersive page back, for every provider.</p></div>
         <div class="feat"><div class="k">windows</div><h3>One static cliamp.exe</h3><p>Spotify included, credentials stored with DPAPI, sign-in over a free local port, and Sixel graphics in Windows Terminal.</p></div>

@@ -528,7 +528,12 @@ func performOAuth2PKCEFlows(ctx context.Context, flows []oauthFlow) ([]*oauth2.T
 			config:    conf,
 			verifier:  verifier,
 			state:     state,
-			authURL:   conf.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier)),
+			// show_dialog forces Spotify's consent screen on every
+			// interactive sign-in, which is rare. Without it a browser
+			// still signed in to spotify.com silently re-authorizes
+			// the same account, so switching accounts (delete the
+			// credentials, sign in as someone else) could never work.
+			authURL: conf.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier), oauth2.SetAuthURLParam("show_dialog", "true")),
 		}
 	}
 
