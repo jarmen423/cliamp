@@ -21,7 +21,7 @@ jobs:
           TAG="${{ github.event.workflow_run.head_branch }}"
           echo "pkgver=${TAG#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Generate PKGBUILD
+      - name: Stage PKGBUILD
         env:
           PKGVER: ${{ steps.version.outputs.pkgver }}
           REPO: ${{ github.repository }}
@@ -29,46 +29,21 @@ jobs:
           SOURCE_URL="https://github.com/${REPO}/archive/refs/tags/v${PKGVER}.tar.gz"
           SHA256=$(curl -sL "$SOURCE_URL" | sha256sum | cut -d' ' -f1)
 
-          cat > PKGBUILD <<'HEREDOC'
-          # Maintainer: bjarneo <https://github.com/bjarneo>
-          pkgname=cliamp
-          pkgver=PKGVER_PLACEHOLDER
-          pkgrel=1
-          pkgdesc='A retro terminal music player inspired by Winamp 2.x'
-          arch=('x86_64' 'aarch64')
-          url='https://github.com/bjarneo/cliamp'
-          license=('MIT')
-          depends=('alsa-lib' 'flac' 'libvorbis' 'libogg' 'mpg123' 'ffmpeg' 'yt-dlp')
-          optdepends=('pipewire-alsa: audio output on PipeWire systems'
-                      'pulseaudio-alsa: audio output on PulseAudio systems'
-                      'python-secretstorage: read Chromium-based browser cookies from GNOME Keyring via yt-dlp')
-          makedepends=('go')
-          source=("${pkgname}-${pkgver}.tar.gz::https://github.com/bjarneo/cliamp/archive/refs/tags/v${pkgver}.tar.gz")
-          sha256sums=('SHA256_PLACEHOLDER')
-
-          build() {
-              cd "${pkgname}-${pkgver}"
-              export CGO_ENABLED=1
-              go build -trimpath -buildmode=pie \
-                  -ldflags="-s -w -X main.version=v${pkgver} -linkmode=external" \
-                  -o cliamp .
-          }
-
-          package() {
-              cd "${pkgname}-${pkgver}"
-              install -Dm755 cliamp "${pkgdir}/usr/bin/cliamp"
-              install -Dm644 cliamp.desktop "${pkgdir}/usr/share/applications/cliamp.desktop"
-              install -Dm644 Cliamp.png "${pkgdir}/usr/share/icons/hicolor/512x512/apps/cliamp.png"
-              install -Dm644 Cliamp.png "${pkgdir}/usr/share/pixmaps/cliamp.png"
-              install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
-          }
-          HEREDOC
-
-          sed -i 's/^          //' PKGBUILD
-          sed -i "s|PKGVER_PLACEHOLDER|${PKGVER}|" PKGBUILD
-          sed -i "s|SHA256_PLACEHOLDER|${SHA256}|" PKGBUILD
+          cp packaging/aur/cliamp-jarmen423/PKGBUILD .
+          sed -i \
+            -e "s/^pkgver=.*/pkgver=${PKGVER}/" \
+            -e "s/^pkgrel=.*/pkgrel=1/" \
+            -e "/^sha256sums=/s/'[0-9a-f]\{64\}'/'${SHA256}'/" \
+            PKGBUILD
 
           cat PKGBUILD
+
+      - name: Generate .SRCINFO
+        run: |
+          docker run --rm -v "$PWD/PKGBUILD:/PKGBUILD:ro" archlinux:base bash -c \
+            'pacman -Sy --noconfirm pacman-contrib >&2 && cp /PKGBUILD /tmp/ && cd /tmp && chown nobody PKGBUILD && runuser -u nobody -- makepkg --printsrcinfo' > .SRCINFO
+
+          cat .SRCINFO
 
       - name: Publish to AUR
         env:
@@ -88,17 +63,15 @@ jobs:
             User aur
           EOF
 
-          # Clone AUR repo
-          git clone ssh://aur@aur.archlinux.org/cliamp.git aur-repo
+          # Clone AUR repo (creates the package on first push)
+          git clone ssh://aur@aur.archlinux.org/cliamp-jarmen423.git aur-repo
           cd aur-repo
 
           git config user.name "$AUR_USERNAME"
           git config user.email "$AUR_EMAIL"
 
-          # Copy PKGBUILD and generate .SRCINFO
-          cp ../PKGBUILD .
-          docker run --rm -v "$PWD/PKGBUILD:/PKGBUILD:ro" archlinux:base bash -c \
-            'pacman -Sy --noconfirm pacman-contrib >&2 && cp /PKGBUILD /tmp/ && cd /tmp && chown nobody PKGBUILD && runuser -u nobody -- makepkg --printsrcinfo' > .SRCINFO
+          # Copy PKGBUILD and .SRCINFO
+          cp ../PKGBUILD ../.SRCINFO .
 
           # Commit and push
           git add PKGBUILD .SRCINFO

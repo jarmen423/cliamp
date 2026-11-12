@@ -1,0 +1,27 @@
+pkgbase = cliamp-jarmen423
+	pkgdesc = A retro terminal music player inspired by Winamp 2.x (jarmen423 fork)
+	pkgver = 3.3.0
+	pkgrel = 1
+	url = https://github.com/jarmen423/cliamp
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	makedepends = go
+	depends = alsa-lib
+	depends = flac
+	depends = libvorbis
+	depends = libogg
+	depends = mpg123
+	depends = ffmpeg
+	depends = yt-dlp
+	optdepends = pipewire-alsa: audio output on PipeWire systems
+	optdepends = pulseaudio-alsa: audio output on PulseAudio systems
+	optdepends = python-secretstorage: read Chromium-based browser cookies from GNOME Keyring via yt-dlp
+	provides = cliamp=3.3.0
+	conflicts = cliamp
+	replaces = cliamp
+	options = !debug
+	source = cliamp-jarmen423-3.3.0.tar.gz::https://github.com/jarmen423/cliamp/archive/refs/tags/v3.3.0.tar.gz
+	sha256sums = 122e667bae0c1d04699ef9501cc164c3ab90a6de6f9b4406919928c684007da4
+
+pkgname = cliamp-jarmen423
