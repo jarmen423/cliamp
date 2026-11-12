@@ -137,6 +137,8 @@ func DefaultOperationRegistry() *OperationRegistry {
 		{Name: "mono", Description: "set mono output", Parameters: []string{"name"}},
 		{Name: "eq", Description: "set an EQ preset or band", Parameters: []string{"name", "band", "value"}},
 		{Name: "device", Description: "list or switch audio devices", Parameters: []string{"name"}},
+		{Name: "system.volume", Description: "set the operating system output volume, 0 to 100", Parameters: []string{"value"}},
+		{Name: "system.mute", Description: "mute or unmute the operating system output", Parameters: []string{"name"}},
 		{Name: "theme", Description: "list or change themes", Parameters: []string{"name"}},
 		{Name: "vis", Description: "list or change visualizers", Parameters: []string{"name"}},
 		{Name: "load", Description: "load a local playlist", Async: true, Parameters: []string{"playlist"}},

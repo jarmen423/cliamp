@@ -64,6 +64,14 @@ type ipcRuntimeFingerprint struct {
 	buffering    bool
 	durationSecs int64
 	seekable     bool
+	sysVolume    systemVolumeFingerprint
+}
+
+// systemVolumeFingerprint is the system volume part of the snapshot.
+type systemVolumeFingerprint struct {
+	known   bool
+	percent int
+	muted   bool
 }
 
 // SetIPCBroker enables GUI-facing V2 state events. It must be called before
@@ -206,6 +214,8 @@ func (m *Model) handleV2Request(msg V2RequestMsg) tea.Cmd {
 		return m.handleV2Visualizer(msg.Jobs, msg.JobID, request)
 	case "device":
 		return m.handleV2Device(msg.Jobs, msg.JobID, request)
+	case "system.volume", "system.mute":
+		return m.handleV2SystemVolume(msg.Jobs, msg.JobID, request)
 	case "eq":
 		return m.handleV2EQ(msg.Jobs, msg.JobID, request)
 	case "shuffle":
@@ -679,6 +689,10 @@ func (m *Model) runtimeSnapshot() ipc.RuntimeSnapshot {
 			snapshot.LogicalTrack = &info
 		}
 	}
+	if m.sysVolume.known {
+		percent, muted := m.sysVolume.percent, m.sysVolume.muted
+		snapshot.SystemVolume, snapshot.SystemMuted = &percent, &muted
+	}
 	if m.player == nil {
 		return snapshot
 	}
@@ -777,6 +791,7 @@ func (m *Model) runtimeFingerprint() ipcRuntimeFingerprint {
 	_, duration := m.playbackClock()
 	fingerprint.durationSecs = int64(duration / time.Second)
 	fingerprint.seekable = m.player.Seekable()
+	fingerprint.sysVolume = systemVolumeFingerprint{m.sysVolume.known, m.sysVolume.percent, m.sysVolume.muted}
 	if m.player.IsPlaying() && !m.player.IsPaused() {
 		fingerprint.state = "playing"
 	} else if m.player.IsPaused() {

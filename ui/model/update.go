@@ -989,6 +989,14 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handleV2Response(msg)
 		return m, nil
 
+	case systemVolumeMsg:
+		cmd := m.handleSystemVolume(msg)
+		return m, cmd
+
+	case systemVolumePollMsg:
+		cmd := m.pollSystemVolume()
+		return m, cmd
+
 	}
 
 	return m, nil

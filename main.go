@@ -27,6 +27,7 @@ import (
 	"github.com/bjarneo/cliamp/internal/appdir"
 	"github.com/bjarneo/cliamp/internal/appmeta"
 	"github.com/bjarneo/cliamp/internal/embyapi"
+	"github.com/bjarneo/cliamp/internal/osvolume"
 	"github.com/bjarneo/cliamp/internal/playback"
 	"github.com/bjarneo/cliamp/internal/resume"
 	"github.com/bjarneo/cliamp/ipc"
@@ -342,6 +343,9 @@ func run(overrides config.Overrides, positional []string, headless, visualizer60
 		m.SetAutoPlay(true)
 	}
 	imgOut := configureModel(&m, cfg, headless, visualizer60FPS)
+	if osvolume.Available() {
+		m.SetSystemVolume(osVolume{})
+	}
 
 	if resumeState.Path != "" && resumeState.PositionSec > 0 {
 		// Jellyfin and Emby resume the restored context above. Mixcloud is also commonly
@@ -563,7 +567,7 @@ func startIPC(send func(tea.Msg), broker *ipc.Broker, plugins *luaplugin.Manager
 	// an ordered queue and the socket can acknowledge a job at once.
 	queue, stopQueue := newOrderedSender(send)
 	srv.SetV2Dispatcher(newV2Dispatcher(queue, srv.JobStore(), plugins))
-	srv.SetOperationRegistry(v2Operations(headless, plugins != nil))
+	srv.SetOperationRegistry(v2Operations(headless, plugins != nil, osvolume.Available()))
 	go publishV2JobEvents(srv.Done(), srv.JobStore(), broker)
 	gateway := startRemote(remoteCfg, srv)
 	return func() {
@@ -721,8 +725,8 @@ func quitOnSignal(signals chan os.Signal, send func(tea.Msg)) {
 
 // v2Operations returns the V2 operations that this runtime serves. Headless
 // mode has no theme or visualizer to change. The plugin operations need the
-// plugin manager.
-func v2Operations(headless, plugins bool) *ipc.OperationRegistry {
+// plugin manager, and the system operations a system volume control.
+func v2Operations(headless, plugins, systemVolume bool) *ipc.OperationRegistry {
 	operations := ipc.DefaultOperationRegistry()
 	if headless {
 		operations.Unregister("theme", "vis")
@@ -730,8 +734,18 @@ func v2Operations(headless, plugins bool) *ipc.OperationRegistry {
 	if !plugins {
 		operations.Unregister("plugin.call", "plugin.commands")
 	}
+	if !systemVolume {
+		operations.Unregister("system.volume", "system.mute")
+	}
 	return operations
 }
+
+// osVolume is the model.SystemVolume of internal/osvolume.
+type osVolume struct{}
+
+func (osVolume) Get() (float64, bool, error) { return osvolume.Get() }
+func (osVolume) Set(level float64) error     { return osvolume.Set(level) }
+func (osVolume) SetMuted(muted bool) error   { return osvolume.SetMuted(muted) }
 
 // v2ReplyTimeout bounds the wait for the Model to answer state.get and
 // spectrum.get.

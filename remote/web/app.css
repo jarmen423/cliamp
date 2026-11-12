@@ -93,13 +93,15 @@ h1.title { font-size: 28px; font-weight: 590; letter-spacing: -0.02em; line-heig
 @keyframes blink { 50% { opacity: 0.2; } }
 
 /* ---------- now playing ---------- */
-.now { display: flex; flex-direction: column; min-height: 100%; padding-top: 8px; }
+.now { display: flex; flex-direction: column; min-height: 100%; padding-top: 8px; --now-chrome: 500px; }
+/* The system volume row needs room too. */
+.now.has-system { --now-chrome: 534px; }
 .now-machine { display: flex; justify-content: center; margin-bottom: 10px; }
 .now-source { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; min-height: 14px; }
 .now-source .eyebrow { max-width: 80%; }
 .now-art {
   /* Shrinks on short screens so the transport and the volume stay in view. */
-  width: clamp(140px, calc(100svh - 500px), min(100%, 44vh)); aspect-ratio: 1; margin: 0 auto; border-radius: 12px; overflow: hidden;
+  width: clamp(140px, calc(100svh - var(--now-chrome)), min(100%, 44vh)); aspect-ratio: 1; margin: 0 auto; border-radius: 12px; overflow: hidden;
   background: var(--panel);
   box-shadow: inset 0 0 0 1px var(--line), 0 24px 60px -20px rgb(0 0 0 / 0.8);
 }
@@ -140,6 +142,12 @@ h1.title { font-size: 28px; font-weight: 590; letter-spacing: -0.02em; line-heig
 
 .volume { display: flex; align-items: center; gap: 10px; margin-top: 18px; color: var(--text-3); }
 .volume svg { width: 18px; height: 18px; flex: none; }
+.volume + .volume { margin-top: 6px; }
+.volume-label { width: 50px; flex: none; }
+/* A 32px target that takes the 18px of an icon in the row. */
+.volume-mute { width: 32px; height: 32px; margin: -7px; display: grid; place-items: center; border-radius: 50%; color: inherit; flex: none; }
+.volume-mute[aria-pressed="true"] { color: var(--accent); }
+.volume.muted .range { opacity: 0.45; }
 .range {
   -webkit-appearance: none; appearance: none; flex: 1; height: 28px; background: transparent; margin: 0;
   --pct: 50%;

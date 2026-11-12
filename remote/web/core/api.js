@@ -125,6 +125,10 @@ export function createRemote({ base, token, WebSocketImpl, fetchImpl }) {
     prev: () => optimistic(null, () => submit('prev')),
     seek: (position) => optimistic({ position }, () => submit('seek.absolute', { value: position })),
     volume: (db) => optimistic({ volume: db }, () => submit('volume', { value: db })),
+    // systemVolume and systemMute drive the output volume of the computer
+    // cliamp plays on: a percent from 0 to 100, and mute on or off.
+    systemVolume: (percent) => optimistic({ system_volume: percent }, () => submit('system.volume', { value: percent })),
+    systemMute: (muted) => optimistic({ system_muted: muted }, () => submit('system.mute', { name: muted ? 'on' : 'off' })),
     // setShuffle takes 'off', 'on' (plain shuffle) or 'smart' (Smart
     // Shuffle, which mixes in recommendations and implies shuffle).
     setShuffle: (mode) =>

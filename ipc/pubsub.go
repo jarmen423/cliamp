@@ -183,6 +183,13 @@ func (b *Broker) Subscribe(topics []string) (*Subscription, error) {
 	return &Subscription{broker: b, id: id, events: ch}, nil
 }
 
+// Subscribers returns the number of live subscriptions.
+func (b *Broker) Subscribers() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.subscribers)
+}
+
 // ClearPrefix removes retained values under a plugin namespace. Live
 // subscribers remain connected and will receive future publications.
 func (b *Broker) ClearPrefix(prefix string) {

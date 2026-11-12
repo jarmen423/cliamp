@@ -340,6 +340,9 @@ type Model struct {
 	// audioDevice names the output device that the last device switch or
 	// list reported. The runtime snapshot shows it.
 	audioDevice string
+	// sysVolume is the operating system volume of the remote control. Its
+	// backend is nil when cliamp cannot control it.
+	sysVolume systemVolumeState
 	// Core playback
 	player        player.Engine
 	playlist      *playlist.Playlist

@@ -130,6 +130,11 @@ type RuntimeSnapshot struct {
 	Visualizer       string     `json:"visualizer,omitempty"`
 	Theme            *ThemeInfo `json:"theme,omitempty"`
 	StreamError      string     `json:"stream_error,omitempty"`
+	// SystemVolume and SystemMuted are the operating system output volume
+	// in percent, 0 to 100, and its mute. Both are absent when cliamp cannot
+	// control the system volume or has not read it yet.
+	SystemVolume *int  `json:"system_volume,omitempty"`
+	SystemMuted  *bool `json:"system_muted,omitempty"`
 }
 
 // V2Result is the dispatcher result payload. Exactly one of Result or
@@ -194,6 +199,14 @@ func cloneSnapshot(snapshot *RuntimeSnapshot) *RuntimeSnapshot {
 	if snapshot.Mono != nil {
 		mono := *snapshot.Mono
 		snapshotCopy.Mono = &mono
+	}
+	if snapshot.SystemVolume != nil {
+		level := *snapshot.SystemVolume
+		snapshotCopy.SystemVolume = &level
+	}
+	if snapshot.SystemMuted != nil {
+		muted := *snapshot.SystemMuted
+		snapshotCopy.SystemMuted = &muted
 	}
 	snapshotCopy.EQBands = append([]float64(nil), snapshot.EQBands...)
 	if snapshot.Theme != nil {

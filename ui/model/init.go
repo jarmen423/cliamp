@@ -372,6 +372,9 @@ func (m Model) Init() tea.Cmd {
 	if m.autoPlay && m.playlist.Len() > 0 {
 		cmds = append(cmds, func() tea.Msg { return autoPlayMsg{} })
 	}
+	if m.sysVolume.backend != nil {
+		cmds = append(cmds, readSystemVolumeCmd(m.sysVolume.backend, m.sysVolume.seq, true))
+	}
 	return tea.Batch(cmds...)
 }
 

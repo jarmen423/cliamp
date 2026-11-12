@@ -68,6 +68,10 @@ type Response struct {
 	Lyrics     []LyricLine    `json:"lyrics,omitempty"`
 	History    []HistoryInfo  `json:"history,omitempty"`
 	Devices    []DeviceInfo   `json:"devices,omitempty"`
+	// SystemVolume is the operating system output volume in percent, 0 to
+	// 100, after a system.volume or system.mute job.
+	SystemVolume *int  `json:"system_volume,omitempty"`
+	SystemMuted  *bool `json:"system_muted,omitempty"`
 }
 
 // ThemeInfo carries the active theme name and its resolved hex colors.

@@ -23,6 +23,7 @@ export const Icon = {
   back: () => svg(html`<path d="m14.5 5-7 7 7 7"/>`),
   chevron: () => svg(html`<path d="m9.5 5 7 7-7 7"/>`),
   volLow: () => svg(html`<path d="M11 5 6.5 9H4v6h2.5L11 19Z"/>`),
+  volMute: () => svg(html`<path d="M11 5 6.5 9H4v6h2.5L11 19Z"/><path d="m15.5 9.5 5 5M20.5 9.5l-5 5"/>`),
   volHigh: () => svg(html`<path d="M11 5 6.5 9H4v6h2.5L11 19Z"/><path d="M15 9.5a3.5 3.5 0 0 1 0 5M17.5 7a7 7 0 0 1 0 10"/>`),
   speaker: () => svg(html`<rect x="6" y="3" width="12" height="18" rx="2.5"/><circle cx="12" cy="14" r="3"/><path d="M12 7.5h.01"/>`),
   chevronDown: () => svg(html`<path d="m6.5 9.5 5.5 5.5 5.5-5.5"/>`),

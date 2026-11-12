@@ -36,7 +36,7 @@ tailnet (see [Away from home](#away-from-home)).
 
 | Screen | What it does |
 |--------|--------------|
-| Playing | Art, title and artist, the transport, the volume and the seek bar. The seek bar is drawn from the live spectrum of the music. Drag it to seek. Swipe the art left for the next track and right for the previous one; the mini player swipes the same way. The shuffle button cycles shuffle off, shuffle and Smart Shuffle. Smart Shuffle appears when the queue comes from Spotify |
+| Playing | Art, title and artist, the transport, the volume and the seek bar. Two sliders set the volume: **cliamp** is cliamp's own volume, and **System** is the output volume of the computer, with a mute button. System appears when cliamp can control it; see [System volume](#system-volume). The seek bar is drawn from the live spectrum of the music. Drag it to seek. Swipe the art left for the next track and right for the previous one; the mini player swipes the same way. The shuffle button cycles shuffle off, shuffle and Smart Shuffle. Smart Shuffle appears when the queue comes from Spotify |
 | Search | Searches Spotify, YouTube, or both at once, in sections: artists, songs, albums and playlists. Tap a song to play it, an artist for their page, an album or playlist to open it. **More songs** loads the next page. The play-next button queues a song after the current track |
 | Library | Each provider, viewed as Playlists, Artists, Albums, Songs or Podcasts — the views it can fill. Open a list, then play it from the start or from a track. The header also opens [a Spotify link](#open-a-spotify-link), and Spotify shows the signed-in account with a [switch](#switch-the-spotify-account) |
 | Queue | The play-next list and the live playlist. Tap to play a track, or remove it |
@@ -44,6 +44,21 @@ tailnet (see [Away from home](#away-from-home)).
 
 The app takes the accent color of the cliamp theme, so it matches the
 terminal. Swipe a song in Search, Library and artist pages left to play it next. A mini player sits above the tabs on every screen but Playing.
+
+## System volume
+
+The System slider sets the master output volume of the computer that runs
+cliamp, as its own volume keys do, and its speaker button mutes it. A change
+made on the computer shows on the phone within a few seconds.
+
+- **Linux:** needs `wpctl` (PipeWire), `pactl` (PulseAudio) or `amixer`
+  (ALSA). Most desktops have one of them.
+- **macOS:** built in.
+- **Windows:** built in.
+
+Without any of these, the app shows only the cliamp slider. The operations
+are `system.volume` and `system.mute`; see
+[Remote Control](remote-control.md#system-volume).
 
 ## Open a Spotify link
 

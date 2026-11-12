@@ -80,7 +80,10 @@ theme, stream error, and two revisions. `playlist` names the loaded saved
 playlist. After `provider.load` or `provider.load_album` of another list,
 `playlist` holds the provider key and the ID, for example `navidrome:42` or
 `navidrome:album:7`. `device` names the output device that the last `device`
-operation reported.
+operation reported. `system_volume` is the output volume of the operating
+system in percent, from 0 to 100, and `system_muted` its mute. Both are absent
+when cliamp cannot control the system volume or has not read it yet. See
+[System volume](#system-volume).
 
 ```json
 {
@@ -125,6 +128,7 @@ Run `cliamp remote capabilities` to get the current machine-readable list.
 | Group | Operations |
 | --- | --- |
 | Playback | `play`, `pause`, `toggle`, `stop`, `quit`, `next`, `prev`, `volume`, `volume.adjust`, `seek`, `seek.absolute`, `speed`, `speed.adjust`, `shuffle`, `repeat`, `mono`, `eq`, `device` |
+| System | `system.volume`, `system.mute` |
 | Appearance | `theme`, `vis` |
 | Live playlist | `queue`, `queue.list`, `queue.play`, `queue.enqueue`, `queue.remove`, `queue.move`, `queue.clear`, `track.play`, `track.queue` |
 | Play-next | `playnext.list`, `playnext.remove`, `playnext.move`, `playnext.clear` |
@@ -185,6 +189,35 @@ shuffle and Smart Shuffle with it. The snapshot reports `smart_shuffle`, and
 `smart_available` when the queue can start it. `repeat` takes
 `off`, `all`, `one` or `cycle`. With no `name`, they toggle or cycle. Any
 other name fails the job with `invalid_params` and changes nothing.
+
+### System volume
+
+`system.volume` and `system.mute` change the output volume of the operating
+system on the machine that runs cliamp, not cliamp's own `volume` in dB.
+`system.volume` takes a `value` from 0 to 100 percent and clamps any other
+number. `system.mute` takes the `name` `on`, `off` or `toggle`, and toggles
+with no `name`. Both jobs return `system_volume` and `system_muted` as the
+system reports them after the change. A failed change fails the job with
+`internal_error` and the reason in `detail`.
+
+```sh
+cliamp remote call system.volume --params '{"value":40}' --wait
+cliamp remote call system.mute --params '{"name":"toggle"}' --wait
+```
+
+cliamp reads the system volume at start and after each change. While a
+client subscribes to events, it reads it again every 3 seconds, so a change
+made on the computer reaches the client within a few seconds and publishes a
+`runtime.state` event. Headless mode supports both operations.
+
+| Platform | Requirement |
+| --- | --- |
+| Linux | `wpctl` (PipeWire), `pactl` (PulseAudio) or `amixer` (ALSA), tried in that order. cliamp drives the default output and caps it at 100% |
+| macOS | Built in, through `osascript`. An output with no volume control, such as some HDMI and USB devices, fails the job |
+| Windows | Built in, through Core Audio |
+
+`cliamp remote capabilities` lists the two operations only when cliamp can
+control the system volume. Elsewhere they are absent.
 
 `playlist.bookmark` keeps its name for existing scripts. It toggles the favorite
 ♥ of `track`, as `f` does in the TUI. It needs a known `provider` key, but it

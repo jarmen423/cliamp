@@ -223,8 +223,10 @@ function Scrubber({ remote, state }) {
   </div>`
 }
 
-function Volume({ remote, snap }) {
-  const db = snap.volume ?? 0
+// useSlider follows the server value of a range input, sends drags at
+// most every 120 ms, and holds the thumb where the finger left it until the
+// snapshot catches up.
+function useSlider(server, send) {
   const [local, setLocal] = useState(null)
   const timer = useRef(0)
   const release = useRef(0)
@@ -232,11 +234,6 @@ function Volume({ remote, snap }) {
     clearTimeout(timer.current)
     clearTimeout(release.current)
   }, [])
-  const value = local ?? db
-  // volume_min can go below the slider's -50 dB; widen the range to fit.
-  const min = Math.min(-50, Math.floor(value))
-  const pct = ((value - min) / (6 - min)) * 100
-  const send = (v) => remote.volume(v).catch(() => {})
   const onInput = (e) => {
     const v = Number(e.currentTarget.value)
     clearTimeout(release.current) // a new drag keeps its own thumb position
@@ -247,14 +244,43 @@ function Volume({ remote, snap }) {
   const onChange = (e) => {
     clearTimeout(timer.current)
     send(Number(e.currentTarget.value))
-    // Hold the thumb where the finger left it until the snapshot catches up.
     clearTimeout(release.current)
     release.current = setTimeout(() => setLocal(null), 400)
   }
+  return { value: local ?? server, onInput, onChange }
+}
+
+// Volume is cliamp's own gain in dB. With the system slider beside it,
+// both get a label.
+function Volume({ remote, snap, labelled }) {
+  const { value, onInput, onChange } = useSlider(snap.volume ?? 0, (v) => remote.volume(v).catch(() => {}))
+  // volume_min can go below the slider's -50 dB; widen the range to fit.
+  const min = Math.min(-50, Math.floor(value))
+  const pct = ((value - min) / (6 - min)) * 100
   return html`<div class="volume">
+    ${labelled && html`<span class="volume-label eyebrow" aria-hidden="true">cliamp</span>`}
     ${Icon.volLow()}
     <input class="range" type="range" min=${min} max="6" step="1" value=${value} style=${`--pct:${pct}%`}
-      aria-label="Volume" aria-valuetext=${`${value > 0 ? '+' : ''}${value} dB`} onInput=${onInput} onChange=${onChange} />
+      aria-label=${labelled ? 'cliamp volume' : 'Volume'} aria-valuetext=${`${value > 0 ? '+' : ''}${value} dB`} onInput=${onInput} onChange=${onChange} />
+    ${Icon.volHigh()}
+  </div>`
+}
+
+// SystemVolume is the output volume of the computer cliamp plays on, in
+// percent, with a mute button.
+function SystemVolume({ remote, snap }) {
+  const muted = !!snap.system_muted
+  const { value, onInput, onChange } = useSlider(snap.system_volume, (v) => remote.systemVolume(v).catch(() => {}))
+  const toggleMute = () => {
+    haptic()
+    remote.systemMute(!muted).catch((err) => toast(err.message, 'error'))
+  }
+  return html`<div class=${'volume' + (muted ? ' muted' : '')}>
+    <span class="volume-label eyebrow" aria-hidden="true">System</span>
+    <button class="volume-mute" aria-label="Mute system" aria-pressed=${muted ? 'true' : 'false'} onClick=${toggleMute}>
+      ${muted ? Icon.volMute() : Icon.volLow()}</button>
+    <input class="range" type="range" min="0" max="100" step="1" value=${value} style=${`--pct:${value}%`}
+      aria-label="System volume" aria-valuetext=${`${value}%${muted ? ', muted' : ''}`} onInput=${onInput} onChange=${onChange} />
     ${Icon.volHigh()}
   </div>`
 }
@@ -302,7 +328,8 @@ export function NowPlaying({ remote, go, machines, openArtist }) {
   const source = sourceLabel(snap, state.providers)
   const trackProvider = providerOf(track, state.providers)
   const artistProvider = trackProvider?.artist_profiles ? trackProvider : null
-  return html`<div class="now">
+  const system = remote.has('system.volume') && snap.system_volume != null
+  return html`<div class=${'now' + (system ? ' has-system' : '')}>
     ${chip}
     <div class="now-source">${source && html`<span class="eyebrow trunc">Playing from ${source}</span>`}</div>
     <${Swipe} class="now-swipe" fly onLeft=${act(remote.next)} onRight=${act(remote.prev)}>
@@ -325,7 +352,8 @@ export function NowPlaying({ remote, go, machines, openArtist }) {
       <button class=${'icon-btn' + (snap.repeat === 'one' ? ' repeat-one' : '')} aria-label=${'Repeat: ' + (snap.repeat || 'off')}
         aria-pressed=${snap.repeat && snap.repeat !== 'off' ? 'true' : 'false'} onClick=${act(remote.repeat)}>${Icon.repeat()}</button>
     </div>
-    ${remote.has('volume') && html`<${Volume} remote=${remote} snap=${snap} />`}
+    ${remote.has('volume') && html`<${Volume} remote=${remote} snap=${snap} labelled=${system} />`}
+    ${system && html`<${SystemVolume} remote=${remote} snap=${snap} />`}
     ${snap.stream_error && html`<p class="stream-error" role="status">${snap.stream_error}</p>`}
   </div>`
 }

@@ -198,3 +198,41 @@ func TestBrokerRejectedRetainDoesNotConsumeSequence(t *testing.T) {
 		t.Fatal("timed out waiting for event")
 	}
 }
+
+func TestBrokerCountsSubscribers(t *testing.T) {
+	broker := NewBroker()
+	if got := broker.Subscribers(); got != 0 {
+		t.Fatalf("new broker subscribers = %d, want 0", got)
+	}
+	first, err := broker.Subscribe([]string{"runtime.state"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := broker.Subscribe([]string{"runtime.playback"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := broker.Subscribers(); got != 2 {
+		t.Fatalf("subscribers = %d, want 2", got)
+	}
+	first.Close()
+	if got := broker.Subscribers(); got != 1 {
+		t.Fatalf("after close subscribers = %d, want 1", got)
+	}
+	broker.Close()
+	second.Close()
+	if got := broker.Subscribers(); got != 0 {
+		t.Fatalf("after broker close subscribers = %d, want 0", got)
+	}
+}
+
+// A cloned snapshot shares no system volume pointers with its source.
+func TestCloneSnapshotCopiesSystemVolume(t *testing.T) {
+	level, muted := 40, true
+	source := &RuntimeSnapshot{SystemVolume: &level, SystemMuted: &muted}
+	clone := cloneSnapshot(source)
+	level, muted = 90, false
+	if clone.SystemVolume == nil || *clone.SystemVolume != 40 || clone.SystemMuted == nil || !*clone.SystemMuted {
+		t.Fatalf("clone = %v %v, want 40 true", clone.SystemVolume, clone.SystemMuted)
+	}
+}
