@@ -169,9 +169,9 @@ func (p *SpotifyProvider) UnfollowPlaylistByID(ctx context.Context, playlistID s
 	return p.setPlaylistFollowed(ctx, playlistID, false)
 }
 
-// setPlaylistFollowed saves or removes the playlist in the user's library via
-// PUT/DELETE /v1/me/library, addressed by its spotify:playlist: URI in the
-// uris query parameter (no request body).
+// setPlaylistFollowed saves or removes the playlist (or prefixed show/album
+// URI) in the user's library via PUT/DELETE /v1/me/library, addressed by its
+// Spotify URI in the uris query parameter (no request body).
 func (p *SpotifyProvider) setPlaylistFollowed(ctx context.Context, playlistID string, follow bool) error {
 	if err := p.ensureSession(); err != nil {
 		return err
@@ -182,6 +182,9 @@ func (p *SpotifyProvider) setPlaylistFollowed(ctx context.Context, playlistID st
 		method = http.MethodDelete
 	}
 	uri := "spotify:playlist:" + playlistID
+	if strings.HasPrefix(playlistID, "spotify:") {
+		uri = playlistID
+	}
 	resp, err := p.webAPIWithRetry(ctx, method, "/v1/me/library", url.Values{"uris": {uri}}, nil, "", http.StatusOK, http.StatusNoContent)
 	if err != nil {
 		return fmt.Errorf("spotify: %s playlist: %w", followWord(follow), err)
@@ -190,6 +193,11 @@ func (p *SpotifyProvider) setPlaylistFollowed(ctx context.Context, playlistID st
 
 	p.mu.Lock()
 	p.listCache = nil
+	if strings.HasPrefix(playlistID, savedAlbumIDPrefix) {
+		p.albumCache = nil
+		p.albumRows = nil
+		p.albumCacheAt = time.Time{}
+	}
 	p.mu.Unlock()
 	return nil
 }

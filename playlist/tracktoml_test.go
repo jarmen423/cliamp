@@ -23,6 +23,7 @@ func fullTOMLTrack() Track {
 		Realtime:       true,
 		Feed:           true,
 		DurationSecs:   208,
+		AddedAt:        "2026-04-01T12:00:00Z",
 		Bookmark:       true,
 		Smart:          true,
 		Restricted:     true,

@@ -29,6 +29,7 @@ func TestTrackSurvivesEveryStore(t *testing.T) {
 		Feed:           true,
 		Restricted:     true,
 		DurationSecs:   208,
+		AddedAt:        "2026-04-01T12:00:00Z",
 		Bookmark:       true,
 		Smart:          true,
 		Unplayable:     true,

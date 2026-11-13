@@ -159,6 +159,7 @@ export function createRemote({ base, token, WebSocketImpl, fetchImpl }) {
     switchAccount: (provider) =>
       conn.submit('provider.switch_account', { provider }, { timeout: 330000 }).then((r) => r.result.account || null),
     followArtist: (provider, artist, follow) => submit('provider.follow_artist', { provider, artist, follow }),
+    followPlaylist: (provider, playlist, follow) => submit('provider.follow_playlist', { provider, playlist, follow }),
     artists: (provider, offset = 0, limit = 200) =>
       submit('provider.artists', { provider, offset, limit }).then((r) => ({ artists: r.result.artists || [], total: r.result.total || 0 })),
     artistAlbums: (provider, artist, offset = 0, limit = 200) =>
@@ -177,9 +178,14 @@ export function createRemote({ base, token, WebSocketImpl, fetchImpl }) {
         if (!page.length || all.length >= (r.result.total || 0)) return all
       }
     },
-    tracks: (provider, playlist) =>
-      submit('provider.tracks', { provider, playlist, limit: 200 }).then((r) => r.result.tracks || []),
-    loadPlaylist: (provider, playlist) => optimistic(null, () => submit('provider.load', { provider, playlist })),
+    tracks: (provider, playlist, sort) =>
+      submit('provider.tracks', { provider, playlist, sort: sort || undefined, limit: 200 }).then((r) => ({
+        tracks: r.result.tracks || [],
+        sorts: r.result.sorts || [],
+        total: r.result.total || 0,
+      })),
+    loadPlaylist: (provider, playlist, sort) =>
+      optimistic(null, () => submit('provider.load', { provider, playlist, sort: sort || undefined })),
     albumTracks: (provider, album) =>
       submit('provider.album_tracks', { provider, album, limit: 200 }).then((r) => r.result.tracks || []),
     loadAlbum: (provider, album) => optimistic(null, () => submit('provider.load_album', { provider, album })),

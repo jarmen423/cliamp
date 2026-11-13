@@ -18,6 +18,7 @@ export const Icon = {
   library: () => svg(html`<path d="M5 4v16M10 4v16M14.5 4.5l4.5 15"/>`),
   queue: () => svg(html`<path d="M4 6h12M4 12h12M4 18h7"/><path d="m16 15.5 4.5 2.5-4.5 2.5Z" fill="currentColor"/>`),
   playNext: () => svg(html`<path d="M4 7h10M4 12h10M4 17h6"/><path d="M18 14v6M15 17h6"/>`),
+  plus: () => svg(html`<path d="M12 5v14M5 12h14"/>`),
   check: () => svg(html`<path d="m5 12.5 4.5 4.5L19 7.5"/>`),
   close: () => svg(html`<path d="M6 6l12 12M18 6 6 18"/>`),
   back: () => svg(html`<path d="m14.5 5-7 7 7 7"/>`),

@@ -118,7 +118,7 @@ func (p *SpotifyProvider) fetchTracksPage(ctx context.Context, playlistID string
 	}
 	path := "/v1/me/tracks"
 	if playlistID != savedTracksPlaylistID {
-		query.Set("fields", "items(item(id,name,type,uri,artists(id,name),album(id,name,release_date,images),show(name,images),images,release_date,duration_ms,track_number,is_playable,restrictions(reason))),total")
+		query.Set("fields", "items(added_at,item(id,name,type,uri,artists(id,name),album(id,name,release_date,images),show(name,images),images,release_date,duration_ms,track_number,is_playable,restrictions(reason))),total")
 		path = fmt.Sprintf("/v1/playlists/%s/items", playlistID)
 	}
 	resp, err := p.webAPI(ctx, "GET", path, query)
@@ -130,8 +130,9 @@ func (p *SpotifyProvider) fetchTracksPage(ctx context.Context, playlistID string
 	}
 	var result struct {
 		Items []struct {
-			Item  *spotifyItem `json:"item"`
-			Track *spotifyItem `json:"track"`
+			AddedAt string       `json:"added_at"`
+			Item    *spotifyItem `json:"item"`
+			Track   *spotifyItem `json:"track"`
 		} `json:"items"`
 		Total int `json:"total"`
 	}
@@ -147,9 +148,32 @@ func (p *SpotifyProvider) fetchTracksPage(ctx context.Context, playlistID string
 		if t == nil || t.ID == "" {
 			continue
 		}
-		tracks = append(tracks, trackFromItem(t))
+		tr := trackFromItem(t)
+		tr.AddedAt = parseSpotifyAddedAt(item.AddedAt)
+		tracks = append(tracks, tr)
 	}
 	return tracks, result.Total, nil
+}
+
+// parseSpotifyAddedAt normalizes an ISO-8601 timestamp or numeric Unix epoch
+// (seconds or milliseconds) into an RFC3339Nano UTC timestamp string.
+func parseSpotifyAddedAt(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	if n, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		if n <= 0 {
+			return ""
+		}
+		if n >= 1e12 {
+			return time.UnixMilli(n).UTC().Format(time.RFC3339Nano)
+		}
+		return time.Unix(n, 0).UTC().Format(time.RFC3339Nano)
+	}
+	if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return t.UTC().Format(time.RFC3339Nano)
+	}
+	return raw
 }
 
 // headMatches reports whether an abandoned accumulation still begins with the

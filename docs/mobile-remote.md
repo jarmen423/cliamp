@@ -38,7 +38,7 @@ tailnet (see [Away from home](#away-from-home)).
 |--------|--------------|
 | Playing | Art, title and artist, the transport, the volume and the seek bar. Two sliders set the volume: **cliamp** is cliamp's own volume, and **System** is the output volume of the computer, with a mute button. System appears when cliamp can control it; see [System volume](#system-volume). The seek bar is drawn from the live spectrum of the music. Drag it to seek. Swipe the art left for the next track and right for the previous one; the mini player swipes the same way. The shuffle button cycles shuffle off, shuffle and Smart Shuffle. Smart Shuffle appears when the queue comes from Spotify |
 | Search | Searches Spotify, YouTube, or both at once, in sections: artists, songs, albums and playlists. Tap a song to play it, an artist for their page, an album or playlist to open it. **More songs** loads the next page. The play-next button queues a song after the current track |
-| Library | Each provider, viewed as Playlists, Artists, Albums, Songs or Podcasts — the views it can fill. Open a list, then play it from the start or from a track. The header also opens [a Spotify link](#open-a-spotify-link), and Spotify shows the signed-in account with a [switch](#switch-the-spotify-account) |
+| Library | Each provider, viewed as Playlists, Artists, Albums, Songs or Podcasts — the views it can fill. Open a list, sort its tracks (default, recently added, title, artist, album or duration), save or remove a shared playlist in your library, and play from the start or from any track. The header also opens [a Spotify link](#open-a-spotify-link), and Spotify shows the signed-in account with a [switch](#switch-the-spotify-account) |
 | Queue | The play-next list and the live playlist. Tap to play a track, or remove it |
 | Artist | Tap the artist on Playing, under an album title, or in Search and Library. The artist page shows the photo, the popular tracks with your liked ones marked, the discography by albums, singles and EPs, and compilations, and a Follow button. Spotify only |
 
@@ -76,9 +76,13 @@ in the Spotify app. Two ways:
 
 Playlist, album, artist, song, episode and podcast (show) links all open.
 A song or episode plays at once; the rest open as a page with a Play
-button. Tapping a Spotify link in another app cannot open cliamp by
-itself: only Spotify can claim its own links, so the Share sheet and
-pasting are as close as a web app gets.
+button. On an opened playlist or podcast show, tap **Save** next to
+Play to save it directly into your Library (or **Saved** to remove a
+playlist you do not own). Recently opened links stay listed under
+**Recent** on the Open a link screen so you can reopen one without
+pasting it again. Tapping a Spotify link in another app cannot open
+cliamp by itself: only Spotify can claim its own links, so the Share
+sheet and pasting are as close as a web app gets.
 
 ## Switch the Spotify account
 

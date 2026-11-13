@@ -98,6 +98,7 @@ type TrackInfo struct {
 	Year          int               `json:"year,omitempty"`
 	TrackNumber   int               `json:"track_number,omitempty"`
 	DurationSecs  int               `json:"duration_secs,omitempty"`
+	AddedAt       string            `json:"added_at,omitempty"`
 	Index         int               `json:"index,omitempty"`
 	QueuePosition int               `json:"queue_position,omitempty"`
 	Stream        bool              `json:"stream,omitempty"`
@@ -121,6 +122,7 @@ type PlaylistInfo struct {
 	DurationSecs int    `json:"duration_secs,omitempty"`
 	Favoritable  bool   `json:"favoritable,omitempty"`
 	Favorite     bool   `json:"favorite,omitempty"`
+	Owned        bool   `json:"owned,omitempty"`
 	ImageURL     string `json:"image_url,omitempty"`
 }
 
@@ -160,6 +162,9 @@ type ProviderInfo struct {
 	// Account reports provider.account and provider.switch_account
 	// support: reading and changing the signed-in account.
 	Account bool `json:"account,omitempty"`
+	// FollowPlaylists reports provider.follow_playlist support: saving and
+	// removing playlists in the provider's library.
+	FollowPlaylists bool `json:"follow_playlists,omitempty"`
 }
 
 type ArtistInfo struct {

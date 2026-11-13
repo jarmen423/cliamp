@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bjarneo/cliamp/playlist"
+	"github.com/bjarneo/cliamp/provider"
 )
 
 // decodeCallBody unmarshals a recorded request body into v.
@@ -276,6 +277,49 @@ func TestPlaylistFollowRequestShapes(t *testing.T) {
 	p.mu.Unlock()
 	if listCache != nil {
 		t.Error("listCache not invalidated after follow")
+	}
+}
+
+func TestPlaylistFollowPrefixedURI(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		id         string
+		wantURI    string
+		clearAlbum bool
+	}{
+		{name: "show URI", id: "spotify:show:sh1", wantURI: "spotify:show:sh1"},
+		{name: "saved album URI", id: "spotify:album:al1", wantURI: "spotify:album:al1", clearAlbum: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newMockAPI(t)
+			m.handlers["/v1/me/library"] = func(t *testing.T, query url.Values) string {
+				if got := query.Get("uris"); got != tt.wantURI {
+					t.Errorf("uris = %q, want %q", got, tt.wantURI)
+				}
+				return ``
+			}
+			p := newTestProvider()
+			p.mu.Lock()
+			p.listCache = []playlist.PlaylistInfo{{ID: tt.id}}
+			p.albumCache = []provider.AlbumInfo{{ID: "al1"}}
+			p.albumRows = []playlist.PlaylistInfo{{ID: "spotify:album:al1"}}
+			p.albumCacheAt = time.Now()
+			p.mu.Unlock()
+
+			if err := p.FollowPlaylistByID(t.Context(), tt.id); err != nil {
+				t.Fatal(err)
+			}
+			if err := p.UnfollowPlaylistByID(t.Context(), tt.id); err != nil {
+				t.Fatal(err)
+			}
+
+			p.mu.Lock()
+			albumCleared := p.albumCache == nil && p.albumRows == nil && p.albumCacheAt.IsZero()
+			p.mu.Unlock()
+			if albumCleared != tt.clearAlbum {
+				t.Errorf("album caches cleared = %v, want %v", albumCleared, tt.clearAlbum)
+			}
+		})
 	}
 }
 

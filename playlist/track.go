@@ -29,6 +29,7 @@ type Track struct {
 
 	DirSourced bool // true when expanded from a [[dir]] playlist section; re-derived on load, never persisted
 
+	AddedAt        string // RFC3339 timestamp when added to a playlist or library, if known
 	EmbeddedLyrics string // embedded lyrics from local file tags, when present
 	AlbumArtURL    string // file:// URL for cached embedded album art, when present
 

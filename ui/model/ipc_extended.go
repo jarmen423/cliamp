@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +18,15 @@ import (
 	"github.com/bjarneo/cliamp/provider"
 	"github.com/bjarneo/cliamp/resolve"
 	"github.com/bjarneo/cliamp/tracksave"
+)
+
+const (
+	playlistSortDefault  = "default"
+	playlistSortRecent   = "recent"
+	playlistSortTitle    = "title"
+	playlistSortArtist   = "artist"
+	playlistSortAlbum    = "album"
+	playlistSortDuration = "duration"
 )
 
 // ipcLibraryRequest carries a provider or saved-playlist operation to
@@ -231,9 +242,11 @@ func (m *Model) handleIPCLibrary(request ipcLibraryRequest) tea.Cmd {
 			_, profiles := entry.Provider.(provider.ArtistDetailLoader)
 			_, links := entry.Provider.(provider.LinkResolver)
 			_, account := entry.Provider.(provider.AccountSwitcher)
+			_, followPlaylists := entry.Provider.(provider.PlaylistFollower)
 			items = append(items, ipc.ProviderInfo{
 				Key: entry.Key, Name: entry.Name, Searchable: searchable, BrowseArtists: browseArtists,
-				BrowseAlbums: browseAlbums, Catalog: catalog, ArtistProfiles: profiles, Links: links, Account: account,
+				BrowseAlbums: browseAlbums, Catalog: catalog, ArtistProfiles: profiles, Links: links,
+				Account: account, FollowPlaylists: followPlaylists,
 			})
 		}
 		request.Reply <- ipc.Response{OK: true, Providers: items}
@@ -382,7 +395,8 @@ func (m *Model) handleIPCLibrary(request ipcLibraryRequest) tea.Cmd {
 		}
 	case "provider.tracks":
 		favorite := m.trackFavoriteLookup(false)
-		if window, ok := entry.Provider.(provider.TrackWindow); ok {
+		sortBy := request.Sort
+		if window, ok := entry.Provider.(provider.TrackWindow); ok && (sortBy == "" || sortBy == playlistSortDefault) {
 			return func() tea.Msg {
 				limit := request.Limit
 				if limit <= 0 || limit > 200 {
@@ -397,7 +411,11 @@ func (m *Model) handleIPCLibrary(request ipcLibraryRequest) tea.Cmd {
 				if more {
 					total++
 				}
-				request.Reply <- ipc.Response{OK: true, Tracks: ipcTrackInfos(tracks, favorite), Playlist: request.Playlist, Total: total}
+				var sorts []ipc.SortInfo
+				if !strings.HasPrefix(request.Playlist, "spotify:album:") {
+					sorts = playlistTrackSorts(tracks)
+				}
+				request.Reply <- ipc.Response{OK: true, Tracks: ipcTrackInfos(tracks, favorite), Sorts: sorts, Playlist: request.Playlist, Total: total}
 				return nil
 			}
 		}
@@ -405,16 +423,28 @@ func (m *Model) handleIPCLibrary(request ipcLibraryRequest) tea.Cmd {
 			tracks, err := entry.Provider.Tracks(request.Playlist)
 			if err != nil {
 				request.Reply <- ipc.Response{OK: false, Error: err.Error()}
-			} else {
-				page, total := ipcPage(tracks, request.Offset, request.Limit, 200)
-				request.Reply <- ipc.Response{OK: true, Tracks: ipcTrackInfos(page, favorite), Playlist: request.Playlist, Total: total}
+				return nil
 			}
+			var sorts []ipc.SortInfo
+			if !strings.HasPrefix(request.Playlist, "spotify:album:") {
+				sorts = playlistTrackSorts(tracks)
+			}
+			sorted, err := sortPlaylistTracks(tracks, sortBy)
+			if err != nil {
+				request.Reply <- ipc.Response{OK: false, Error: err.Error()}
+				return nil
+			}
+			page, total := ipcPage(sorted, request.Offset, request.Limit, 200)
+			request.Reply <- ipc.Response{OK: true, Tracks: ipcTrackInfos(page, favorite), Sorts: sorts, Playlist: request.Playlist, Total: total}
 			return nil
 		}
 	case "provider.load":
 		name := entry.Provider.Name()
 		return func() tea.Msg {
 			tracks, err := entry.Provider.Tracks(request.Playlist)
+			if err == nil {
+				tracks, err = sortPlaylistTracks(tracks, request.Sort)
+			}
 			return ipcProviderLoadResult{request: request, tracks: tracks, provider: name, loaded: request.Playlist, source: entry.Key + ":" + request.Playlist, err: err}
 		}
 	case "provider.search":
@@ -649,6 +679,22 @@ func (m *Model) handleIPCLibrary(request ipcLibraryRequest) tea.Cmd {
 			}
 			return follower.UnfollowArtist(requestContext(request.Context), request.Artist)
 		})
+	case "provider.follow_playlist":
+		follower, ok := entry.Provider.(provider.PlaylistFollower)
+		if !ok {
+			request.Reply <- ipc.Response{OK: false, Error: "provider does not support saving playlists"}
+			return nil
+		}
+		if request.Playlist == "" {
+			request.Reply <- ipc.Response{OK: false, Error: "playlist is required"}
+			return nil
+		}
+		return ipcMutationCmd(request.Context, request.Reply, func() error {
+			if request.Follow {
+				return follower.FollowPlaylistByID(requestContext(request.Context), request.Playlist)
+			}
+			return follower.UnfollowPlaylistByID(requestContext(request.Context), request.Playlist)
+		})
 	case "provider.favorite":
 		favorites, ok := entry.Provider.(provider.FavoriteToggler)
 		if !ok {
@@ -666,6 +712,124 @@ func (m *Model) handleIPCLibrary(request ipcLibraryRequest) tea.Cmd {
 	}
 }
 
+func playlistTrackSorts(tracks []playlist.Track) []ipc.SortInfo {
+	sorts := []ipc.SortInfo{
+		{ID: playlistSortDefault, Label: "Default"},
+	}
+	if slices.ContainsFunc(tracks, func(t playlist.Track) bool { return t.AddedAt != "" }) {
+		sorts = append(sorts, ipc.SortInfo{ID: playlistSortRecent, Label: "Recently added"})
+	}
+	return append(sorts,
+		ipc.SortInfo{ID: playlistSortTitle, Label: "Title"},
+		ipc.SortInfo{ID: playlistSortArtist, Label: "Artist"},
+		ipc.SortInfo{ID: playlistSortAlbum, Label: "Album"},
+		ipc.SortInfo{ID: playlistSortDuration, Label: "Duration"},
+	)
+}
+
+func sortPlaylistTracks(tracks []playlist.Track, sortBy string) ([]playlist.Track, error) {
+	if sortBy == "" || sortBy == playlistSortDefault {
+		return tracks, nil
+	}
+	switch sortBy {
+	case playlistSortRecent, playlistSortTitle, playlistSortArtist, playlistSortAlbum, playlistSortDuration:
+	default:
+		return nil, fmt.Errorf("unknown playlist sort %q", sortBy)
+	}
+	out := slices.Clone(tracks)
+	switch sortBy {
+	case playlistSortRecent:
+		times := make([]time.Time, len(out))
+		valid := make([]bool, len(out))
+		for i, tr := range out {
+			if tr.AddedAt != "" {
+				if parsed, err := time.Parse(time.RFC3339Nano, tr.AddedAt); err == nil {
+					times[i] = parsed
+					valid[i] = true
+				}
+			}
+		}
+		idx := make([]int, len(out))
+		for i := range idx {
+			idx[i] = i
+		}
+		sort.SliceStable(idx, func(i, j int) bool {
+			vi, vj := valid[idx[i]], valid[idx[j]]
+			if vi != vj {
+				return vi
+			}
+			if !vi {
+				return false
+			}
+			return times[idx[i]].After(times[idx[j]])
+		})
+		sorted := make([]playlist.Track, len(out))
+		for i, pos := range idx {
+			sorted[i] = out[pos]
+		}
+		return sorted, nil
+	case playlistSortTitle:
+		sort.SliceStable(out, func(i, j int) bool {
+			return comparePlaylistTracks(out[i], out[j], playlistSortTitle) < 0
+		})
+	case playlistSortArtist:
+		sort.SliceStable(out, func(i, j int) bool {
+			return comparePlaylistTracks(out[i], out[j], playlistSortArtist) < 0
+		})
+	case playlistSortAlbum:
+		sort.SliceStable(out, func(i, j int) bool {
+			return comparePlaylistTracks(out[i], out[j], playlistSortAlbum) < 0
+		})
+	case playlistSortDuration:
+		sort.SliceStable(out, func(i, j int) bool {
+			di, dj := out[i].DurationSecs, out[j].DurationSecs
+			if (di > 0) != (dj > 0) {
+				return di > 0
+			}
+			if di != dj {
+				return di < dj
+			}
+			return comparePlaylistTracks(out[i], out[j], playlistSortTitle) < 0
+		})
+	}
+	return out, nil
+}
+
+func comparePlaylistTracks(a, b playlist.Track, mode string) int {
+	cmpFold := func(x, y string) int {
+		if (x != "") != (y != "") {
+			if x != "" {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(strings.ToLower(x), strings.ToLower(y))
+	}
+	first := func(values ...int) int {
+		for _, v := range values {
+			if v != 0 {
+				return v
+			}
+		}
+		return 0
+	}
+	titleA, titleB := a.Title, b.Title
+	if titleA == "" {
+		titleA = a.Path
+	}
+	if titleB == "" {
+		titleB = b.Path
+	}
+	switch mode {
+	case playlistSortArtist:
+		return first(cmpFold(a.Artist, b.Artist), cmpFold(a.Album, b.Album), a.TrackNumber-b.TrackNumber, cmpFold(titleA, titleB), strings.Compare(a.Path, b.Path))
+	case playlistSortAlbum:
+		return first(cmpFold(a.Album, b.Album), a.TrackNumber-b.TrackNumber, cmpFold(titleA, titleB), strings.Compare(a.Path, b.Path))
+	default:
+		return first(cmpFold(titleA, titleB), cmpFold(a.Artist, b.Artist), cmpFold(a.Album, b.Album), a.TrackNumber-b.TrackNumber, strings.Compare(a.Path, b.Path))
+	}
+}
+
 func ipcProviderPlaylistInfos(entry provider.Entry) ([]ipc.PlaylistInfo, error) {
 	lists, err := entry.Provider.Playlists()
 	if err != nil {
@@ -673,7 +837,11 @@ func ipcProviderPlaylistInfos(entry provider.Entry) ([]ipc.PlaylistInfo, error) 
 	}
 	items := make([]ipc.PlaylistInfo, len(lists))
 	for i, list := range lists {
-		items[i] = ipc.PlaylistInfo{ID: list.ID, Name: list.Name, Provider: entry.Key, Section: list.Section, TrackCount: list.TrackCount, DurationSecs: list.DurationSecs, Favorite: list.Favorite, ImageURL: list.ImageURL}
+		items[i] = ipc.PlaylistInfo{
+			ID: list.ID, Name: list.Name, Provider: entry.Key, Section: list.Section,
+			TrackCount: list.TrackCount, DurationSecs: list.DurationSecs,
+			Favorite: list.Favorite, Owned: list.Owned, ImageURL: list.ImageURL,
+		}
 		if sectioned, ok := entry.Provider.(provider.SectionedList); ok {
 			items[i].Favoritable = sectioned.IsFavoritableID(list.ID)
 		}
@@ -867,7 +1035,7 @@ func ipcArtistInfos(artists []provider.ArtistInfo) []ipc.ArtistInfo {
 func ipcSearchPlaylistInfos(key string, lists []playlist.PlaylistInfo) []ipc.PlaylistInfo {
 	items := make([]ipc.PlaylistInfo, len(lists))
 	for i, list := range lists {
-		items[i] = ipc.PlaylistInfo{ID: list.ID, Name: list.Name, Provider: key, TrackCount: list.TrackCount, ImageURL: list.ImageURL}
+		items[i] = ipc.PlaylistInfo{ID: list.ID, Name: list.Name, Provider: key, TrackCount: list.TrackCount, Owned: list.Owned, ImageURL: list.ImageURL}
 	}
 	return items
 }
@@ -889,8 +1057,8 @@ func ipcTrackInfo(track playlist.Track, index, queuePosition int, favorite bool)
 	return ipc.TrackInfo{
 		Title: track.Title, Artist: track.Artist, Album: track.Album, Genre: track.Genre,
 		Path: track.Path, AlbumArtURL: track.AlbumArtURL, Year: track.Year,
-		TrackNumber: track.TrackNumber, DurationSecs: track.DurationSecs, Index: index,
-		QueuePosition: queuePosition, Stream: track.Stream, Realtime: track.Realtime,
+		TrackNumber: track.TrackNumber, DurationSecs: track.DurationSecs, AddedAt: track.AddedAt,
+		Index: index, QueuePosition: queuePosition, Stream: track.Stream, Realtime: track.Realtime,
 		Restricted: track.Restricted, Feed: track.Feed, Bookmark: favorite, Unplayable: track.Unplayable,
 		DirSourced: track.DirSourced, ProviderMeta: maps.Clone(track.ProviderMeta),
 	}
@@ -900,7 +1068,7 @@ func ipcTrackFromInfo(info ipc.TrackInfo) playlist.Track {
 	return playlist.Track{
 		Title: info.Title, Artist: info.Artist, Album: info.Album, Genre: info.Genre,
 		Path: info.Path, AlbumArtURL: info.AlbumArtURL, Year: info.Year,
-		TrackNumber: info.TrackNumber, DurationSecs: info.DurationSecs,
+		TrackNumber: info.TrackNumber, DurationSecs: info.DurationSecs, AddedAt: info.AddedAt,
 		Stream: info.Stream || playlist.IsURL(info.Path), Realtime: info.Realtime,
 		Restricted: info.Restricted, Feed: info.Feed, Unplayable: info.Unplayable,
 		DirSourced: info.DirSourced, ProviderMeta: maps.Clone(info.ProviderMeta),

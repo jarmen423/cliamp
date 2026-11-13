@@ -64,6 +64,11 @@ func (p *SpotifyProvider) resolveForeignPlaylist(ctx context.Context, playlistID
 	return slices.Clone(tracks), nil
 }
 
+type contextItem struct {
+	uri     string
+	addedAt string
+}
+
 // resolvePlaylistTracks loads a playlist through spclient's context-resolve
 // (the endpoint Spotify Connect uses), then fills track metadata with batched
 // extended-metadata lookups. Neither call goes through the Web API, so this
@@ -74,18 +79,33 @@ func (s *Session) resolvePlaylistTracks(ctx context.Context, playlistID string) 
 		return nil, fmt.Errorf("spotify: resolve playlist: %w", playlist.ErrNeedsAuth)
 	}
 	sp := sess.Spclient()
-	uris, err := resolveContextURIs(ctx, sp, "spotify:playlist:"+playlistID, maxResolvedTracks)
+	items, err := resolveContextURIs(ctx, sp, "spotify:playlist:"+playlistID, maxResolvedTracks)
 	if err != nil {
 		return nil, err
 	}
-	return fetchItemMetadata(ctx, sp, uris)
+	uris := make([]string, len(items))
+	for i, item := range items {
+		uris[i] = item.uri
+	}
+	byURI, err := fetchItemMetadataByURI(ctx, sp, uris)
+	if err != nil {
+		return nil, err
+	}
+	tracks := make([]playlist.Track, 0, len(byURI))
+	for _, item := range items {
+		if t, ok := byURI[item.uri]; ok {
+			t.AddedAt = item.addedAt
+			tracks = append(tracks, t)
+		}
+	}
+	return tracks, nil
 }
 
 // resolveContextURIs returns up to limit track and episode URIs of a context,
 // following the page_url / next_page_url chain context-resolve hands back.
 // spclient.ContextResolver walks the same chain, but its Page indexes the last
 // page without a bounds check and panics on a context with no pages.
-func resolveContextURIs(ctx context.Context, sp *spclient.Spclient, uri string, limit int) ([]string, error) {
+func resolveContextURIs(ctx context.Context, sp *spclient.Spclient, uri string, limit int) ([]contextItem, error) {
 	cx, err := sp.ContextResolve(ctx, uri)
 	if err != nil {
 		return nil, fmt.Errorf("spotify: context resolve %s: %w", uri, err)
@@ -94,8 +114,8 @@ func resolveContextURIs(ctx context.Context, sp *spclient.Spclient, uri string, 
 		return nil, fmt.Errorf("spotify: context resolve %s: still loading", uri)
 	}
 	pages := cx.GetPages()
-	var uris []string
-	for i := 0; i < len(pages) && len(uris) < limit; i++ {
+	var items []contextItem
+	for i := 0; i < len(pages) && len(items) < limit; i++ {
 		page := pages[i]
 		if len(page.GetTracks()) == 0 && page.GetPageUrl() != "" {
 			if page, err = loadContextPage(ctx, sp, page.GetPageUrl()); err != nil {
@@ -104,7 +124,10 @@ func resolveContextURIs(ctx context.Context, sp *spclient.Spclient, uri string, 
 		}
 		for _, t := range page.GetTracks() {
 			if typ, _, ok := splitSpotifyURI(t.GetUri()); ok && (typ == "track" || typ == "episode") {
-				uris = append(uris, t.GetUri())
+				items = append(items, contextItem{
+					uri:     t.GetUri(),
+					addedAt: parseSpotifyAddedAt(t.GetMetadata()["added_at"]),
+				})
 			}
 		}
 		if i == len(pages)-1 && page.GetNextPageUrl() != "" {
@@ -115,10 +138,10 @@ func resolveContextURIs(ctx context.Context, sp *spclient.Spclient, uri string, 
 			pages = append(pages, next)
 		}
 	}
-	if len(uris) > limit {
-		uris = uris[:limit]
+	if len(items) > limit {
+		items = items[:limit]
 	}
-	return uris, nil
+	return items, nil
 }
 
 // loadContextPage fetches one context page by its hm:// URL.
@@ -151,22 +174,6 @@ func (s *Session) lookupItemMetadata(ctx context.Context, uris []string) (map[st
 		return nil, fmt.Errorf("spotify: item metadata: %w", playlist.ErrNeedsAuth)
 	}
 	return fetchItemMetadataByURI(ctx, sess.Spclient(), uris)
-}
-
-// fetchItemMetadata looks up tracks and episodes in batches and returns them
-// in uris order. Items whose metadata is unavailable are dropped.
-func fetchItemMetadata(ctx context.Context, sp *spclient.Spclient, uris []string) ([]playlist.Track, error) {
-	byURI, err := fetchItemMetadataByURI(ctx, sp, uris)
-	if err != nil {
-		return nil, err
-	}
-	tracks := make([]playlist.Track, 0, len(byURI))
-	for _, u := range uris {
-		if t, ok := byURI[u]; ok {
-			tracks = append(tracks, t)
-		}
-	}
-	return tracks, nil
 }
 
 // fetchItemMetadataByURI looks up tracks and episodes in batches, keyed by

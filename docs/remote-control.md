@@ -133,7 +133,7 @@ Run `cliamp remote capabilities` to get the current machine-readable list.
 | Live playlist | `queue`, `queue.list`, `queue.play`, `queue.enqueue`, `queue.remove`, `queue.move`, `queue.clear`, `track.play`, `track.queue` |
 | Play-next | `playnext.list`, `playnext.remove`, `playnext.move`, `playnext.clear` |
 | Sources | `load`, `url.load`, `save`, `lyrics`, `history`, `history.clear` |
-| Providers | `provider.list`, `provider.playlists`, `provider.tracks`, `provider.load`, `provider.search`, `provider.artists`, `provider.artist_albums`, `provider.albums`, `provider.album_tracks`, `provider.load_album`, `provider.artist`, `provider.load_artist`, `provider.favorite`, `provider.catalog`, `provider.open_link`, `provider.account`, `provider.switch_account`, `provider.follow_artist` |
+| Providers | `provider.list`, `provider.playlists`, `provider.tracks`, `provider.load`, `provider.search`, `provider.artists`, `provider.artist_albums`, `provider.albums`, `provider.album_tracks`, `provider.load_album`, `provider.artist`, `provider.load_artist`, `provider.favorite`, `provider.catalog`, `provider.open_link`, `provider.account`, `provider.switch_account`, `provider.follow_artist`, `provider.follow_playlist` |
 | Saved playlists | `playlist.create`, `playlist.rename`, `playlist.delete`, `playlist.add`, `playlist.add_many`, `playlist.replace`, `playlist.remove`, `playlist.bookmark` |
 | Plugins | `plugin.call`, `plugin.commands` |
 
@@ -248,12 +248,19 @@ a URL, a URI, or shared text that contains one — and returns `link`:
 a `kind` of `playlist`, `album` or `artist` with the `id` to open, or
 `track` / `episode` with the full `track` to play, plus a best-effort
 `name` and `image_url`. A podcast show link opens as its episode
-playlist. `provider.account` returns the signed-in `account`, and
-`provider.switch_account` signs out and runs the interactive sign-in
-again — blocking for the browser flow on the cliamp machine — then
-returns the new account. Switching stops playback from that provider.
-`provider.list` reports `links` and `account` for the providers that
-support them; today that is Spotify.
+playlist. `provider.follow_playlist` saves (`"follow": true`) or removes
+a `playlist` in the user's library; `provider.list` reports
+`follow_playlists` for providers that support it, and `provider.playlists`
+and `provider.search` report `owned` on playlists the user owns.
+`provider.tracks` and `provider.load` accept an optional `sort`
+(`default`, `recent`, `title`, `artist`, `album`, `duration`), and
+`provider.tracks` returns the available `sorts` (`recent` appears when
+tracks carry an `added_at` timestamp). `provider.account` returns the
+signed-in `account`, and `provider.switch_account` signs out and runs
+the interactive sign-in again — blocking for the browser flow on the
+cliamp machine — then returns the new account. Switching stops playback
+from that provider. `provider.list` reports `links` and `account` for
+the providers that support them; today that is Spotify.
 
 Use IDs returned by `provider.playlists` for subsequent provider operations.
 Radio favorite IDs are stable `f:<station URL>` values, not positional

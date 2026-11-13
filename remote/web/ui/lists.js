@@ -278,12 +278,16 @@ export function PlaylistRow({ list, onOpen }) {
 // ---------- library ----------
 
 const playlistCache = new Map()
+const SYNTHETIC_PLAYLIST_IDS = new Set(['YOUR MUSIC', 'TOP TRACKS', 'RECENTLY PLAYED'])
+const isSyntheticPlaylist = (id) => !id || SYNTHETIC_PLAYLIST_IDS.has(id) || id.startsWith('spotify:album:')
 
-// Collection shows the tracks of a playlist or an album. load returns the
-// tracks; start(i) loads the list into cliamp and plays from track i.
-function Collection({ remote, title, backLabel, count, numbered, load, start, back, onArtist }) {
-  const { data: tracks, loading, error } = useLoad(load, [title])
+// Collection shows the tracks of a playlist or an album. load returns
+// either a track array or { tracks, total }; start(i) loads the list
+// into cliamp and plays from track i.
+function Collection({ remote, title, backLabel, count, numbered, load, deps, start, back, onArtist, actions, sortBar }) {
+  const { data, loading, error } = useLoad(load, deps || [title])
   const [starting, setStarting] = useState(false)
+  const tracks = Array.isArray(data) ? data : data?.tracks
   const playAt = async (i) => {
     setStarting(true)
     try {
@@ -293,8 +297,9 @@ function Collection({ remote, title, backLabel, count, numbered, load, start, ba
     }
   }
   // The server sends at most 200 tracks; name the real count and say so.
-  const n = Math.max(tracks?.length || 0, count || 0)
-  const truncated = tracks && count > tracks.length
+  const totalCount = data?.total || count || 0
+  const n = Math.max(tracks?.length || 0, totalCount)
+  const truncated = tracks && totalCount > tracks.length
   return html`<div>
     <button class="back" onClick=${back}>${Icon.back()} ${backLabel}</button>
     <div class="pl-head">
@@ -304,14 +309,18 @@ function Collection({ remote, title, backLabel, count, numbered, load, start, ba
           ${tracks[0].artist.split(', ')[0]}${Icon.chevron()}</button>`}
         ${n > 0 && html`<div class="dim mono" style="font-size:12px">${n} ${n === 1 ? 'track' : 'tracks'}</div>`}
       </div>
-      <button class="pill" disabled=${starting || !tracks?.length} onClick=${() => { haptic(); playAt(0).catch(failed('Could not play')) }}>${Icon.play()} Play</button>
+      <div class="pl-actions">
+        ${actions}
+        <button class="pill" disabled=${starting || loading || !tracks?.length} onClick=${() => { haptic(); playAt(0).catch(failed('Could not play')) }}>${Icon.play()} Play</button>
+      </div>
     </div>
-    ${loading && html`<${Skeleton} />`}
+    ${sortBar}
+    ${loading && !tracks && html`<${Skeleton} />`}
     ${error && html`<p class="error-line">${error.message}</p>`}
-    ${tracks && !tracks.length && html`<div class="empty"><strong>Nothing here</strong></div>`}
-    <ul class="rows">${(tracks || []).map((t, i) => html`<${TrackRow} track=${t} index=${numbered ? i + 1 : undefined}
+    ${tracks && !tracks.length && !loading && html`<div class="empty"><strong>Nothing here</strong></div>`}
+    <ul class="rows" style=${loading ? 'opacity:0.55;pointer-events:none' : undefined}>${(tracks || []).map((t, i) => html`<${TrackRow} track=${t} index=${numbered ? i + 1 : undefined}
       onPlay=${() => playAt(i)} onQueue=${() => remote.queueTrack(t)} />`)}</ul>
-    ${truncated && html`<p class="dim" style="font-size:13px;padding:12px 0">Showing the first ${tracks.length} of ${count}. Play loads them all.</p>`}
+    ${truncated && html`<p class="dim" style="font-size:13px;padding:12px 0">Showing the first ${tracks.length} of ${totalCount}. Play loads them all.</p>`}
   </div>`
 }
 
@@ -327,13 +336,112 @@ export function Album({ remote, provider, track, back, backLabel, openArtist }) 
   return html`<${Collection} remote=${remote} title=${trackTitle(track)} backLabel=${backLabel} numbered
     onArtist=${openArtist && provider.artist_profiles ? (t) => openArtist(provider, { track: t }) : null}
     load=${() => remote.albumTracks(provider.key, id)}
+    deps=${[provider.key, id]}
     start=${playFrom(remote, () => remote.loadAlbum(provider.key, id))} back=${back} />`
 }
 
 export function Playlist({ remote, provider, list, back }) {
-  return html`<${Collection} remote=${remote} title=${list.name} backLabel=${provider.name} count=${list.track_count}
-    load=${() => remote.tracks(provider.key, list.id)}
-    start=${playFrom(remote, () => remote.loadPlaylist(provider.key, list.id))} back=${back} />`
+  const { epoch } = useRemote(remote)
+  const cacheKey = epoch + ':' + provider.key
+  const mayFollow = !!provider.follow_playlists && remote.has('provider.follow_playlist') &&
+    !isSyntheticPlaylist(list.id) && !list.owned && list.section !== 'Your playlists'
+
+  const findInLibrary = (lists) => (lists || []).find((pl) => pl.id === list.id)
+  const [libState, setLibState] = useState(() => {
+    if (!mayFollow) return { ready: true, saved: false, owned: !!list.owned || list.section === 'Your playlists' }
+    if (playlistCache.has(cacheKey)) {
+      const hit = findInLibrary(playlistCache.get(cacheKey))
+      return { ready: true, saved: !!hit, owned: !!(hit?.owned || hit?.section === 'Your playlists') }
+    }
+    return { ready: false, saved: false, owned: false }
+  })
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!mayFollow) {
+      setLibState({ ready: true, saved: false, owned: !!list.owned || list.section === 'Your playlists' })
+      return
+    }
+    if (playlistCache.has(cacheKey)) {
+      const hit = findInLibrary(playlistCache.get(cacheKey))
+      setLibState({ ready: true, saved: !!hit, owned: !!(hit?.owned || hit?.section === 'Your playlists') })
+      return
+    }
+    let live = true
+    setLibState({ ready: false, saved: false, owned: false })
+    remote.playlists(provider.key).then(
+      (lists) => {
+        playlistCache.set(cacheKey, lists)
+        if (!live) return
+        const hit = findInLibrary(lists)
+        setLibState({ ready: true, saved: !!hit, owned: !!(hit?.owned || hit?.section === 'Your playlists') })
+      },
+      () => live && setLibState({ ready: true, saved: false, owned: false }),
+    )
+    return () => { live = false }
+  }, [mayFollow, cacheKey, list.id])
+
+  const toggleSave = () => {
+    if (saving) return
+    const next = !libState.saved
+    setSaving(true)
+    remote.followPlaylist(provider.key, list.id, next).then(
+      () => {
+        playlistCache.delete(cacheKey)
+        setLibState((s) => ({ ...s, saved: next }))
+        setSaving(false)
+        toast(next ? 'Saved to library' : 'Removed from library')
+      },
+      (err) => {
+        setSaving(false)
+        failed(next ? 'Could not save' : 'Could not remove')(err)
+      },
+    )
+  }
+
+  const sortKey = `cliamp.plSort:${provider.key}:${list.id}`
+  const [sort, setSort] = useState(() => {
+    try { return localStorage.getItem(sortKey) || '' } catch { return '' }
+  })
+  const [sorts, setSorts] = useState([])
+  const pickSort = (id) => {
+    const next = id === 'default' ? '' : id
+    setSort(next)
+    try {
+      if (next) localStorage.setItem(sortKey, next)
+      else localStorage.removeItem(sortKey)
+    } catch {}
+  }
+
+  const activeSort = sort || sorts[0]?.id || 'default'
+  const saveAction = mayFollow && libState.ready && !libState.owned && html`
+    <button class="pl-save" aria-pressed=${libState.saved ? 'true' : 'false'} disabled=${saving}
+      aria-label=${libState.saved ? 'Saved in library' : 'Save to library'} onClick=${() => { haptic(); toggleSave() }}>
+      ${libState.saved ? Icon.check() : Icon.plus()} ${libState.saved ? 'Saved' : 'Save'}
+    </button>`
+  const sortBar = sorts.length > 1 && html`<div class="chips" role="group" aria-label="Sort tracks" style="margin-top:0">
+    ${sorts.map((s) => html`<button class="chip" aria-pressed=${activeSort === s.id ? 'true' : 'false'}
+      onClick=${() => pickSort(s.id)}>${s.label}</button>`)}
+  </div>`
+
+  return html`<${Collection} key=${provider.key + ':' + list.id} remote=${remote} title=${list.name} backLabel=${provider.name} count=${list.track_count}
+    actions=${saveAction} sortBar=${sortBar}
+    load=${() =>
+      remote.tracks(provider.key, list.id, sort || undefined).then(
+        (r) => {
+          if (r.sorts.length) {
+            setSorts(r.sorts)
+            if (sort && !r.sorts.some((s) => s.id === sort)) pickSort('default')
+          }
+          return r
+        },
+        (err) => {
+          if (sort) pickSort('default')
+          throw err
+        },
+      )}
+    deps=${[provider.key, list.id, sort]}
+    start=${playFrom(remote, () => remote.loadPlaylist(provider.key, list.id, sort || undefined))} back=${back} />`
 }
 
 // The library views a provider can fill. Songs and Podcasts are sections
@@ -478,7 +586,10 @@ export function Library({ remote, machines, openArtist, openLinks }) {
     return playlistCache.get(key)
   }, [provider?.key, epoch])
 
-  if (open && provider) return html`<${Playlist} remote=${remote} provider=${provider} list=${open} back=${() => setOpen(null)} />`
+  if (open && provider) {
+    return html`<${Playlist} remote=${remote} provider=${provider} list=${open}
+      back=${() => { setOpen(null); if (!playlistCache.has(epoch + ':' + provider.key)) reload() }} />`
+  }
   if (album && provider)
     return html`<${Album} remote=${remote} provider=${provider} track=${albumPlace(album)} backLabel="Library" back=${() => setAlbum(null)} openArtist=${openArtist} />`
   if (artist && provider)

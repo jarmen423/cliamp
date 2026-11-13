@@ -2,7 +2,7 @@
 // the machine it was installed from is off and another one plays.
 // Network first: a running cliamp always serves its current app, and the
 // cache is only the fallback. The API, art and info never touch the cache.
-const CACHE = 'cliamp-shell-v5'
+const CACHE = 'cliamp-shell-v6'
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png',
   'vendor/preact-htm.js',
